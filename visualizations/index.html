@@ -251,11 +251,18 @@ function mulberry32(seed) {
 }
 
 // QUANTILE BINNING  (equivalent to pd.qcut(q=3, labels=[0,1,2]))
+// replicate Python's pd.qcut's right-closed boundary logic
 function makeBinner(values) {
-  // d3.scaleQuantile maps a continuous domain to discrete range
-  return d3.scaleQuantile()
-    .domain(values)
-    .range([0, 1, 2]);
+  const sorted = [...values].sort(d3.ascending);
+  const n = sorted.length;
+  // Thresholds at the 33.3rd and 66.7th percentile, right-closed like pd.qcut
+  const t1 = sorted[Math.floor(n / 3)];
+  const t2 = sorted[Math.floor(2 * n / 3)];
+  return (v) => {
+    if (v <= t1) return 0;   // right-closed: equal to threshold → lower bin
+    if (v <= t2) return 1;
+    return 2;
+  };
 }
 
 // MAIN RENDER
@@ -337,8 +344,8 @@ function render() {
 
   // 1. Aggregate cached CSV rows into mean before/after per county
   //    Mirrors: before = df[df.month_offset.between(-n,-1)].groupby("fips")[metric].mean()
-  const beforeAcc = new Map();  // fips -> { sum, count }
-  const afterAcc  = new Map();
+  // Key by incident
+  const key = `${fips}__${row.incident_num}`;
 
   rawData.forEach(row => {
     const fips   = String(row.fips).padStart(5, '0');
@@ -347,39 +354,42 @@ function render() {
     if (isNaN(val)) return;
 
     if (offset >= -nMonths && offset <= -1) {
-      const e = beforeAcc.get(fips) || { sum: 0, count: 0 };
+      const e = beforeAcc.get(key) || { fips, sum: 0, count: 0 };
       e.sum += val; e.count++;
-      beforeAcc.set(fips, e);
+      beforeAcc.set(key, e);
     }
     if (offset >= 1 && offset <= nMonths) {
-      const e = afterAcc.get(fips) || { sum: 0, count: 0 };
+      const e = afterAcc.get(key) || { fips, sum: 0, count: 0 };
       e.sum += val; e.count++;
-      afterAcc.set(fips, e);
+      afterAcc.set(key, e);
     }
   });
 
   const countyData = new Map();
-  for (const [fips, b] of beforeAcc) {
-    const a = afterAcc.get(fips);
+  for (const [key, b] of beforeAcc) {
+    const a = afterAcc.get(key);
     if (!a) continue;
-    countyData.set(fips, {
+    countyData.set(key, {
+      fips: b.fips,
       meanBefore: b.sum / b.count,
       meanAfter:  a.sum / a.count,
     });
   }
 
   // 2. Quantile-bin each axis into 3 equal-count classes
+  // Bin by incident-level means
   const beforeVals = [...countyData.values()].map(d => d.meanBefore);
   const afterVals  = [...countyData.values()].map(d => d.meanAfter);
   const binBefore  = makeBinner(beforeVals);
   const binAfter   = makeBinner(afterVals);
 
   // 3. Colour lookup per county FIPS
+  // collapse back to FIPS only: take the first matching incident key
   const colorOf = (fips) => {
-    const d = countyData.get(fips);
-    if (!d) return NO_DATA_COLOR;
-    const bB = binBefore(d.meanBefore);
-    const bA = binAfter(d.meanAfter);
+    const entry = [...countyData.values()].find(d => d.fips === fips);
+    if (!entry) return NO_DATA_COLOR;
+    const bB = binBefore(entry.meanBefore);
+    const bA = binAfter(entry.meanAfter);
     return BIVARIATE_PALETTE[`${bB},${bA}`] || NO_DATA_COLOR;
   };
 
