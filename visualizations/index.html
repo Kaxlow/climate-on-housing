@@ -448,25 +448,12 @@ function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals)
   const cell   = 20;
   const pad    = 2;
   const size   = cell * 3 + pad * 2;
-  const margin = { top: 28, right: 10, bottom: 52, left: 60 };
+  const margin = { top: 28, right: 10, bottom: 40, left: 48 };
   const W      = size + margin.left + margin.right;
   const H      = size + margin.top  + margin.bottom;
 
   const metricLabel = metric.replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase());
-
-  // Smart compact formatter: keeps at most 4 significant figures, no trailing zeros
-  const fmt = v => {
-    const abs = Math.abs(v);
-    if (abs === 0) return '0';
-    if (abs >= 10000) return d3.format(',.0f')(v);
-    if (abs >= 100)   return d3.format(',.1f')(v);
-    if (abs >= 1)     return d3.format(',.2f')(v);
-    return d3.format(',.4f')(v);
-  };
-
-  const [beforeMin, beforeMax] = d3.extent(beforeVals);
-  const [afterMin,  afterMax]  = d3.extent(afterVals);
 
   const svgL = d3.select(wrap).append('svg')
     .attr('width', W).attr('height', H)
@@ -478,8 +465,6 @@ function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals)
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
   // 3×3 colour grid
-  // x-axis = after (bin_after), y-axis = before (bin_before)
-  // row 0 (bottom in Python) = low before → y-pos top here for SVG coords
   [0, 1, 2].forEach(bB => {
     [0, 1, 2].forEach(bA => {
       g.append('rect')
@@ -509,25 +494,6 @@ function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals)
     .attr('font-family', 'inherit')
     .text(`After (${nMonths} mo) →`);
 
-  // X-axis min/max value labels
-  svgL.append('text')
-    .attr('x', margin.left + pad)
-    .attr('y', margin.top + size + pad + 28)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', 8.5)
-    .attr('fill', '#888')
-    .attr('font-family', 'inherit')
-    .text(fmt(afterMin));
-
-  svgL.append('text')
-    .attr('x', margin.left + pad + cell * 3)
-    .attr('y', margin.top + size + pad + 28)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', 8.5)
-    .attr('fill', '#888')
-    .attr('font-family', 'inherit')
-    .text(fmt(afterMax));
-
   // Y-axis label (Before) — rotated
   svgL.append('text')
     .attr('class', 'legend-axis-label')
@@ -538,22 +504,25 @@ function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals)
     .attr('font-family', 'inherit')
     .text(`Before (${nMonths} mo) →`);
 
-  // Y-axis min/max value labels (rotated)
-  svgL.append('text')
-    .attr('transform', `translate(28, ${margin.top + pad + cell * 3}) rotate(-90)`)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', 8.5)
-    .attr('fill', '#888')
-    .attr('font-family', 'inherit')
-    .text(fmt(beforeMin));
+  // Low/High tick labels
+  [['Low', 0], ['High', cell * 3]].forEach(([label, offset]) => {
+    svgL.append('text')
+      .attr('x', margin.left + pad + offset)
+      .attr('y', margin.top + size + pad + 26)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 9)
+      .attr('fill', '#666')
+      .attr('font-family', 'inherit')
+      .text(label);
 
-  svgL.append('text')
-    .attr('transform', `translate(28, ${margin.top + pad}) rotate(-90)`)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', 8.5)
-    .attr('fill', '#888')
-    .attr('font-family', 'inherit')
-    .text(fmt(beforeMax));
+    svgL.append('text')
+      .attr('transform', `translate(26, ${margin.top + pad + (cell * 3 - offset)}) rotate(-90)`)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 9)
+      .attr('fill', '#666')
+      .attr('font-family', 'inherit')
+      .text(label);
+  });
 
   // Title
   svgL.append('text')
