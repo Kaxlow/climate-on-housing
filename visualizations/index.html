@@ -335,36 +335,62 @@ function render() {
   const metric  = document.getElementById('metric-select').value;
   const nMonths = +document.getElementById('nmonths-slider').value;
 
-  // 1. Aggregate cached CSV rows into mean before/after per county
-  //    Mirrors: before = df[df.month_offset.between(-n,-1)].groupby("fips")[metric].mean()
-  const beforeAcc = new Map();  // fips -> { sum, count }
-  const afterAcc  = new Map();
+  // 1. Group rows by (fips, incident_num) and accumulate sums for mean before/after
+  //    Each unique incident gets its own before/after mean, then means are
+  //    combined with a recency-weighted average (higher incident_num = more recent = higher weight)
+  const incidentMap = new Map(); // "fips|incident_num" -> { fips, incidentNum, beforeSum, beforeCount, afterSum, afterCount }
 
   rawData.forEach(row => {
-    const fips   = String(row.fips).padStart(5, '0');
-    const offset = +row.month_offset_from_incident;
-    const val    = +row[metric];
+    const fips        = String(row.fips).padStart(5, '0');
+    const incidentNum = row.incident_num;
+    const offset      = +row.month_offset_from_incident;
+    const val         = +row[metric];
     if (isNaN(val)) return;
 
-    if (offset >= -nMonths && offset <= -1) {
-      const e = beforeAcc.get(fips) || { sum: 0, count: 0 };
-      e.sum += val; e.count++;
-      beforeAcc.set(fips, e);
+    const key = `${fips}|${incidentNum}`;
+    if (!incidentMap.has(key)) {
+      incidentMap.set(key, {
+        fips,
+        incidentNum: +incidentNum,
+        beforeSum: 0, beforeCount: 0,
+        afterSum:  0, afterCount:  0,
+      });
     }
-    if (offset >= 1 && offset <= nMonths) {
-      const e = afterAcc.get(fips) || { sum: 0, count: 0 };
-      e.sum += val; e.count++;
-      afterAcc.set(fips, e);
-    }
+    const e = incidentMap.get(key);
+    if (offset >= -nMonths && offset <= -1) { e.beforeSum += val; e.beforeCount++; }
+    if (offset >= 1        && offset <= nMonths) { e.afterSum  += val; e.afterCount++;  }
   });
 
+  // 2. Group per-incident means by fips, keeping only incidents with both windows populated
+  const fipsIncidents = new Map(); // fips -> [{ incidentNum, meanBefore, meanAfter }]
+  for (const e of incidentMap.values()) {
+    if (e.beforeCount === 0 || e.afterCount === 0) continue;
+    if (!fipsIncidents.has(e.fips)) fipsIncidents.set(e.fips, []);
+    fipsIncidents.get(e.fips).push({
+      incidentNum: e.incidentNum,
+      meanBefore:  e.beforeSum / e.beforeCount,
+      meanAfter:   e.afterSum  / e.afterCount,
+    });
+  }
+
+  // 3. Weighted average per county
+  //    Incidents sorted ascending by incident_num; rank 1..k assigned so the
+  //    most recent incident (highest incident_num) receives the highest weight.
+  //    Linear weights: w_i = rank_i,  total = k*(k+1)/2
   const countyData = new Map();
-  for (const [fips, b] of beforeAcc) {
-    const a = afterAcc.get(fips);
-    if (!a) continue;
+  for (const [fips, incidents] of fipsIncidents) {
+    incidents.sort((a, b) => a.incidentNum - b.incidentNum);
+    const k           = incidents.length;
+    const totalWeight = k * (k + 1) / 2;
+    let weightedBefore = 0, weightedAfter = 0;
+    incidents.forEach((inc, i) => {
+      const w = i + 1; // rank: oldest=1, most recent=k
+      weightedBefore += w * inc.meanBefore;
+      weightedAfter  += w * inc.meanAfter;
+    });
     countyData.set(fips, {
-      meanBefore: b.sum / b.count,
-      meanAfter:  a.sum / a.count,
+      meanBefore: weightedBefore / totalWeight,
+      meanAfter:  weightedAfter  / totalWeight,
     });
   }
 
