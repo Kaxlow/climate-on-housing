@@ -250,16 +250,26 @@ function mulberry32(seed) {
   };
 }
 
-// QUANTILE BINNING  (equivalent to pd.qcut(q=3, labels=[0,1,2]))
-// replicate Python's pd.qcut's right-closed boundary logic
+// QUANTILE BINNING  (mirrors pd.qcut(q=3, labels=[0,1,2], duplicates="drop"))
+// pd.qcut uses right-closed intervals: (min, p33], (p33, p66], (p66, max]
+// so a value exactly on a threshold falls into the LOWER bin.
+// d3.scaleQuantile uses left-closed thresholds (value >= threshold → higher bin),
+// which causes boundary values to be assigned differently. This function
+// replicates the right-closed behaviour to match Python exactly.
 function makeBinner(values) {
-  const sorted = [...values].sort(d3.ascending);
+  const sorted = [...values].filter(v => v != null && !isNaN(v)).sort(d3.ascending);
   const n = sorted.length;
-  // Thresholds at the 33.3rd and 66.7th percentile, right-closed like pd.qcut
+  if (n === 0) return () => 0;
+
+  // Thresholds at the 33.3rd and 66.7th percentile positions (0-indexed floor),
+  // matching how pd.qcut divides into 3 equal-count groups.
   const t1 = sorted[Math.floor(n / 3)];
   const t2 = sorted[Math.floor(2 * n / 3)];
+
+  // Right-closed: value <= threshold falls into the lower bin,
+  // matching pd.qcut intervals (p0, p33], (p33, p66], (p66, pMax].
   return (v) => {
-    if (v <= t1) return 0;   // right-closed: equal to threshold → lower bin
+    if (v <= t1) return 0;
     if (v <= t2) return 1;
     return 2;
   };
@@ -344,14 +354,19 @@ function render() {
 
   // 1. Aggregate cached CSV rows into mean before/after per county
   //    Mirrors: before = df[df.month_offset.between(-n,-1)].groupby("fips")[metric].mean()
-  // Key by incident
-  const key = `${fips}__${row.incident_num}`;
+  const beforeAcc = new Map();  // fips -> { sum, count }
+  const afterAcc  = new Map();
 
   rawData.forEach(row => {
     const fips   = String(row.fips).padStart(5, '0');
     const offset = +row.month_offset_from_incident;
     const val    = +row[metric];
     if (isNaN(val)) return;
+
+    // Key on (fips, incident_num) to mirror Python's incident-level groupby.
+    // Falls back to fips alone if incident_num is absent in the CSV.
+    const incNum = row.incident_num !== undefined ? row.incident_num : '';
+    const key    = `${fips}__${incNum}`;
 
     if (offset >= -nMonths && offset <= -1) {
       const e = beforeAcc.get(key) || { fips, sum: 0, count: 0 };
@@ -365,26 +380,31 @@ function render() {
     }
   });
 
+  // Build incident-level countyData keyed on "fips__incident_num"
+  // Mirrors Python step 11: groupby(["fips", "incident_num"]).mean()
+  // so quantile thresholds are computed over the same distribution as Python.
   const countyData = new Map();
   for (const [key, b] of beforeAcc) {
     const a = afterAcc.get(key);
     if (!a) continue;
     countyData.set(key, {
-      fips: b.fips,
+      fips:       b.fips,
       meanBefore: b.sum / b.count,
       meanAfter:  a.sum / a.count,
     });
   }
 
-  // 2. Quantile-bin each axis into 3 equal-count classes
-  // Bin by incident-level means
+  // 2. Quantile-bin each axis into 3 equal-count classes.
+  //    Built on incident-level means (one entry per fips+incident_num pair),
+  //    matching Python step 11 which re-aggregates at (fips, incident_num) level.
   const beforeVals = [...countyData.values()].map(d => d.meanBefore);
   const afterVals  = [...countyData.values()].map(d => d.meanAfter);
   const binBefore  = makeBinner(beforeVals);
   const binAfter   = makeBinner(afterVals);
 
-  // 3. Colour lookup per county FIPS
-  // collapse back to FIPS only: take the first matching incident key
+  // 3. Colour lookup per county FIPS.
+  //    A county may have multiple incidents; use the first matching entry,
+  //    consistent with how the representative selection works in Python.
   const colorOf = (fips) => {
     const entry = [...countyData.values()].find(d => d.fips === fips);
     if (!entry) return NO_DATA_COLOR;
