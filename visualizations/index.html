@@ -332,6 +332,7 @@ const pathGen    = d3.geoPath().projection(projection);
 
 let usTopoJSON   = null;
 let countyNames  = new Map();
+let regionNames  = new Map();   // fips -> REGION string from CSV
 let rawData      = null;   // CSV rows cached after first load
 
 async function fetchWithFallback(urls, timeoutMs = 8000) {
@@ -360,6 +361,17 @@ async function init() {
 
   // Load CSV once and cache — replace path with your real file
   rawData = await d3.csv("incident_housing.csv");
+
+  // Build FIPS → REGION lookup from CSV (case-insensitive column match)
+  const regionCol = Object.keys(rawData[0] || {}).find(k => k.toLowerCase() === 'region');
+  if (regionCol) {
+    rawData.forEach(r => {
+      const fips = String(r.fips).padStart(5, '0');
+      if (!regionNames.has(fips) && r[regionCol]) {
+        regionNames.set(fips, r[regionCol]);
+      }
+    });
+  }
 
   // Populate dropdown from all numeric columns, excluding non-metric identifiers
   const EXCLUDED = new Set(['fips', 'month_offset_from_incident', 'incident_num']);
@@ -488,7 +500,7 @@ function render() {
       .on('mousemove', function(event, d) {
         const fips = String(d.id).padStart(5, '0');
         const cd   = countyData.get(fips);
-        const name = countyNames.get(fips) || fips;
+        const name = regionNames.get(fips) || countyNames.get(fips) || fips;
         const metricLabel = metric.replace(/_/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase());
 
@@ -499,14 +511,14 @@ function render() {
         if (cd) {
           const fmt = d3.format(',.4f');
           tooltip.innerHTML = `
-            <strong>${name} County</strong>
+            <strong>${name}</strong>
             FIPS: ${fips}<br>
             ${metricLabel}<br>
             Before (${nMonths} mo avg): ${fmt(cd.meanBefore)}<br>
             After  (${nMonths} mo avg): ${fmt(cd.meanAfter)}
           `;
         } else {
-          tooltip.innerHTML = `<strong>${name} County</strong><br>No incident data`;
+          tooltip.innerHTML = `<strong>${name}</strong><br>No incident data`;
         }
       })
       .on('mouseleave', () => { tooltip.style.display = 'none'; });
@@ -714,9 +726,11 @@ function drawSparklines(reps, metric, nMonths) {
     const panel = document.createElement('div');
     panel.className = 'chart-panel';
 
-    const countyName = rep.fips ? (countyNames.get(rep.fips) || rep.fips) : 'No data';
+    const countyName = rep.fips
+      ? (regionNames.get(rep.fips) || countyNames.get(rep.fips) || rep.fips)
+      : 'No data';
     panel.innerHTML = `
-      <h3>${countyName} County</h3>
+      <h3>${countyName}</h3>
       <div class="chart-subtitle">${rep.label}</div>
     `;
 
