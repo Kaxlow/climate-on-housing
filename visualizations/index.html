@@ -150,6 +150,68 @@
       font-size: 14px;
       color: #888;
     }
+
+    #charts-wrap {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .chart-panel {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      padding: 14px 16px 10px;
+    }
+
+    .chart-panel h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chart-panel .chart-subtitle {
+      font-size: 10.5px;
+      color: #999;
+      margin-bottom: 8px;
+    }
+
+    .chart-panel svg { width: 100%; display: block; }
+
+    .chart-legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      font-size: 10px;
+      color: #666;
+    }
+
+    .chart-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .chart-legend-swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    .chart-legend-swatch.dashed {
+      background: repeating-linear-gradient(
+        90deg, currentColor 0, currentColor 4px, transparent 4px, transparent 7px
+      );
+      height: 2px;
+    }
   </style>
 </head>
 <body>
@@ -178,6 +240,7 @@
   </div>
 </div>
 <div class="legend-wrap" id="legend-wrap"></div>
+<div id="charts-wrap"></div>
 
 <div id="tooltip"></div>
 
@@ -464,6 +527,10 @@ function render() {
     `Bivariate Map: Mean ${metricLabel}`;
   document.getElementById('map-subtitle').textContent =
     `${nMonths}-month window before vs. after wildfire incident (by county)`;
+
+  // 9. Representative county sparklines
+  const reps = pickRepresentativeCounties(countyData, binBefore, binAfter);
+  drawSparklines(reps, metric, nMonths);
 }
 
 // BIVARIATE LEGEND  (SVG 3×3 colour matrix, same layout as Python version)
@@ -560,6 +627,286 @@ function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals)
     .attr('fill', '#333')
     .attr('font-family', 'inherit')
     .text(metricLabel.length > 22 ? metricLabel.slice(0, 20) + '…' : metricLabel);
+}
+
+// REPRESENTATIVE COUNTY SELECTION
+// Picks one representative county from each of the 9 bivariate bins.
+// Bins are ordered row-by-row: before=2 (high) down to before=0 (low),
+// matching the bivariate legend layout (top-left = high-before/low-after).
+// Within each bin, selects the county whose (meanBefore + meanAfter)/2 is
+// closest to the median score of all counties in that bin.
+function pickRepresentativeCounties(countyData, binBefore, binAfter) {
+  const BEFORE_LABELS = ['low', 'mid', 'high'];
+  const AFTER_LABELS  = ['low', 'mid', 'high'];
+
+  // Build all 9 bins; order rows high→low before (matches legend orientation)
+  const BINS = [];
+  for (let bB = 2; bB >= 0; bB--) {
+    for (let bA = 0; bA <= 2; bA++) {
+      BINS.push({
+        bB, bA,
+        label: `Before: ${BEFORE_LABELS[bB]} · After: ${AFTER_LABELS[bA]}`,
+        color: BIVARIATE_PALETTE[`${bB},${bA}`],
+        counties: [],
+      });
+    }
+  }
+
+  for (const [fips, d] of countyData) {
+    const bB  = binBefore(d.meanBefore);
+    const bA  = binAfter(d.meanAfter);
+    const bin = BINS.find(b => b.bB === bB && b.bA === bA);
+    if (bin) bin.counties.push({ fips, score: (d.meanBefore + d.meanAfter) / 2 });
+  }
+
+  return BINS.map(bin => {
+    if (bin.counties.length === 0) return { ...bin, fips: null };
+    bin.counties.sort((a, b) => a.score - b.score);
+    const median = bin.counties[Math.floor(bin.counties.length / 2)].score;
+    const rep = bin.counties.reduce((best, c) =>
+      Math.abs(c.score - median) < Math.abs(best.score - median) ? c : best
+    );
+    return { ...bin, fips: rep.fips };
+  });
+}
+
+// TIME SERIES EXTRACTION
+// Returns sorted monthly rows for the most recent incident in the county,
+// within the [-nMonths, nMonths] window (offset 0 excluded).
+function getTimeSeries(fips, metric, nMonths) {
+  const countyRows = rawData.filter(r => String(r.fips).padStart(5, '0') === fips);
+  if (countyRows.length === 0) return [];
+
+  const latestIncident = Math.max(...countyRows.map(r => +r.incident_num));
+
+  // Detect homes_sold column case-insensitively
+  const allKeys      = Object.keys(rawData[0] || {});
+  const homesSoldCol = allKeys.find(k => k.toLowerCase() === 'homes_sold') || null;
+
+  return countyRows
+    .filter(r => +r.incident_num === latestIncident)
+    .map(r => ({
+      offset:     +r.month_offset_from_incident,
+      value:      +r[metric],
+      homesSold:  homesSoldCol ? +r[homesSoldCol] : NaN,
+    }))
+    .filter(r => r.offset !== 0 && Math.abs(r.offset) <= nMonths && !isNaN(r.value))
+    .sort((a, b) => a.offset - b.offset);
+}
+
+// SPARKLINE CHARTS
+// Draws one D3 line chart per representative county in #charts-wrap.
+// Each chart shows the monthly metric line, before/after background shading,
+// a vertical incident marker, and avg-homes-sold reference lines as an overlay.
+function drawSparklines(reps, metric, nMonths) {
+  const wrap = document.getElementById('charts-wrap');
+  wrap.innerHTML = '';
+
+  const metricLabel = metric.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const M  = { top: 20, right: 52, bottom: 36, left: 52 };
+  const IW = 230;   // inner chart width
+  const IH = 130;   // inner chart height
+  const SW = IW + M.left + M.right;
+  const SH = IH + M.top  + M.bottom;
+
+  reps.forEach(rep => {
+    const panel = document.createElement('div');
+    panel.className = 'chart-panel';
+
+    const countyName = rep.fips ? (countyNames.get(rep.fips) || rep.fips) : 'No data';
+    panel.innerHTML = `
+      <h3>${countyName} County</h3>
+      <div class="chart-subtitle">${rep.label}</div>
+    `;
+
+    if (!rep.fips) {
+      panel.innerHTML += `<p style="font-size:12px;color:#aaa;padding:20px 0">No counties in this tercile</p>`;
+      wrap.appendChild(panel);
+      return;
+    }
+
+    const series = getTimeSeries(rep.fips, metric, nMonths);
+    if (series.length === 0) {
+      panel.innerHTML += `<p style="font-size:12px;color:#aaa;padding:20px 0">No time-series data available</p>`;
+      wrap.appendChild(panel);
+      return;
+    }
+
+    const beforeRows = series.filter(r => r.offset < 0);
+    const afterRows  = series.filter(r => r.offset > 0);
+    const hasHomes   = series.some(r => !isNaN(r.homesSold) && r.homesSold > 0);
+
+    const avgHomesBefore = hasHomes
+      ? d3.mean(beforeRows.filter(r => !isNaN(r.homesSold)), r => r.homesSold)
+      : null;
+    const avgHomesAfter = hasHomes
+      ? d3.mean(afterRows.filter(r => !isNaN(r.homesSold)), r => r.homesSold)
+      : null;
+
+    // Scales
+    const xScale = d3.scaleLinear()
+      .domain([-nMonths, nMonths])
+      .range([0, IW]);
+
+    const yExtent = d3.extent(series, r => r.value);
+    const yPad    = (yExtent[1] - yExtent[0]) * 0.12 || 1;
+    const yScale  = d3.scaleLinear()
+      .domain([yExtent[0] - yPad, yExtent[1] + yPad])
+      .range([IH, 0]);
+
+    // Secondary scale for homes_sold (right axis)
+    const homesExtent = hasHomes
+      ? d3.extent(series.filter(r => !isNaN(r.homesSold)), r => r.homesSold)
+      : [0, 1];
+    const homesPad   = (homesExtent[1] - homesExtent[0]) * 0.15 || 1;
+    const homesScale = d3.scaleLinear()
+      .domain([0, homesExtent[1] + homesPad])
+      .range([IH, 0]);
+
+    const svgEl = d3.select(panel).append('svg')
+      .attr('viewBox', `0 0 ${SW} ${SH}`);
+
+    const g = svgEl.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+    // Before/after background shading
+    g.append('rect')
+      .attr('x', xScale(-nMonths)).attr('y', 0)
+      .attr('width', xScale(0) - xScale(-nMonths)).attr('height', IH)
+      .attr('fill', '#e8f4fd').attr('opacity', 0.6);
+
+    g.append('rect')
+      .attr('x', xScale(0)).attr('y', 0)
+      .attr('width', xScale(nMonths) - xScale(0)).attr('height', IH)
+      .attr('fill', '#fdecea').attr('opacity', 0.6);
+
+    // Homes sold bars (secondary axis, behind the metric line)
+    if (hasHomes) {
+      const barW = Math.max(2, (IW / (nMonths * 2)) * 0.6);
+      series.filter(r => !isNaN(r.homesSold) && r.homesSold > 0).forEach(r => {
+        g.append('rect')
+          .attr('x', xScale(r.offset) - barW / 2)
+          .attr('y', homesScale(r.homesSold))
+          .attr('width', barW)
+          .attr('height', IH - homesScale(r.homesSold))
+          .attr('fill', '#bbb').attr('opacity', 0.35);
+      });
+
+      // Avg homes sold reference lines
+      if (avgHomesBefore != null) {
+        const y = homesScale(avgHomesBefore);
+        g.append('line')
+          .attr('x1', xScale(-nMonths)).attr('x2', xScale(-0.5))
+          .attr('y1', y).attr('y2', y)
+          .attr('stroke', '#5b9bd5').attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '4,3');
+      }
+      if (avgHomesAfter != null) {
+        const y = homesScale(avgHomesAfter);
+        g.append('line')
+          .attr('x1', xScale(0.5)).attr('x2', xScale(nMonths))
+          .attr('y1', y).attr('y2', y)
+          .attr('stroke', '#e06c75').attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '4,3');
+      }
+
+      // Right axis (homes sold)
+      const homesAxis = d3.axisRight(homesScale).ticks(3).tickSize(3);
+      g.append('g')
+        .attr('transform', `translate(${IW},0)`)
+        .call(homesAxis)
+        .call(a => a.select('.domain').remove())
+        .call(a => a.selectAll('text')
+          .style('font-size', '8px').style('fill', '#999'));
+    }
+
+    // Incident vertical line
+    g.append('line')
+      .attr('x1', xScale(0)).attr('x2', xScale(0))
+      .attr('y1', 0).attr('y2', IH)
+      .attr('stroke', '#888').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3,3');
+
+    g.append('text')
+      .attr('x', xScale(0) + 3).attr('y', 8)
+      .attr('font-size', '8px').attr('fill', '#999')
+      .text('Incident');
+
+    // Metric line
+    const line = d3.line()
+      .x(r => xScale(r.offset))
+      .y(r => yScale(r.value))
+      .defined(r => !isNaN(r.value));
+
+    g.append('path')
+      .datum(series)
+      .attr('fill', 'none')
+      .attr('stroke', rep.color)
+      .attr('stroke-width', 2)
+      .attr('d', line);
+
+    // Dots on metric line
+    g.selectAll('.dot')
+      .data(series)
+      .join('circle')
+        .attr('class', 'dot')
+        .attr('cx', r => xScale(r.offset))
+        .attr('cy', r => yScale(r.value))
+        .attr('r', 2.5)
+        .attr('fill', rep.color);
+
+    // X axis
+    const xAxis = d3.axisBottom(xScale)
+      .ticks(Math.min(nMonths * 2, 10))
+      .tickSize(3)
+      .tickFormat(d => d === 0 ? '' : d);
+
+    g.append('g')
+      .attr('transform', `translate(0,${IH})`)
+      .call(xAxis)
+      .call(a => a.select('.domain').attr('stroke', '#ccc'))
+      .call(a => a.selectAll('text').style('font-size', '8px').style('fill', '#888'))
+      .call(a => a.selectAll('line').attr('stroke', '#ddd'));
+
+    g.append('text')
+      .attr('x', IW / 2).attr('y', IH + 30)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '9px').attr('fill', '#888')
+      .text('Month offset from incident');
+
+    // Y axis (left)
+    const yAxis = d3.axisLeft(yScale).ticks(4).tickSize(3);
+    g.append('g')
+      .call(yAxis)
+      .call(a => a.select('.domain').attr('stroke', '#ccc'))
+      .call(a => a.selectAll('text').style('font-size', '8px').style('fill', '#888'))
+      .call(a => a.selectAll('line').attr('stroke', '#ddd'));
+
+    // Legend
+    const legendDiv = document.createElement('div');
+    legendDiv.className = 'chart-legend';
+    legendDiv.innerHTML = `
+      <span class="chart-legend-item">
+        <span class="chart-legend-swatch" style="background:${rep.color}"></span>
+        ${metricLabel}
+      </span>
+      ${hasHomes ? `
+      <span class="chart-legend-item">
+        <span class="chart-legend-swatch" style="background:#bbb;height:8px;opacity:0.5"></span>
+        Homes sold
+      </span>
+      <span class="chart-legend-item" style="color:#5b9bd5">
+        <span class="chart-legend-swatch dashed" style="color:#5b9bd5"></span>
+        Avg before
+      </span>
+      <span class="chart-legend-item" style="color:#e06c75">
+        <span class="chart-legend-swatch dashed" style="color:#e06c75"></span>
+        Avg after
+      </span>` : ''}
+    `;
+    panel.appendChild(legendDiv);
+    wrap.appendChild(panel);
+  });
 }
 
 // CONTROLS
