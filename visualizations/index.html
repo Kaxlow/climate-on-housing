@@ -307,6 +307,7 @@ async function init() {
     return v !== '' && !isNaN(+v);
   });
   if (numericCols.length === 0) throw new Error('No plottable numeric columns found in incident_housing.csv');
+  numericCols.sort((a, b) => a.localeCompare(b));
 
   const select = document.getElementById('metric-select');
   numericCols.forEach(col => {
@@ -429,7 +430,7 @@ function render() {
   svg.append('path').attr('class', 'nation-border').attr('d', pathGen(nationGeo));
 
   // 7. Bivariate legend
-  drawLegend(metric, nMonths, binBefore, binAfter);
+  drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals);
 
   // 8. Title update
   const metricLabel = metric.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -440,19 +441,32 @@ function render() {
 }
 
 // BIVARIATE LEGEND  (SVG 3×3 colour matrix, same layout as Python version)
-function drawLegend(metric, nMonths, binBefore, binAfter) {
+function drawLegend(metric, nMonths, binBefore, binAfter, beforeVals, afterVals) {
   const wrap = document.getElementById('legend-wrap');
   wrap.innerHTML = '';
 
   const cell   = 20;
   const pad    = 2;
   const size   = cell * 3 + pad * 2;
-  const margin = { top: 28, right: 10, bottom: 40, left: 48 };
+  const margin = { top: 28, right: 10, bottom: 52, left: 60 };
   const W      = size + margin.left + margin.right;
   const H      = size + margin.top  + margin.bottom;
 
   const metricLabel = metric.replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase());
+
+  // Smart compact formatter: keeps at most 4 significant figures, no trailing zeros
+  const fmt = v => {
+    const abs = Math.abs(v);
+    if (abs === 0) return '0';
+    if (abs >= 10000) return d3.format(',.0f')(v);
+    if (abs >= 100)   return d3.format(',.1f')(v);
+    if (abs >= 1)     return d3.format(',.2f')(v);
+    return d3.format(',.4f')(v);
+  };
+
+  const [beforeMin, beforeMax] = d3.extent(beforeVals);
+  const [afterMin,  afterMax]  = d3.extent(afterVals);
 
   const svgL = d3.select(wrap).append('svg')
     .attr('width', W).attr('height', H)
@@ -470,7 +484,7 @@ function drawLegend(metric, nMonths, binBefore, binAfter) {
     [0, 1, 2].forEach(bA => {
       g.append('rect')
         .attr('x', pad + bA * cell)
-        .attr('y', pad + (2 - bB) * cell)   // flip: low=bottom
+        .attr('y', pad + (2 - bB) * cell)
         .attr('width', cell - 1)
         .attr('height', cell - 1)
         .attr('rx', 2)
@@ -484,7 +498,7 @@ function drawLegend(metric, nMonths, binBefore, binAfter) {
     .attr('width', cell * 3).attr('height', cell * 3)
     .attr('fill', 'none').attr('stroke', '#aaa').attr('stroke-width', 0.5);
 
-  // X-axis label  (After)
+  // X-axis label (After)
   svgL.append('text')
     .attr('class', 'legend-axis-label')
     .attr('x', margin.left + pad + cell * 1.5)
@@ -495,7 +509,26 @@ function drawLegend(metric, nMonths, binBefore, binAfter) {
     .attr('font-family', 'inherit')
     .text(`After (${nMonths} mo) →`);
 
-  // Y-axis label  (Before)  — rotated
+  // X-axis min/max value labels
+  svgL.append('text')
+    .attr('x', margin.left + pad)
+    .attr('y', margin.top + size + pad + 28)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 8.5)
+    .attr('fill', '#888')
+    .attr('font-family', 'inherit')
+    .text(fmt(afterMin));
+
+  svgL.append('text')
+    .attr('x', margin.left + pad + cell * 3)
+    .attr('y', margin.top + size + pad + 28)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 8.5)
+    .attr('fill', '#888')
+    .attr('font-family', 'inherit')
+    .text(fmt(afterMax));
+
+  // Y-axis label (Before) — rotated
   svgL.append('text')
     .attr('class', 'legend-axis-label')
     .attr('transform', `translate(14, ${margin.top + pad + cell * 1.5}) rotate(-90)`)
@@ -505,25 +538,22 @@ function drawLegend(metric, nMonths, binBefore, binAfter) {
     .attr('font-family', 'inherit')
     .text(`Before (${nMonths} mo) →`);
 
-  // Low/High tick labels
-  [['Low', 0], ['High', cell * 3]].forEach(([label, offset]) => {
-    svgL.append('text')
-      .attr('x', margin.left + pad + offset)
-      .attr('y', margin.top + size + pad + 26)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', 9)
-      .attr('fill', '#666')
-      .attr('font-family', 'inherit')
-      .text(label);
+  // Y-axis min/max value labels (rotated)
+  svgL.append('text')
+    .attr('transform', `translate(28, ${margin.top + pad + cell * 3}) rotate(-90)`)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 8.5)
+    .attr('fill', '#888')
+    .attr('font-family', 'inherit')
+    .text(fmt(beforeMin));
 
-    svgL.append('text')
-      .attr('transform', `translate(26, ${margin.top + pad + (cell * 3 - offset)}) rotate(-90)`)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', 9)
-      .attr('fill', '#666')
-      .attr('font-family', 'inherit')
-      .text(label);
-  });
+  svgL.append('text')
+    .attr('transform', `translate(28, ${margin.top + pad}) rotate(-90)`)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 8.5)
+    .attr('fill', '#888')
+    .attr('font-family', 'inherit')
+    .text(fmt(beforeMax));
 
   // Title
   svgL.append('text')
