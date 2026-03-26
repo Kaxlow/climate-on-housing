@@ -1,4 +1,4 @@
 .jupyter_config/
 data/
-src/
+src/eda*
 requirements.txt
