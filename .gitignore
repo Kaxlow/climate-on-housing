@@ -2,7 +2,5 @@
 data/
 src/eda*
 src/__pycache__/
-output/visualizations/incident_housing.csv
-output/visualizations/incident_housing_24mths.csv
 output/visualizations/incident_housing_yoy_after.csv
 requirements.txt
