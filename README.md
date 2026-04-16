@@ -1,4 +1,4 @@
-# Analyzing the Impact of Climate Change on Housing
+# Analyzing the Impact of Climate on Housing
 
 ## Visualizations
 Interactive visualizations of the impact of climate change on the housing market: https://kaxlow.github.io/climate-on-housing/output/visualizations/index.html
