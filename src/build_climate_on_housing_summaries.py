@@ -1,3 +1,7 @@
+"""
+Build county-level visualization summaries from notebook-exported housing data.
+"""
+
 from __future__ import annotations
 
 import csv
@@ -27,6 +31,15 @@ METRICS = {
 }
 REQUIRED_BEFORE = {-(i + 1) for i in range(12)}
 REQUIRED_AFTER = {i + 1 for i in range(24)}
+CLUSTER_COLUMNS = [
+    "median_ppsf_response_cluster",
+    "median_ppsf_response_cluster_name",
+    "median_ppsf_response_cluster_interpretation",
+    "median_ppsf_response_cluster_algorithm",
+    "median_ppsf_response_cluster_k",
+    "median_ppsf_response_cluster_silhouette",
+    "median_ppsf_response_incident_count",
+]
 
 
 def parse_float(value: object) -> float | None:
@@ -42,8 +55,12 @@ def parse_int(value: object) -> int | None:
     return int(parsed) if parsed is not None else None
 
 
+def normalize_fips(value: object) -> str:
+    return str(value or "").split(".")[0].zfill(5)
+
+
 def is_county_observation(row: dict[str, str]) -> bool:
-    fips = str(row.get("fips") or "").zfill(5)
+    fips = normalize_fips(row.get("fips"))
     return len(fips) == 5 and fips[2:] != "000"
 
 
@@ -67,6 +84,14 @@ def weighted_change(incidents: list[dict[str, object]]) -> tuple[float | None, i
     return value, len(incidents)
 
 
+def cluster_fields_from_row(row: dict[str, str]) -> dict[str, str]:
+    return {
+        column: row.get(column, "")
+        for column in CLUSTER_COLUMNS
+        if row.get(column, "") not in ("", None)
+    }
+
+
 def build_county_summary_rows(input_path: Path) -> list[dict[str, object]]:
     with input_path.open("r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -75,10 +100,11 @@ def build_county_summary_rows(input_path: Path) -> list[dict[str, object]]:
     for row in rows:
         if not is_county_observation(row):
             continue
-        fips = str(row["fips"]).zfill(5)
+        fips = normalize_fips(row.get("fips"))
         incident_num = parse_int(row.get("incident_num"))
         if incident_num is None:
             continue
+        row["fips"] = fips
         incident_rows[(fips, incident_num)].append(row)
 
     incidents_by_county: dict[str, list[dict[str, object]]] = defaultdict(list)
@@ -89,6 +115,7 @@ def build_county_summary_rows(input_path: Path) -> list[dict[str, object]]:
             "incident_num": incident_num,
             "county_name": latest_row.get("REGION") or latest_row.get("county_name") or fips,
             "county_profile": parse_int(latest_row.get("county_profile")),
+            "cluster_fields": cluster_fields_from_row(latest_row),
             "metrics": {},
         }
 
@@ -118,6 +145,7 @@ def build_county_summary_rows(input_path: Path) -> list[dict[str, object]]:
             "county_name": representative["county_name"],
             "county_profile": representative["county_profile"],
         }
+        row.update(representative["cluster_fields"])
 
         has_any_metric = False
         for metric_name in METRICS:
@@ -162,6 +190,7 @@ def write_summary_csv(output_path: Path, rows: list[dict[str, object]]) -> None:
         "county_name",
         "county_profile",
     ]
+    fieldnames.extend(CLUSTER_COLUMNS)
     for metric_name in METRICS:
         fieldnames.extend(
             [
@@ -173,7 +202,7 @@ def write_summary_csv(output_path: Path, rows: list[dict[str, object]]) -> None:
         )
 
     with output_path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -182,6 +211,7 @@ def main() -> None:
     output_dir = Path("output/visualizations")
     manifest_path = output_dir / "incident_housing_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    cluster_summary_path = output_dir / "ppsf_response_cluster_summaries.json"
 
     for entry in manifest.get("incident_types", []):
         input_name = entry.get("housing_24mths_csv")
@@ -196,6 +226,8 @@ def main() -> None:
         summary_rows = build_county_summary_rows(input_path)
         write_summary_csv(summary_path, summary_rows)
         entry["county_summary_csv"] = summary_name
+        if cluster_summary_path.exists():
+            entry["ppsf_response_cluster_summary_json"] = cluster_summary_path.name
 
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
