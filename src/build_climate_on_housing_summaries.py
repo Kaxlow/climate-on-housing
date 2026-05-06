@@ -28,6 +28,10 @@ METRICS = {
         "value_col": "MEDIAN_PPSF",
         "change_col": "MEDIAN_PPSF_change_in_yoy_12_to_24",
     },
+    "HOUSING_MARKET_INDEX": {
+        "value_col": "HOUSING_MARKET_INDEX",
+        "change_col": "HOUSING_MARKET_INDEX_change_in_yoy_12_to_24",
+    },
 }
 REQUIRED_BEFORE = {-(i + 1) for i in range(12)}
 REQUIRED_AFTER = {i + 1 for i in range(24)}
