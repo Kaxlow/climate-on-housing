@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from polars_cached_io import read_projected_csv_cached
+
 
 OUTPUT_DIR = Path("output/visualizations")
 MANIFEST_PATH = OUTPUT_DIR / "incident_housing_manifest.json"
@@ -39,10 +41,11 @@ INDEX_CHANGE_12_TO_24_COL = "HOUSING_MARKET_INDEX_change_in_yoy_12_to_24"
 
 
 def load_component_source() -> pd.DataFrame:
-    source = pd.read_csv(
+    source = read_projected_csv_cached(
         HOUSING_SOURCE_PATH,
-        usecols=["REGION", "PERIOD_BEGIN", *INDEX_COMPONENTS],
-        low_memory=False,
+        ["REGION", "PERIOD_BEGIN", *INDEX_COMPONENTS],
+        cache_dir=Path("data/cache"),
+        cache_suffix="housing_index_components",
     )
     source["PERIOD_BEGIN"] = pd.to_datetime(source["PERIOD_BEGIN"], errors="coerce").dt.strftime("%Y-%m-%d")
     source["MONTH"] = pd.to_datetime(source["PERIOD_BEGIN"], errors="coerce").dt.strftime("%Y-%m")

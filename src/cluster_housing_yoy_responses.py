@@ -124,36 +124,64 @@ def _build_complete_housing_yoy_change_incident_response_rows(
     housing_with_keys = housing_df.copy()
     housing_with_keys["fips_normalized"] = housing_with_keys["fips"].astype(str).str.zfill(5)
     housing_with_keys["state_prefix"] = housing_with_keys["fips_normalized"].str[:2]
-    housing_with_keys["is_county"] = ~housing_with_keys["fips_normalized"].str.endswith("000")
-    county_housing = housing_with_keys.loc[housing_with_keys["is_county"]].copy()
+    county_housing = housing_with_keys.loc[~housing_with_keys["fips_normalized"].str.endswith("000")].copy()
 
-    county_by_fips = {fips: group.copy() for fips, group in county_housing.groupby("fips_normalized", sort=False)}
-    counties_by_state = {state: group.copy() for state, group in county_housing.groupby("state_prefix", sort=False)}
-
-    response_rows = []
+    event_month_rows = []
     for event in incident_df.itertuples(index=False):
         event_fips = str(event.fips).zfill(5)
-        affected_housing = counties_by_state.get(event_fips[:2]) if event_fips.endswith("000") else county_by_fips.get(event_fips)
-        if affected_housing is None or affected_housing.empty:
-            continue
-
         offset_lookup = {event.incident_begin_month + offset: offset for offset in PPSF_PRE_OFFSETS}
         offset_lookup.update(
             {event.incident_end_month + offset: offset for offset in PPSF_POST_1_12_OFFSETS + PPSF_POST_13_24_OFFSETS}
         )
 
-        event_rows = affected_housing.loc[affected_housing["MONTH"].isin(offset_lookup)].copy()
-        if event_rows.empty:
-            continue
+        for month, offset in offset_lookup.items():
+            event_month_rows.append(
+                {
+                    "event_fips": event_fips,
+                    "event_state_prefix": event_fips[:2],
+                    "is_statewide_event": event_fips.endswith("000"),
+                    "MONTH": month,
+                    "month_offset_from_incident": offset,
+                    "incident_type": incident_type,
+                    "incident_event_id": event.event_id,
+                    "incident_disaster_number": event.disasterNumber,
+                    "incident_begin_date": event.incidentBeginDate,
+                }
+            )
 
-        event_rows["month_offset_from_incident"] = event_rows["MONTH"].map(offset_lookup).astype("Int64")
-        event_rows["incident_type"] = incident_type
-        event_rows["incident_event_id"] = event.event_id
-        event_rows["incident_disaster_number"] = event.disasterNumber
-        event_rows["incident_begin_date"] = event.incidentBeginDate
-        response_rows.append(event_rows)
+    if not event_month_rows:
+        return pd.DataFrame()
 
-    return pd.concat(response_rows, ignore_index=True) if response_rows else pd.DataFrame()
+    event_months = pd.DataFrame(event_month_rows)
+    county_events = event_months.loc[~event_months["is_statewide_event"]]
+    state_events = event_months.loc[event_months["is_statewide_event"]]
+    matched_frames = []
+
+    if not county_events.empty:
+        matched_frames.append(
+            county_housing.merge(
+                county_events,
+                left_on=["fips_normalized", "MONTH"],
+                right_on=["event_fips", "MONTH"],
+                how="inner",
+            )
+        )
+    if not state_events.empty:
+        matched_frames.append(
+            county_housing.merge(
+                state_events,
+                left_on=["state_prefix", "MONTH"],
+                right_on=["event_state_prefix", "MONTH"],
+                how="inner",
+            )
+        )
+    if not matched_frames:
+        return pd.DataFrame()
+
+    return pd.concat(matched_frames, ignore_index=True).drop(
+        columns=["fips_normalized", "state_prefix", "event_fips", "event_state_prefix", "is_statewide_event"],
+        errors="ignore",
+    )
 
 
 def _fit_recovery_slope(values_by_offset: pd.Series) -> float:
@@ -188,23 +216,56 @@ def _summarize_complete_incident_vectors(response_rows: pd.DataFrame) -> pd.Data
         raise KeyError(f"Missing required YOY monthly-change columns: {missing_metric_columns}")
 
     index_cols = ["fips", "county_name", "incident_event_id", "incident_begin_date"]
-    feature_rows = []
-    for keys, group in response_rows.groupby(index_cols, dropna=False):
-        feature_row = dict(zip(index_cols, keys))
-        complete = True
-        for metric_key, metric_col in PPSF_RESPONSE_METRICS.items():
-            values_by_offset = group.groupby("month_offset_from_incident")[metric_col].mean().reindex(PPSF_RESPONSE_OFFSETS)
-            values_by_offset = pd.to_numeric(values_by_offset, errors="coerce")
-            if values_by_offset.isna().any():
-                complete = False
-                break
-            metric_summary = _summarize_metric_response(values_by_offset.astype(float))
-            for feature, value in metric_summary.items():
-                feature_row[f"{metric_key}_{feature}"] = value
-        if complete:
-            feature_rows.append(feature_row)
+    metric_cols = list(PPSF_RESPONSE_METRICS.values())
+    work = response_rows[index_cols + ["month_offset_from_incident"] + metric_cols].copy()
+    work["month_offset_from_incident"] = pd.to_numeric(work["month_offset_from_incident"], errors="coerce")
+    work = work.dropna(subset=["month_offset_from_incident"])
+    work["month_offset_from_incident"] = work["month_offset_from_incident"].astype(int)
+    for metric_col in metric_cols:
+        work[metric_col] = pd.to_numeric(work[metric_col], errors="coerce")
 
-    return pd.DataFrame(feature_rows)
+    monthly = (
+        work.groupby(index_cols + ["month_offset_from_incident"], dropna=False, sort=False)[metric_cols]
+        .mean()
+        .reset_index()
+    )
+    if monthly.empty:
+        return pd.DataFrame()
+
+    base_index = monthly[index_cols].drop_duplicates().set_index(index_cols).index
+    feature_df = pd.DataFrame(index=base_index)
+    complete_mask = pd.Series(True, index=base_index)
+    post_offsets = PPSF_POST_1_12_OFFSETS + PPSF_POST_13_24_OFFSETS
+    post_x = np.array(post_offsets, dtype=float)
+    centered_post_x = post_x - post_x.mean()
+    slope_denominator = np.square(centered_post_x).sum()
+
+    for metric_key, metric_col in PPSF_RESPONSE_METRICS.items():
+        wide = (
+            monthly.set_index(index_cols + ["month_offset_from_incident"])[metric_col]
+            .unstack("month_offset_from_incident")
+            .reindex(index=base_index, columns=PPSF_RESPONSE_OFFSETS)
+        )
+        complete_mask &= wide.notna().all(axis=1)
+
+        pre_values = wide[PPSF_PRE_OFFSETS]
+        post_1_12_values = wide[PPSF_POST_1_12_OFFSETS]
+        post_13_24_values = wide[PPSF_POST_13_24_OFFSETS]
+        post_values = wide[post_offsets]
+        pre_mean = pre_values.mean(axis=1)
+        post_mean = post_values.mean(axis=1)
+        post_array = post_values.to_numpy(dtype=float)
+        post_centered = post_array - post_array.mean(axis=1, keepdims=True)
+
+        feature_df[f"{metric_key}_pre_period_mean"] = pre_mean
+        feature_df[f"{metric_key}_post_months_1_12_mean"] = post_1_12_values.mean(axis=1)
+        feature_df[f"{metric_key}_post_months_13_24_mean"] = post_13_24_values.mean(axis=1)
+        feature_df[f"{metric_key}_post_minus_pre_change"] = post_mean - pre_mean
+        feature_df[f"{metric_key}_volatility"] = wide.std(axis=1, ddof=0)
+        feature_df[f"{metric_key}_max_drawdown"] = post_values.min(axis=1) - pre_mean
+        feature_df[f"{metric_key}_recovery_slope"] = post_centered.dot(centered_post_x) / slope_denominator
+
+    return feature_df.loc[complete_mask].reset_index()
 
 
 def _weighted_average_incident_features(event_features: pd.DataFrame, feature_columns: list[str]) -> pd.DataFrame:
@@ -213,19 +274,40 @@ def _weighted_average_incident_features(event_features: pd.DataFrame, feature_co
         method="dense", ascending=True
     ).astype(float)
 
-    averaged_rows = []
-    for (fips, county_name), county_events in event_features.groupby(["fips", "county_name"], dropna=False):
-        weights = county_events["incident_recency_rank"].to_numpy(dtype=float)
-        averaged = {"fips": fips, "county_name": county_name}
-        for column in feature_columns:
-            values = pd.to_numeric(county_events[column], errors="coerce").to_numpy(dtype=float)
-            valid = ~np.isnan(values)
-            averaged[column] = np.average(values[valid], weights=weights[valid]) if valid.any() else np.nan
-        averaged["incident_count"] = county_events["incident_event_id"].nunique()
-        averaged["latest_incident_begin_date"] = county_events["incident_begin_date"].max()
-        averaged_rows.append(averaged)
+    group_cols = ["fips", "county_name"]
+    work = event_features[group_cols + ["incident_event_id", "incident_begin_date", "incident_recency_rank"]].copy()
+    for column in feature_columns:
+        values = pd.to_numeric(event_features[column], errors="coerce")
+        valid = values.notna()
+        work[f"{column}__weighted"] = values.where(valid) * event_features["incident_recency_rank"].where(valid)
+        work[f"{column}__weight"] = event_features["incident_recency_rank"].where(valid)
 
-    return pd.DataFrame(averaged_rows)
+    agg_spec = {
+        "incident_event_id": "nunique",
+        "incident_begin_date": "max",
+    }
+    for column in feature_columns:
+        agg_spec[f"{column}__weighted"] = "sum"
+        agg_spec[f"{column}__weight"] = "sum"
+
+    grouped = work.groupby(group_cols, dropna=False, sort=False).agg(agg_spec).reset_index()
+    grouped = grouped.rename(
+        columns={
+            "incident_event_id": "incident_count",
+            "incident_begin_date": "latest_incident_begin_date",
+        }
+    )
+    for column in feature_columns:
+        weight_sum = grouped[f"{column}__weight"].replace(0, np.nan)
+        grouped[column] = grouped[f"{column}__weighted"] / weight_sum
+
+    temp_cols = [
+        col
+        for column in feature_columns
+        for col in [f"{column}__weighted", f"{column}__weight"]
+    ]
+    grouped = grouped.drop(columns=temp_cols)
+    return grouped[group_cols + feature_columns + ["incident_count", "latest_incident_begin_date"]]
 
 
 def summarize_ppsf_response_cluster(cluster_means: pd.Series) -> tuple[str, str]:

@@ -1,0 +1,15 @@
+# Core notebook/runtime dependency
+notebook
+
+# Data analysis and visualization
+geopandas
+matplotlib
+numpy
+pandas
+polars
+patsy
+pyarrow
+scikit-learn
+scipy
+seaborn
+statsmodels
