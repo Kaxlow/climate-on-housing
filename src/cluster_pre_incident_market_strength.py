@@ -87,6 +87,8 @@ STORY_COLUMNS = [
     "fips",
     "county_name",
     "REGION",
+    "per_capita_income",
+    "per_capita_income_bin",
     "pre_market_strength_tier",
     "pre_market_strength_tier_name",
     "pre_market_strength_tier_interpretation",
@@ -250,6 +252,7 @@ def build_county_incident_feature_frame(window_rows: pd.DataFrame) -> pd.DataFra
         "county_name",
         "REGION",
     ]
+    optional_id_cols = [col for col in ["per_capita_income", "per_capita_income_bin"] if col in window_rows.columns]
     metric_cols = [
         "HOUSING_MARKET_INDEX",
         "MEDIAN_PPSF_YOY",
@@ -257,7 +260,7 @@ def build_county_incident_feature_frame(window_rows: pd.DataFrame) -> pd.DataFra
         "HOMES_SOLD_YOY",
         "INVENTORY_YOY",
     ]
-    work = window_rows[id_cols + ["month_offset_from_incident"] + metric_cols].copy()
+    work = window_rows[id_cols + optional_id_cols + ["month_offset_from_incident"] + metric_cols].copy()
     work["month_offset_from_incident"] = pd.to_numeric(work["month_offset_from_incident"], errors="coerce")
     work = work.dropna(subset=["month_offset_from_incident"])
     work["month_offset_from_incident"] = work["month_offset_from_incident"].astype(int)
@@ -280,7 +283,7 @@ def build_county_incident_feature_frame(window_rows: pd.DataFrame) -> pd.DataFra
     )
     base = (
         work.sort_values(group_cols)
-        .drop_duplicates(group_cols)[group_cols + ["county_name", "REGION"]]
+        .drop_duplicates(group_cols)[group_cols + ["county_name", "REGION"] + optional_id_cols]
         .set_index(group_cols)
     )
     feature_df = base.copy()
@@ -315,6 +318,24 @@ def build_county_incident_feature_frame(window_rows: pd.DataFrame) -> pd.DataFra
         feature_df[feature_col] = wide.mean(axis=1)
 
     feature_df = feature_df.loc[complete_mask].reset_index()
+    if "per_capita_income" in feature_df.columns:
+        feature_df["per_capita_income"] = pd.to_numeric(feature_df["per_capita_income"], errors="coerce")
+    if "per_capita_income_bin" in feature_df.columns:
+        feature_df["per_capita_income_bin"] = pd.to_numeric(
+            feature_df["per_capita_income_bin"], errors="coerce"
+        ).astype("Int64")
+    elif "per_capita_income" in feature_df.columns:
+        income_values = pd.to_numeric(feature_df["per_capita_income"], errors="coerce")
+        feature_df["per_capita_income_bin"] = pd.Series(pd.NA, index=feature_df.index, dtype="Int64")
+        valid_income = income_values.notna()
+        if valid_income.sum() >= 3:
+            try:
+                income_bins = pd.qcut(income_values.loc[valid_income], q=3, labels=False, duplicates="drop")
+                feature_df.loc[valid_income, "per_capita_income_bin"] = (
+                    pd.Series(income_bins, index=income_values.loc[valid_income].index).astype("Int64") + 1
+                )
+            except ValueError:
+                pass
     feature_df["incident_num"] = feature_df["incident_event_id"] + 1
     return feature_df
 
@@ -400,6 +421,7 @@ def build_pre_incident_market_strength_tiers(
             "fips",
             "county_name",
             "REGION",
+            *[col for col in ["per_capita_income", "per_capita_income_bin"] if col in feature_df.columns],
             *FEATURE_COLUMNS,
             "post_1_12_index_mean",
             "post_13_24_index_mean",
@@ -431,6 +453,9 @@ def build_pre_incident_market_strength_tiers(
             }
         )
     annotations["pre_market_strength_tier_interpretation"] = annotations["pre_market_strength_tier"].map(interpretation_map)
+    for column in STORY_COLUMNS:
+        if column not in annotations.columns:
+            annotations[column] = pd.NA
     annotations = annotations[STORY_COLUMNS]
     interpretations_df = pd.DataFrame(interpretation_rows)
     summary = {
