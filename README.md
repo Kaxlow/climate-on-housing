@@ -11,13 +11,29 @@ County-level housing market responses to extreme climate events by NRI risk rati
 
 County-level housing market responses by year: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-2.html
 
-Clustering counties by housing market response: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-3.html 
+Clustering counties by housing market response: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-3.html
+
+Pre-incident housing market strength tiers: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-4.html
+
+## Page Data Pipeline
+
+The current HTML pages are backed by page-specific notebooks that call `src/climate_housing_page_utils.py`:
+
+- `src/climate-housing-index.ipynb` builds the data assets used by `output/visualizations/index.html`.
+- `src/climate-on-housing-page.ipynb` builds the data assets used by `output/visualizations/climate-on-housing.html`.
+- `src/climate-housing-story-1.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-1.html`.
+- `src/climate-housing-story-2.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-2.html`.
+- `src/climate-housing-story-3.ipynb` builds the county-summary and response-cluster assets used by `output/visualizations/climate-housing-story-3.html`.
+- `src/climate-housing-story-4.ipynb` builds the Story 2 income-window data plus pre-incident market-strength tier assets used by `output/visualizations/climate-housing-story-4.html`.
+
+Each notebook calls `build_and_serve(page, html_file)`, which exports the relevant CSV and JSON files under `output/visualizations/`, updates `incident_housing_manifest.json`, and serves the matching HTML page locally. Run the page-specific notebook from `src/` or the repository root.
+
+`src/climate-housing-analysis.ipynb` is a legacy monolithic analysis notebook. It is not the current build entrypoint for the HTML pages.
 
 ## Clustering Scripts
 
-The clustering logic used by `src/climate-housing-analysis.ipynb` lives in two importable Python modules:
+The reusable clustering logic lives in these importable Python modules:
 
-- `src/cluster_county_econ_demographics.py` clusters counties by economic and demographic characteristics. It selects the best model across KMeans and Ward agglomerative candidates, writes `output/visualizations/county_profiles.csv`, `output/visualizations/county_profile_assignments.csv`, `output/visualizations/county_profile_model.joblib`, and returns county profile labels for the notebook to merge into `housing_df`.
-- `src/cluster_housing_yoy_responses.py` clusters counties by housing-market YOY response for each incident type. It evaluates Ward agglomerative and KMeans candidates, selects the best model by silhouette score per incident type, writes response cluster assignments, summaries, and comparison tables, and returns labels/interpreted cluster descriptions for the notebook visualization export step.
-
-Run the notebook from `src/` or the repository root. The notebook adds `src/` to `sys.path`, calls both scripts after the source data is cleaned, and applies the returned cluster labels back to county housing rows before writing visualization artifacts.
+- `src/cluster_county_econ_demographics.py` clusters counties by economic and demographic characteristics. It selects the best model across KMeans and Ward agglomerative candidates and writes `output/visualizations/county_profiles.csv`, `output/visualizations/county_profile_assignments.csv`, and `output/visualizations/county_profile_model.joblib`.
+- `src/cluster_housing_yoy_responses.py` clusters counties by housing-market YOY response for each incident type. It evaluates Ward agglomerative and KMeans candidates, selects the best model by silhouette score per incident type, and writes response cluster assignments, summaries, and comparison tables.
+- `src/cluster_pre_incident_market_strength.py` clusters incident counties into pre-incident market-strength tiers and writes the story 4 tier assets.

@@ -630,12 +630,15 @@ def prepare_housing_df(*, include_profiles: bool = True) -> pd.DataFrame:
 
     housing_df = _prepare_housing_county_df().copy().sort_values(["fips", "MONTH"])
     components = ["MEDIAN_PPSF_YOY", "AVG_SALE_TO_LIST_YOY", "HOMES_SOLD_YOY", "INVENTORY_YOY"]
+    inverted_components = {"INVENTORY_YOY"}
     z_cols = []
     for component_col in components:
         z_col = f"{component_col}_Z"
         values = pd.to_numeric(housing_df[component_col], errors="coerce")
         std = values.std(skipna=True)
         housing_df[z_col] = (values - values.mean(skipna=True)) / std if pd.notna(std) and std else pd.NA
+        if component_col in inverted_components:
+            housing_df[z_col] = -housing_df[z_col]
         z_cols.append(z_col)
     housing_df["HOUSING_MARKET_INDEX"] = housing_df[z_cols].mean(axis=1, skipna=True)
     housing_df["HOUSING_MARKET_INDEX_MOM"] = housing_df.groupby("fips")["HOUSING_MARKET_INDEX"].diff()
@@ -684,19 +687,34 @@ def build_county_profiles() -> dict[str, object]:
     return outputs
 
 
-def _add_quantile_bins(df: pd.DataFrame, source_col: str, target_col: str, bins: int) -> pd.DataFrame:
+def _add_quantile_bins(
+    df: pd.DataFrame,
+    source_col: str,
+    target_col: str,
+    bins: int,
+    group_cols: list[str] | None = None,
+) -> pd.DataFrame:
     numeric_values = pd.to_numeric(df[source_col], errors="coerce")
     result = pd.Series(pd.NA, index=df.index, dtype="Int64")
-    valid_mask = numeric_values.notna()
-    if valid_mask.sum() == 0:
-        df[target_col] = result
-        return df
-    try:
-        binned = pd.qcut(numeric_values[valid_mask], q=bins, labels=False, duplicates="drop")
-    except ValueError:
-        df[target_col] = result
-        return df
-    result.loc[valid_mask] = pd.Series(binned, index=numeric_values[valid_mask].index).astype("Int64") + 1
+
+    if group_cols:
+        groups = df.groupby(group_cols, dropna=False).groups.values()
+    else:
+        groups = [df.index]
+
+    for group_index in groups:
+        group_values = numeric_values.loc[group_index]
+        valid_mask = group_values.notna()
+        if valid_mask.sum() == 0:
+            continue
+        try:
+            binned = pd.qcut(group_values.loc[valid_mask], q=bins, labels=False, duplicates="drop")
+        except ValueError:
+            continue
+        result.loc[group_values.loc[valid_mask].index] = (
+            pd.Series(binned, index=group_values.loc[valid_mask].index).astype("Int64") + 1
+        )
+
     df[target_col] = result
     return df
 
@@ -706,7 +724,13 @@ def _housing_lookup(housing_df: pd.DataFrame) -> dict[str, object]:
     housing_with_keys["fips_normalized"] = housing_with_keys["fips"].astype(str).str.zfill(5)
     housing_with_keys["state_prefix"] = housing_with_keys["fips_normalized"].str[:2]
     housing_with_keys["is_county"] = ~housing_with_keys["fips_normalized"].str.endswith("000")
-    housing_with_keys = _add_quantile_bins(housing_with_keys, "per_capita_income", "per_capita_income_bin", 3)
+    housing_with_keys = _add_quantile_bins(
+        housing_with_keys,
+        "per_capita_income",
+        "per_capita_income_bin",
+        3,
+        group_cols=["housing_year"],
+    )
     housing_with_keys = _add_quantile_bins(housing_with_keys, "employment", "employment_bin", 5)
     housing_with_keys = _add_quantile_bins(housing_with_keys, "average_wage_per_job", "average_wage_per_job_bin", 5)
     county_rows = housing_with_keys[housing_with_keys["is_county"]].copy()
@@ -1008,10 +1032,52 @@ def _incident_types(natural_disasters_df: pd.DataFrame) -> list[str]:
     return sorted(prepared["incidentType"].dropna().unique())
 
 
+def _existing_manifest_assets(slug: str) -> dict[str, str]:
+    assets = {
+        "story_1_housing_csv": f"{slug}_story_1_housing.csv",
+        "story_2_housing_24mths_csv": f"{slug}_story_2_housing_24mths.csv",
+        "story_4_pre_market_tiers_csv": f"{slug}_story_4_pre_market_tiers.csv",
+        "index_housing_csv": f"{slug}_index_housing.csv",
+        "housing_csv": f"{slug}_index_housing.csv",
+        "index_housing_24mths_csv": f"{slug}_index_housing_24mths.csv",
+        "housing_24mths_csv": f"{slug}_index_housing_24mths.csv",
+        "index_yoy_summary_json": f"{slug}_index_housing_24mths_yoy_summary.json",
+        "county_summary_csv": f"{slug}_county_summary.csv",
+    }
+    present = {key: name for key, name in assets.items() if (OUTPUT_DIR / name).exists()}
+    if (OUTPUT_DIR / "ppsf_response_cluster_summaries.json").exists() and "county_summary_csv" in present:
+        present["ppsf_response_cluster_summary_json"] = "ppsf_response_cluster_summaries.json"
+    if (OUTPUT_DIR / "pre_market_strength_tier_summaries.json").exists() and "story_4_pre_market_tiers_csv" in present:
+        present["pre_market_strength_tier_summary_json"] = "pre_market_strength_tier_summaries.json"
+    return present
+
+
 def _write_manifest(entries: list[dict[str, str]]) -> dict[str, object]:
+    manifest_path = OUTPUT_DIR / "incident_housing_manifest.json"
+    existing_by_slug: dict[str, dict[str, str]] = {}
+    if manifest_path.exists():
+        try:
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            existing_by_slug = {
+                entry["slug"]: entry
+                for entry in existing.get("incident_types", [])
+                if isinstance(entry, dict) and entry.get("slug")
+            }
+        except json.JSONDecodeError:
+            existing_by_slug = {}
+
+    merged_entries = []
+    for entry in entries:
+        merged = {
+            **_existing_manifest_assets(entry["slug"]),
+            **existing_by_slug.get(entry["slug"], {}),
+            **entry,
+        }
+        merged_entries.append(merged)
+
     default_incident_type = "Fire" if any(e["incident_type"] == "Fire" for e in entries) else (entries[0]["incident_type"] if entries else None)
-    manifest = {"default_incident_type": default_incident_type, "incident_types": entries}
-    (OUTPUT_DIR / "incident_housing_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    manifest = {"default_incident_type": default_incident_type, "incident_types": merged_entries}
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 
 

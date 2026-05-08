@@ -7,12 +7,14 @@ market metrics:
 - MEDIAN_PPSF_YOY
 - AVG_SALE_TO_LIST_YOY
 - HOMES_SOLD_YOY
-- INVENTORY_YOY
+- inverted INVENTORY_YOY
 
 Each component is z-scored over the rows in a source export so metrics with
 different units contribute on the same scale. The composite index is the mean
-of the available component z-scores for a row. Its monthly change is calculated
-within each county as the month-over-month difference in the composite score.
+of the available component z-scores for a row. Inventory is multiplied by -1
+after standardization so higher inventory weakens the index. Its monthly change
+is calculated within each county as the month-over-month difference in the
+composite score.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ INDEX_COMPONENTS = [
     "HOMES_SOLD_YOY",
     "INVENTORY_YOY",
 ]
+INVERTED_INDEX_COMPONENTS = {"INVENTORY_YOY"}
 INDEX_COL = "HOUSING_MARKET_INDEX"
 INDEX_MOM_COL = "HOUSING_MARKET_INDEX_MOM"
 INDEX_CHANGE_12_TO_24_COL = "HOUSING_MARKET_INDEX_change_in_yoy_12_to_24"
@@ -116,6 +119,8 @@ def add_index_columns(df: pd.DataFrame, recompute_index: bool = True) -> pd.Data
             std = values.std(skipna=True)
             z_col = f"{col}_Z"
             out[z_col] = (values - values.mean(skipna=True)) / std if pd.notna(std) and std else pd.NA
+            if col in INVERTED_INDEX_COMPONENTS:
+                out[z_col] = -out[z_col]
             zscore_cols.append(z_col)
 
         out[INDEX_COL] = out[zscore_cols].mean(axis=1, skipna=True)
