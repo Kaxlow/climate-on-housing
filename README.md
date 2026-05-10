@@ -5,8 +5,6 @@ This is a work-in-progress page that visualizes the impact of climate on the hou
 ## Visualizations
 Visualizations of the impact of climate on the housing market: https://kaxlow.github.io/climate-on-housing/output/visualizations/index.html
 
-Viewing the impact of climate on the housing market in the context of county profiles: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-on-housing.html
-
 County-level housing market responses to extreme climate events by NRI risk ratings: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-1.html
 
 County-level housing market responses by year: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-2.html
@@ -20,15 +18,12 @@ Pre-incident housing market strength tiers: https://kaxlow.github.io/climate-on-
 The current HTML pages are backed by page-specific notebooks that call `src/climate_housing_page_utils.py`:
 
 - `src/climate-housing-index.ipynb` builds the data assets used by `output/visualizations/index.html`.
-- `src/climate-on-housing-page.ipynb` builds the data assets used by `output/visualizations/climate-on-housing.html`.
 - `src/climate-housing-story-1.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-1.html`.
 - `src/climate-housing-story-2.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-2.html`.
 - `src/climate-housing-story-3.ipynb` builds the county-summary and response-cluster assets used by `output/visualizations/climate-housing-story-3.html`.
 - `src/climate-housing-story-4.ipynb` builds the Story 2 income-window data plus pre-incident market-strength tier assets used by `output/visualizations/climate-housing-story-4.html`.
 
 Each notebook calls `build_and_serve(page, html_file)`, which exports the relevant CSV and JSON files under `output/visualizations/`, updates `incident_housing_manifest.json`, and serves the matching HTML page locally. Run the page-specific notebook from `src/` or the repository root.
-
-`src/climate-housing-analysis.ipynb` is a legacy monolithic analysis notebook. It is not the current build entrypoint for the HTML pages.
 
 ## Clustering Scripts
 
