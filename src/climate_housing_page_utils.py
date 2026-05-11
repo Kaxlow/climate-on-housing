@@ -287,6 +287,23 @@ STORY_2_COLUMNS = [
     "month_offset_from_incident",
     "incident_num",
 ]
+STORY_5_COLUMNS = [
+    "fips",
+    "county_name",
+    "STATE_CODE",
+    "incident_type",
+    "income_group",
+    "income_group_label",
+    "avg_per_capita_income",
+    "income_bin_min",
+    "income_bin_max",
+    "month_offset_from_incident",
+    "weighted_housing_market_index_mom",
+    "weighted_housing_market_index",
+    "incident_count",
+    "total_weight",
+    "latest_incident_year",
+]
 CLUSTER_COLUMNS = [
     "median_ppsf_response_cluster",
     "median_ppsf_response_cluster_name",
@@ -851,6 +868,128 @@ def _weighted_incident_average(incidents: list[dict[str, float]]) -> tuple[float
     return value, len(incidents)
 
 
+def _story_5_county_income_groups(housing_df: pd.DataFrame, county_fips: set[str] | None = None) -> pd.DataFrame:
+    county_income = housing_df.copy()
+    county_income["fips"] = county_income["fips"].astype(str).str.zfill(5)
+    county_income = county_income.loc[_is_county_fips(county_income["fips"])].copy()
+    county_income["per_capita_income"] = pd.to_numeric(county_income["per_capita_income"], errors="coerce")
+    county_income = (
+        county_income.dropna(subset=["per_capita_income"])
+        .groupby("fips", as_index=False)
+        .agg(
+            county_name=("REGION", "last"),
+            STATE_CODE=("STATE_CODE", "last"),
+            avg_per_capita_income=("per_capita_income", "mean"),
+        )
+    )
+    if county_fips is not None:
+        normalized_fips = {str(fips).zfill(5) for fips in county_fips}
+        county_income = county_income.loc[county_income["fips"].isin(normalized_fips)].copy()
+    if county_income.empty:
+        county_income["income_group"] = pd.Series(dtype="Int64")
+        county_income["income_group_label"] = pd.Series(dtype="object")
+        county_income["income_bin_min"] = pd.Series(dtype="float64")
+        county_income["income_bin_max"] = pd.Series(dtype="float64")
+        return county_income
+
+    ranked_income = county_income["avg_per_capita_income"].rank(method="first")
+    if len(county_income) == 1:
+        county_income["income_group"] = pd.Series([2], index=county_income.index, dtype="Int64")
+    elif len(county_income) == 2:
+        county_income["income_group"] = ranked_income.map({1.0: 1, 2.0: 3}).astype("Int64")
+    else:
+        county_income["income_group"] = pd.qcut(ranked_income, q=3, labels=[1, 2, 3]).astype("Int64")
+    labels = {1: "Lower income", 2: "Middle income", 3: "Higher income"}
+    county_income["income_group_label"] = county_income["income_group"].map(labels)
+    ranges = county_income.groupby("income_group")["avg_per_capita_income"].agg(["min", "max"]).rename(
+        columns={"min": "income_bin_min", "max": "income_bin_max"}
+    )
+    return county_income.merge(ranges, on="income_group", how="left")
+
+
+def _story_5_incident_dates(natural_disasters_df: pd.DataFrame, incident_type: str) -> pd.DataFrame:
+    incident_df = _prepare_incident_df(natural_disasters_df, incident_type=incident_type).copy()
+    incident_df = incident_df.reset_index(drop=True)
+    incident_df["incident_num"] = range(1, len(incident_df) + 1)
+    incident_df["incident_begin_date"] = pd.to_datetime(incident_df["incidentBeginDate"], errors="coerce")
+    incident_df["incident_year"] = incident_df["incident_begin_date"].dt.year
+    return incident_df[["incident_num", "incident_begin_date", "incident_year"]]
+
+
+def build_story_5_income_response_df(
+    natural_disasters_df: pd.DataFrame,
+    housing_df: pd.DataFrame,
+    *,
+    incident_type: str,
+) -> pd.DataFrame:
+    housing_subset = build_incident_housing_subset(
+        natural_disasters_df,
+        housing_df,
+        incident_type=incident_type,
+        months_before=12,
+        months_after=24,
+        complete_after_anchor=True,
+    )
+    if housing_subset.empty:
+        return pd.DataFrame(columns=STORY_5_COLUMNS)
+
+    subset_fips = set(housing_subset["fips"].astype(str).str.zfill(5))
+    income_groups = _story_5_county_income_groups(housing_df, subset_fips)
+    if income_groups.empty:
+        return pd.DataFrame(columns=STORY_5_COLUMNS)
+
+    incident_dates = _story_5_incident_dates(natural_disasters_df, incident_type)
+    work = housing_subset.copy()
+    work["fips"] = work["fips"].astype(str).str.zfill(5)
+    work = work.loc[_is_county_fips(work["fips"])].copy()
+    work["incident_num"] = pd.to_numeric(work["incident_num"], errors="coerce")
+    work["month_offset_from_incident"] = pd.to_numeric(work["month_offset_from_incident"], errors="coerce")
+    work["HOUSING_MARKET_INDEX_MOM"] = pd.to_numeric(work["HOUSING_MARKET_INDEX_MOM"], errors="coerce")
+    work["HOUSING_MARKET_INDEX"] = pd.to_numeric(work["HOUSING_MARKET_INDEX"], errors="coerce")
+    work = work.dropna(subset=["incident_num", "month_offset_from_incident"])
+    work = work.merge(incident_dates, on="incident_num", how="left")
+    work = work.merge(income_groups, on="fips", how="inner", suffixes=("", "_income"))
+    work = work.loc[work["month_offset_from_incident"].between(-12, 24)].copy()
+
+    rows = []
+    for (fips, offset), group in work.groupby(["fips", "month_offset_from_incident"], dropna=False):
+        group = group.sort_values(["incident_begin_date", "incident_num"]).copy()
+        group["_weight"] = range(1, len(group) + 1)
+        mom = group.dropna(subset=["HOUSING_MARKET_INDEX_MOM"])
+        index = group.dropna(subset=["HOUSING_MARKET_INDEX"])
+        weighted_mom = (
+            (mom["HOUSING_MARKET_INDEX_MOM"] * mom["_weight"]).sum() / mom["_weight"].sum()
+            if not mom.empty
+            else pd.NA
+        )
+        weighted_index = (
+            (index["HOUSING_MARKET_INDEX"] * index["_weight"]).sum() / index["_weight"].sum()
+            if not index.empty
+            else pd.NA
+        )
+        latest = group.iloc[-1]
+        rows.append(
+            {
+                "fips": fips,
+                "county_name": latest.get("county_name_income") or latest.get("county_name") or latest.get("REGION") or fips,
+                "STATE_CODE": latest.get("STATE_CODE_income") or latest.get("STATE_CODE"),
+                "incident_type": incident_type,
+                "income_group": latest["income_group"],
+                "income_group_label": latest["income_group_label"],
+                "avg_per_capita_income": latest["avg_per_capita_income"],
+                "income_bin_min": latest["income_bin_min"],
+                "income_bin_max": latest["income_bin_max"],
+                "month_offset_from_incident": int(offset),
+                "weighted_housing_market_index_mom": weighted_mom,
+                "weighted_housing_market_index": weighted_index,
+                "incident_count": int(group["incident_num"].nunique()),
+                "total_weight": float(group["_weight"].sum()),
+                "latest_incident_year": latest.get("incident_year", pd.NA),
+            }
+        )
+    return pd.DataFrame(rows, columns=STORY_5_COLUMNS)
+
+
 def _build_yoy_summary_payload(df: pd.DataFrame) -> dict[str, object]:
     payload: dict[str, object] = {"metrics": {}}
     if df.empty:
@@ -1036,6 +1175,7 @@ def _existing_manifest_assets(slug: str) -> dict[str, str]:
     assets = {
         "story_1_housing_csv": f"{slug}_story_1_housing.csv",
         "story_2_housing_24mths_csv": f"{slug}_story_2_housing_24mths.csv",
+        "story_5_income_response_csv": f"{slug}_story_5_income_response.csv",
         "story_4_pre_market_tiers_csv": f"{slug}_story_4_pre_market_tiers.csv",
         "index_housing_csv": f"{slug}_index_housing.csv",
         "housing_csv": f"{slug}_index_housing.csv",
@@ -1213,6 +1353,17 @@ def export_page_data(page: str) -> dict[str, object]:
                 entry["story_4_pre_market_tiers_csv"] = story_4_path.name
                 entry["pre_market_strength_tier_summary_json"] = "pre_market_strength_tier_summaries.json"
                 written_paths.append(story_4_path)
+
+        if page == "story-5":
+            story_5_path = OUTPUT_DIR / f"{slug}_story_5_income_response.csv"
+            story_5_df = build_story_5_income_response_df(
+                natural_disasters_df,
+                housing_df,
+                incident_type=incident_type,
+            )
+            _write_csv_subset(story_5_df, story_5_path, STORY_5_COLUMNS)
+            entry["story_5_income_response_csv"] = story_5_path.name
+            written_paths.append(story_5_path)
 
         manifest_entries.append(entry)
 
