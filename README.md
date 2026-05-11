@@ -1,6 +1,6 @@
 # Analyzing the Impact of Climate on Housing
 
-This is a work-in-progress page that visualizes the impact of climate on the housing market across counties. There are multiple views that examine how different housing market metrics are affected by different types of extreme climate events across the months before and after the event’s occurrence, and how housing market movements vary by county attributes. The underlying pipeline for querying, processing, and transforming raw data runs on Python. The page is rendered with HTML, CSS, and JavaScript code.
+This project aims to show the impact of climate on the housing market across counties. There are multiple views that examine how different housing market metrics are affected by different types of extreme climate events across the months before and after the event’s occurrence, and how housing market movements vary by county attributes. The underlying pipeline for querying, processing, and transforming raw data runs on Python. The page is rendered with HTML, CSS, and JavaScript code.
 
 ## Visualizations
 Visualizations of the impact of climate on the housing market: https://kaxlow.github.io/climate-on-housing/output/visualizations/index.html
@@ -13,17 +13,11 @@ Clustering counties by housing market response: https://kaxlow.github.io/climate
 
 Pre-incident housing market strength tiers: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-4.html
 
+County-level housing market responses by income group: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-5.html
+
 ## Page Data Pipeline
 
-The current HTML pages are backed by page-specific notebooks that call `src/climate_housing_page_utils.py`:
-
-- `src/climate-housing-index.ipynb` builds the data assets used by `output/visualizations/index.html`.
-- `src/climate-housing-story-1.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-1.html`.
-- `src/climate-housing-story-2.ipynb` builds the data assets used by `output/visualizations/climate-housing-story-2.html`.
-- `src/climate-housing-story-3.ipynb` builds the county-summary and response-cluster assets used by `output/visualizations/climate-housing-story-3.html`.
-- `src/climate-housing-story-4.ipynb` builds the Story 2 income-window data plus pre-incident market-strength tier assets used by `output/visualizations/climate-housing-story-4.html`.
-
-Each notebook calls `build_and_serve(page, html_file)`, which exports the relevant CSV and JSON files under `output/visualizations/`, updates `incident_housing_manifest.json`, and serves the matching HTML page locally. Run the page-specific notebook from `src/` or the repository root.
+Each HTML page is backed by a corresponding page-specific Jupyter notebook that call `src/climate_housing_page_utils.py`. Each notebook calls `build_and_serve(page, html_file)`, which builds the relevant data assets, exports them to CSV and JSON files under `output/visualizations/`, updates `incident_housing_manifest.json`, and serves the matching HTML page locally. Run the page-specific notebook from `src/` or the repository root.
 
 ## Clustering Scripts
 
