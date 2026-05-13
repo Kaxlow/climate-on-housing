@@ -1,8 +1,8 @@
 """
 Group county-incident observations by pre-incident housing-market strength.
 
-The notebook passes cleaned FEMA disaster rows and the prepared monthly county
-housing panel into ``build_all_pre_incident_market_strength_tiers``. The module
+The page-data pipeline passes cleaned FEMA disaster rows and the prepared
+monthly county housing panel into ``build_all_pre_incident_market_strength_tiers``. The module
 builds complete county-incident windows, derives features only from the 12
 months before incident start, computes a robust pre-incident market-strength
 score, and assigns weak/middle/strong quantile tiers per incident type.

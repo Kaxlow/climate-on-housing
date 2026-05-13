@@ -1,10 +1,10 @@
 """
 Cluster counties by economic and demographic characteristics.
 
-The main notebook prepares the raw economic and population DataFrames, then calls
-``build_county_profile_clusters`` to select the best clustering model, assign
-county profile labels, write profile artifacts, and return DataFrames that can be
-joined back onto housing rows.
+The page-data pipeline prepares the raw economic and population DataFrames, then
+calls ``build_county_profile_clusters`` to select the best clustering model,
+assign county profile labels, write profile artifacts, and return DataFrames
+that can be joined back onto housing rows.
 """
 
 from __future__ import annotations

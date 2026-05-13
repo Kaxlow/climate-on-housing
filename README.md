@@ -17,12 +17,35 @@ County-level housing market responses by income group: https://kaxlow.github.io/
 
 ## Page Data Pipeline
 
-Each HTML page is backed by a corresponding page-specific Jupyter notebook that call `src/climate_housing_page_utils.py`. Each notebook calls `build_and_serve(page, html_file)`, which builds the relevant data assets, exports them to CSV and JSON files under `output/visualizations/`, updates `incident_housing_manifest.json`, and serves the matching HTML page locally. Run the page-specific notebook from `src/` or the repository root.
+Shared source loading now lives under `src/housing_climate_risk/data_sources/`. Raw readers and cached file access are in `raw.py`; prepared reusable datasets are exposed from `processed.py`. New analyses should import those shared loaders instead of reading source CSVs directly.
+
+Page-specific data builders live under `src/housing_climate_risk/page_data/`. The registry in `registry.py` maps page names such as `story-5` and `stormhouse` to the correct builder.
+
+The normal page build workflow is script-based:
+
+```bash
+pip install -e .
+build-page story-5
+```
+
+To rebuild and serve one page locally:
+
+```bash
+build-page stormhouse --serve
+```
+
+To rebuild every registered page bundle:
+
+```bash
+build-page all
+```
+
+Use `pip install -e .` once from the repository root to make `housing_climate_risk` importable and install the `build-page` CLI command.
 
 ## Clustering Scripts
 
 The reusable clustering logic lives in these importable Python modules:
 
-- `src/cluster_county_econ_demographics.py` clusters counties by economic and demographic characteristics. It selects the best model across KMeans and Ward agglomerative candidates and writes `output/visualizations/county_profiles.csv`, `output/visualizations/county_profile_assignments.csv`, and `output/visualizations/county_profile_model.joblib`.
-- `src/cluster_housing_yoy_responses.py` clusters counties by housing-market YOY response for each incident type. It evaluates Ward agglomerative and KMeans candidates, selects the best model by silhouette score per incident type, and writes response cluster assignments, summaries, and comparison tables.
-- `src/cluster_pre_incident_market_strength.py` clusters incident counties into pre-incident market-strength tiers and writes the story 4 tier assets.
+- `src/housing_climate_risk/modeling/county_profiles.py` clusters counties by economic and demographic characteristics. It selects the best model across KMeans and Ward agglomerative candidates and writes `output/visualizations/county_profiles.csv`, `output/visualizations/county_profile_assignments.csv`, and `output/visualizations/county_profile_model.joblib`.
+- `src/housing_climate_risk/modeling/housing_response_clusters.py` clusters counties by housing-market YOY response for each incident type. It evaluates Ward agglomerative and KMeans candidates, selects the best model by silhouette score per incident type, and writes response cluster assignments, summaries, and comparison tables.
+- `src/housing_climate_risk/modeling/pre_incident_market_strength.py` clusters incident counties into pre-incident market-strength tiers and writes the story 4 tier assets.

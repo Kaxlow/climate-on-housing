@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-import socket
 import sys
-import threading
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import tempfile
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -26,14 +25,22 @@ POPULATION_DIR = ROOT / "data" / "population"
 CACHE_DIR = ROOT / "data" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-from cluster_county_econ_demographics import BEA_LINECODES, build_county_profile_clusters
-from cluster_housing_yoy_responses import (
+from housing_climate_risk.modeling.county_profiles import BEA_LINECODES, build_county_profile_clusters
+from housing_climate_risk.modeling.housing_response_clusters import (
     PPSF_RESPONSE_METRIC_LABELS,
     build_all_housing_market_response_clusters,
 )
-from cluster_pre_incident_market_strength import build_all_pre_incident_market_strength_tiers
+from housing_climate_risk.modeling.pre_incident_market_strength import build_all_pre_incident_market_strength_tiers
+from housing_climate_risk.data_sources.raw import (
+    load_cew_employment_wages,
+    load_population_estimates_df as load_population_estimates_source_df,
+    load_profile_inputs as load_profile_source_inputs,
+    load_raw_inputs as load_source_inputs,
+)
+from housing_climate_risk.page_data.server import find_open_port as _find_open_port
+from housing_climate_risk.page_data.server import serve_visualization
 try:
-    from polars_cached_io import (
+    from housing_climate_risk.data_sources.cached_io import (
         read_cew_employment_wages_cached,
         read_cew_totals_cached,
         read_fema_disasters_cached,
@@ -323,9 +330,6 @@ COUNTY_SUMMARY_METRICS = {
 
 
 _data_cache: dict[str, object] = {}
-_server: ThreadingHTTPServer | None = None
-
-
 def _add_county_fips(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["Statefips"] = pd.to_numeric(out["Statefips"], errors="coerce")
@@ -377,39 +381,7 @@ def load_raw_inputs() -> dict[str, pd.DataFrame]:
     if "raw_inputs" in _data_cache:
         return _data_cache["raw_inputs"]  # type: ignore[return-value]
 
-    natural_disasters_df = read_fema_disasters_cached(
-        ROOT / "data" / "climate" / "FEMA_Disaster_Declarations.csv",
-        cache_dir=CACHE_DIR,
-    )
-    nri_county_df = pd.read_csv(ROOT / "data" / "climate" / "NRI_Table_Counties.csv")
-    housing_county_df = read_redfin_county_cached(
-        ROOT / "data" / "housing" / "Redfin-Housing-Market-By-County.csv",
-        cache_dir=CACHE_DIR,
-    )
-    fips_df = pd.read_csv(ROOT / "data" / "geographic" / "fips_master_v2.csv")
-    personal_income_df = pd.read_csv(
-        ECONOMIC_DIR / "BEA - US, States, Counties - Personal Income.csv",
-        usecols=["IBRC_GEO_ID", "Year", "Data", "Linecode Description"],
-        low_memory=False,
-    )
-
-    nri_county_df = (
-        nri_county_df.assign(
-            fips=nri_county_df["STCOFIPS"].astype(str).str.zfill(5),
-            nri_risk_score=pd.to_numeric(nri_county_df["RISK_SCORE"], errors="coerce"),
-            nri_risk_rating=nri_county_df["RISK_RATNG"],
-            nri_risk_rating_date=nri_county_df["NRI_VER"],
-        )[["fips", "nri_risk_score", "nri_risk_rating", "nri_risk_rating_date"]]
-        .drop_duplicates(subset=["fips"])
-    )
-
-    raw_inputs = {
-        "natural_disasters_df": natural_disasters_df,
-        "nri_county_df": nri_county_df,
-        "housing_county_df": housing_county_df,
-        "fips_df": fips_df,
-        "personal_income_df": personal_income_df,
-    }
+    raw_inputs = load_source_inputs()
     _data_cache["raw_inputs"] = raw_inputs
     return raw_inputs
 
@@ -418,31 +390,7 @@ def load_profile_inputs() -> dict[str, pd.DataFrame]:
     if "profile_inputs" in _data_cache:
         return _data_cache["profile_inputs"]  # type: ignore[return-value]
 
-    bea_income_path = ECONOMIC_DIR / "BEA - US, States, Counties - Personal Income.csv"
-    cew_total_path = ECONOMIC_DIR / "CEW - US, States, Counties - Total Ownership.csv"
-    pop_change_path = POPULATION_DIR / "Components of Population Change - U.S., States, and Counties.csv"
-    pop_age_sex_path = POPULATION_DIR / "Population by Age and Sex - US, States, Counties.csv"
-    pop_race_path = POPULATION_DIR / "Population by Race - US, States, Counties.csv"
-    pop_estimates_path = POPULATION_DIR / "Population Estimates - U.S., States, and Counties.csv"
-
-    bea_income_raw = pd.read_csv(
-        bea_income_path,
-        usecols=["Statefips", "Countyfips", "Description", "Year", "Linecode", "Linecode Description", "Data"],
-        low_memory=False,
-    )
-    bea_income_df = _add_county_fips(bea_income_raw)
-    bea_income_df = bea_income_df[bea_income_df["Linecode"].isin(BEA_LINECODES)].copy()
-    bea_income_df["metric"] = bea_income_df["Linecode"].map(BEA_LINECODES)
-
-    profile_inputs = {
-        "bea_income_df": bea_income_df,
-        "cew_total_df": read_cew_totals_cached(cew_total_path, cache_dir=CACHE_DIR),
-        "population_change_df": _dedupe_by_key(_add_county_fips(pd.read_csv(pop_change_path, low_memory=False)), ["fips", "Year"], "largest_magnitude"),
-        "population_age_sex_df": _dedupe_by_key(_add_county_fips(pd.read_csv(pop_age_sex_path, low_memory=False)), ["fips", "Year"]),
-        "population_race_df": _dedupe_by_key(_add_county_fips(pd.read_csv(pop_race_path, low_memory=False)), ["fips", "Year"]),
-    }
-    profile_inputs["population_estimates_df"] = load_population_estimates_df()
-
+    profile_inputs = load_profile_source_inputs()
     _data_cache["profile_inputs"] = profile_inputs
     return profile_inputs
 
@@ -450,14 +398,7 @@ def load_profile_inputs() -> dict[str, pd.DataFrame]:
 def load_population_estimates_df() -> pd.DataFrame:
     if "population_estimates_df" in _data_cache:
         return _data_cache["population_estimates_df"]  # type: ignore[return-value]
-    pop_estimates_path = POPULATION_DIR / "Population Estimates - U.S., States, and Counties.csv"
-    population_estimates_df = _add_county_fips(pd.read_csv(pop_estimates_path, low_memory=False))
-    population_estimates_df = population_estimates_df[population_estimates_df["State or County Release"].eq("County")].copy()
-    population_estimates_df = _dedupe_by_key(
-        population_estimates_df,
-        ["fips", "Year"],
-        "count_over_estimate",
-    )
+    population_estimates_df = load_population_estimates_source_df()
     _data_cache["population_estimates_df"] = population_estimates_df
     return population_estimates_df
 
@@ -575,10 +516,7 @@ def _prepare_housing_county_df() -> pd.DataFrame:
         .rename(columns={"Year": "bea_year", "Data": "per_capita_income"})
         .drop_duplicates(subset=["county_fips", "bea_year"])
     )
-    employment_wages_county_df = read_cew_employment_wages_cached(
-        ECONOMIC_DIR / "CEW - US, States, Counties - Total Ownership.csv",
-        cache_dir=CACHE_DIR,
-    )
+    employment_wages_county_df = load_cew_employment_wages()
     population_growth_county_df = (
         population_estimates_df[["fips", "Year", "Population"]]
         .assign(
@@ -851,7 +789,30 @@ def _write_csv_subset(df: pd.DataFrame, path: Path, columns: list[str]) -> None:
     subset = df.loc[:, _existing_columns(df, columns)].copy()
     if "fips" in subset.columns:
         subset["fips"] = subset["fips"].astype(str).str.zfill(5)
-    subset.to_csv(path, index=False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        subset.to_csv(tmp_path, index=False)
+        _replace_with_retries(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _replace_with_retries(source: Path, target: Path, *, attempts: int = 6, delay_seconds: float = 1.0) -> None:
+    for attempt in range(1, attempts + 1):
+        try:
+            source.replace(target)
+            return
+        except PermissionError as exc:
+            if attempt == attempts:
+                raise PermissionError(
+                    f"Could not replace {target}. Close any application using this file "
+                    "or the output/visualizations directory, then rerun the build."
+                ) from exc
+            time.sleep(delay_seconds)
 
 
 def _is_county_fips(series: pd.Series) -> pd.Series:
@@ -1369,32 +1330,6 @@ def export_page_data(page: str) -> dict[str, object]:
 
     manifest = _write_manifest(manifest_entries)
     return {"page": page, "manifest": manifest, "written_paths": written_paths}
-
-
-def _find_open_port(host: str = "127.0.0.1", start: int = 8000, end: int = 8100) -> int:
-    for port in range(start, end + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            if sock.connect_ex((host, port)) != 0:
-                return port
-    raise RuntimeError("Could not find an open port for the local visualization server.")
-
-
-def serve_visualization(html_file: str, *, host: str = "127.0.0.1", port: int | None = None) -> str:
-    global _server
-    if _server is not None:
-        _server.shutdown()
-        _server.server_close()
-    html_path = OUTPUT_DIR / html_file
-    if not html_path.exists():
-        raise FileNotFoundError(f"Visualization file not found: {html_path.resolve()}")
-    selected_port = port or _find_open_port(host=host)
-    handler = partial(SimpleHTTPRequestHandler, directory=str(OUTPUT_DIR.resolve()))
-    _server = ThreadingHTTPServer((host, selected_port), handler)
-    thread = threading.Thread(target=_server.serve_forever, daemon=True)
-    thread.start()
-    url = f"http://{host}:{selected_port}/{html_file}"
-    print(f"Open {html_file} at: {url}")
-    return url
 
 
 def build_and_serve(page: str, html_file: str, *, host: str = "127.0.0.1", port: int | None = None) -> dict[str, object]:

@@ -1,8 +1,8 @@
 """
 Cluster counties by housing-market YOY responses for each incident type.
 
-The notebook passes cleaned FEMA disaster rows and the prepared county housing
-panel into ``build_all_housing_market_response_clusters``. The function chooses
+The page-data pipeline passes cleaned FEMA disaster rows and the prepared county
+housing panel into ``build_all_housing_market_response_clusters``. The function chooses
 the best model by silhouette score across Ward agglomerative and KMeans
 candidates for each incident type, assigns labels to counties, writes annotation
 artifacts, and returns the DataFrames needed by the visualization export step.

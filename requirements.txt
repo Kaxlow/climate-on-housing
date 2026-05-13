@@ -1,6 +1,3 @@
-# Core notebook/runtime dependency
-notebook
-
 # Data analysis and visualization
 geopandas
 matplotlib
