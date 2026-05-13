@@ -1,0 +1,1721 @@
+final_cluster,plain_label,feature,standardized_median_lift
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_latest,-0.07612373826298248
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_mean_last_12,-0.135134330264733
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_change_12,5.0169683995929025e-06
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_change_36,0.03812213169488941
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_slope,-0.002571100032276477
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_sale_price_volatility,-0.013729984329912162
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_latest,-0.04620429101248606
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_mean_last_12,-0.14467223112303754
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_change_12,0.017414353645266507
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_change_36,0.02333977464113115
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_slope,-0.0012335109001329135
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_ppsf_volatility,-0.0011624318527394888
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_inventory_change_12,0.042017503003052036
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_inventory_change_36,0.022093753656662347
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_inventory_slope,0.005574189708765913
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_inventory_volatility,-0.024667195090368372
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_latest,0.03356356669260242
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_mean_last_12,0.030420500134526785
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_change_12,0.006514323099246761
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_change_36,0.014275370002540658
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_slope,-0.0020445145835126313
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_months_of_supply_volatility,0.07395726536051053
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_latest,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_mean_last_12,-0.017362448669478767
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_change_12,-0.008196686706234309
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_change_36,-0.002542872404209495
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_slope,-0.0013274769214746606
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_median_dom_volatility,0.023050173025709605
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_latest,-0.02435964457038564
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_mean_last_12,-0.044839813077271105
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_change_12,0.001348237016145614
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_change_36,-0.15296671966201364
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_slope,0.0025905382945515453
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_sold_above_list_volatility,-0.015471100496370885
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_latest,-0.10526785998075143
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_mean_last_12,-0.11634606119292207
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_change_12,-0.014887316787439939
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_change_36,-0.017579229104215655
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_slope,0.0017426141701777818
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_avg_sale_to_list_volatility,0.09205446313172976
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_new_listings_change_12,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_new_listings_change_36,-0.049585137942736356
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_new_listings_slope,0.010792162284703987
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_new_listings_volatility,-0.028062114521625717
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_homes_sold_change_12,0.03674142977888437
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_homes_sold_change_36,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_homes_sold_slope,0.020076987025582717
+0,"Transfer-reliant, temperature-variable severe-storm counties",housing_homes_sold_volatility,-0.02511011667109715
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_risk_score,-0.27803383961092426
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_risk_value_per_capita,-0.014373289482739221
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_avalanche_score,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_avalanche_pct_nation,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_coastal_flooding_score,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_coastal_flooding_pct_nation,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_cold_wave_score,-0.11107722587556204
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_cold_wave_pct_nation,-0.11050355698114855
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_drought_score,0.2820762977917011
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_drought_pct_nation,0.2768579727316352
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_earthquake_score,0.09643144541256993
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_earthquake_pct_nation,0.09631373630924661
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_hail_score,0.15363801732105645
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_hail_pct_nation,0.1534434472879941
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_hurricane_score,0.1417115159715495
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_hurricane_pct_nation,0.10204190359560056
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_heat_wave_score,0.05065948984380122
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_heat_wave_pct_nation,0.05024936249837451
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_inland_flooding_score,-0.19759270181968075
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_inland_flooding_pct_nation,-0.19760727778122383
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_ice_storm_score,0.15421559681925903
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_ice_storm_pct_nation,0.1512292924166616
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_landslide_score,-0.25839251396834695
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_landslide_pct_nation,-0.2583705164183859
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_lightning_score,-0.1851011914261079
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_lightning_pct_nation,-0.1851721046283823
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_strong_wind_score,0.019288428303827286
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_strong_wind_pct_nation,0.01921289217374265
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_tornado_score,0.21749124332356734
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_tornado_pct_nation,0.2176421026178507
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_tsunami_score,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_tsunami_pct_nation,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_volcanic_activity_score,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_volcanic_activity_pct_nation,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_wildfire_score,-0.3785568131061673
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_wildfire_pct_nation,-0.37876769214000455
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_winter_weather_score,-0.3311164336008843
+0,"Transfer-reliant, temperature-variable severe-storm counties",nri_hazard_winter_weather_pct_nation,-0.330380177260731
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_mean,-0.10356596295431628
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_median,-0.08979959594869301
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_percentiles_mean_nationally,-0.18530321856851123
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_percentiles_mean_within_state,-0.1920883989904571
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_percentiles_median_nationally,-0.16105564792008084
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_latest_percentiles_median_within_state,-0.24573392192981877
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_mean_cagr,-0.07166793929701178
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_median_cagr,-0.16279431369401198
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_percentiles_mean_cagr_nationally,-0.12295227315705766
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_percentiles_mean_cagr_within_state,-0.044991734350802684
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_percentiles_median_cagr_nationally,-0.2580272430520351
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_growth_percentiles_median_cagr_within_state,-0.07960096908082819
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_average_mean,-0.10136731723831707
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_average_median,-0.01956428384708735
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_mean_latest,-0.10356596295431628
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_mean_mean_last_12,-0.10137443149594691
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_mean_slope,-0.06363913980325432
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_mean_volatility,-0.11519768290750756
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_median_latest,-0.08979959594869301
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_median_mean_last_12,-0.019559732161027726
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_median_slope,-0.09496703821893403
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_premium_historical_median_volatility,-0.12438499697733804
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_latest_non_renewal_rate,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.032875943506337976
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.04096726910487372
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_average_non_renewal_rate,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_historical_non_renewal_rate_slope,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",insurance_nonrenewal_historical_non_renewal_rate_volatility,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_effective_tax_rate_2024_value,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_effective_tax_rate_2024_percentile_nationally,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_effective_tax_rate_2024_percentile_within_state,-0.13854823757163678
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,-0.048197306792530065
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,-0.10380767162059591
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,-0.1384421705186619
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_median_property_taxes_paid_2024_value,-0.16198520269024116
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_median_property_taxes_paid_2024_percentile_nationally,-0.36458345315343754
+0,"Transfer-reliant, temperature-variable severe-storm counties",property_tax_median_property_taxes_paid_2024_percentile_within_state,-0.24225302810619864
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_damage_total_percentile_nationally_sum,-0.13633869996518164
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_damage_total_percentile_nationally_mean,-0.14218835583577188
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_damage_total_percentile_nationally_max,-0.21278043956805162
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_event_count_percentile_nationally_sum,-0.2515346949932522
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_event_count_percentile_nationally_mean,-0.24597689475216894
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_event_count_percentile_nationally_max,-0.2650579233436796
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_deaths_total_percentile_nationally_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_deaths_total_percentile_nationally_mean,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_deaths_total_percentile_nationally_max,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_injuries_total_percentile_nationally_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_injuries_total_percentile_nationally_mean,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_total_injuries_total_percentile_nationally_max,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_debris_flow_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_drought_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_dust_devil_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_dust_storm_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_excessive_heat_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_flash_flood_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_flood_sum,-0.05070268999693978
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_funnel_cloud_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_hail_sum,-0.06765539272307827
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_heat_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_heavy_rain_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_heavy_snow_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_high_wind_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_lightning_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_strong_wind_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_thunderstorm_wind_sum,-0.03059212129088099
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_tornado_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_tropical_storm_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",storm_event_type_wildfire_sum,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",fema_disaster_total_count,0.0
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_average_temp_f_mean,-0.3607789687026133
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_average_temp_f_volatility,0.5170573693495614
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_max_temp_f_volatility,0.5311412484149773
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_min_temp_f_volatility,0.3934567983190886
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_trend_slope_temp_f_mean,-1.167621538257297
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmax_trend_slope_temp_f_volatility,0.4044712863213596
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_average_temp_f_mean,-0.4359126939896706
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_average_temp_f_volatility,0.35564674571760496
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_max_temp_f_volatility,0.5874385836114991
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_min_temp_f_volatility,0.67929509215817
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_trend_slope_temp_f_mean,-0.46677850472875404
+0,"Transfer-reliant, temperature-variable severe-storm counties",temperature_tmin_trend_slope_temp_f_volatility,0.15629774112015393
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_log_population_avg,-0.125811544819601
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_per_capita_income_avg,-0.24420437793079164
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_employment_rate_proxy_avg,-0.0033926392421820785
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_Average Weekly Wage_avg,-0.28025009500670295
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_transfer_receipts_share_avg,0.5685232428617735
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_dividends_rent_share_avg,-0.17413558707703272
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_proprietors_income_share_avg,-0.23933639978579996
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_youth_share_avg,0.06353347216874979
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_prime_working_age_share_avg,-0.011852722862277213
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_senior_share_avg,-0.032379624088982185
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_male_share_avg,-0.022681217503917675
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_white_share_avg,0.017844515469579134
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_black_share_avg,0.03499782327362848
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_asian_share_avg,-0.04678723271097313
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_hispanic_share_avg,-0.06890921338898505
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_natural_increase_rate_avg,-0.1431080583080081
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_international_migration_rate_avg,-0.08583334837800809
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_domestic_migration_rate_avg,0.014884160462423144
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_log_population_latest,-0.12813847601905046
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_per_capita_income_latest,-0.20306681124513423
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_employment_rate_proxy_latest,-0.002980836561408221
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_Average Weekly Wage_latest,-0.2838311726114861
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_transfer_receipts_share_latest,0.5394744247013196
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_dividends_rent_share_latest,-0.1902964649864732
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_proprietors_income_share_latest,-0.13107022036960625
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_youth_share_latest,0.06481103294479641
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_prime_working_age_share_latest,-0.0002635742902703918
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_senior_share_latest,-0.03993988929180311
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_male_share_latest,-0.01900196695549732
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_white_share_latest,0.02555697119716623
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_black_share_latest,0.04083474657657961
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_asian_share_latest,-0.045142033737274975
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_hispanic_share_latest,-0.08207177858309651
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_natural_increase_rate_latest,-0.14634779731366124
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_international_migration_rate_latest,-0.07368863250422394
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_domestic_migration_rate_latest,0.042294856952803064
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_log_population_slope,-0.1150032376930611
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_per_capita_income_slope,-0.14668248979740894
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_Average Weekly Wage_slope,-0.26795859013583606
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_employment_rate_proxy_slope,0.0009370334828371666
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_domestic_migration_rate_slope,0.0947589815931128
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_senior_share_slope,-0.20261499902747174
+0,"Transfer-reliant, temperature-variable severe-storm counties",econ_pop_hispanic_share_slope,-0.0634570697939488
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_latest,0.008851597472439823
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_mean_last_12,-0.020801817449244083
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_change_12,6.498168593758426e-06
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_change_36,0.0725854438413301
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_slope,-2.406532028602951e-05
+1,High-tax northern housing-market storm-risk counties,housing_median_sale_price_volatility,-0.05011985991566154
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_latest,0.03201966145687958
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_mean_last_12,0.04873165620853354
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_change_12,0.025380531753517812
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_change_36,0.04200182419222395
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_slope,-0.00010523101283734934
+1,High-tax northern housing-market storm-risk counties,housing_median_ppsf_volatility,-0.0023894790614319037
+1,High-tax northern housing-market storm-risk counties,housing_inventory_change_12,-0.08294441309686972
+1,High-tax northern housing-market storm-risk counties,housing_inventory_change_36,-0.1782113648004794
+1,High-tax northern housing-market storm-risk counties,housing_inventory_slope,-0.16852428387107998
+1,High-tax northern housing-market storm-risk counties,housing_inventory_volatility,0.15378762009098487
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_latest,-0.10069070007780727
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_mean_last_12,-0.137416741987
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_change_12,-0.02392682194943448
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_change_36,-0.07121882008647576
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_slope,-0.12519822698668626
+1,High-tax northern housing-market storm-risk counties,housing_months_of_supply_volatility,-0.10933422963795879
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_latest,-0.18729199166125474
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_mean_last_12,-0.37466336602559897
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_change_12,-0.010615250635288294
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_change_36,-0.009690278141458817
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_slope,-0.019572412537597537
+1,High-tax northern housing-market storm-risk counties,housing_median_dom_volatility,-0.038697096587704885
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_latest,0.6272608476874318
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_mean_last_12,0.9495087135599172
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_change_12,0.09977472121867605
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_change_36,0.22606586003147128
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_slope,0.03903870719051261
+1,High-tax northern housing-market storm-risk counties,housing_sold_above_list_volatility,-0.19744309322224274
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_latest,0.01754464333012524
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_mean_last_12,0.2891372411824189
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_change_12,-0.01298495357453125
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_change_36,0.041328817858014226
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_slope,0.01640727003361535
+1,High-tax northern housing-market storm-risk counties,housing_avg_sale_to_list_volatility,-0.10987813737943616
+1,High-tax northern housing-market storm-risk counties,housing_new_listings_change_12,-0.11715954183939123
+1,High-tax northern housing-market storm-risk counties,housing_new_listings_change_36,-0.13373254224752656
+1,High-tax northern housing-market storm-risk counties,housing_new_listings_slope,-0.0726303006343085
+1,High-tax northern housing-market storm-risk counties,housing_new_listings_volatility,0.1894565820331588
+1,High-tax northern housing-market storm-risk counties,housing_homes_sold_change_12,-0.01264868894027167
+1,High-tax northern housing-market storm-risk counties,housing_homes_sold_change_36,0.0
+1,High-tax northern housing-market storm-risk counties,housing_homes_sold_slope,-0.09210518190646627
+1,High-tax northern housing-market storm-risk counties,housing_homes_sold_volatility,0.16161150007807296
+1,High-tax northern housing-market storm-risk counties,nri_risk_score,0.5373084686543607
+1,High-tax northern housing-market storm-risk counties,nri_risk_value_per_capita,-0.34440415736706953
+1,High-tax northern housing-market storm-risk counties,nri_hazard_avalanche_score,1.533912459644871
+1,High-tax northern housing-market storm-risk counties,nri_hazard_avalanche_pct_nation,2.345897901495482
+1,High-tax northern housing-market storm-risk counties,nri_hazard_coastal_flooding_score,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_coastal_flooding_pct_nation,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_cold_wave_score,-0.23205026561745434
+1,High-tax northern housing-market storm-risk counties,nri_hazard_cold_wave_pct_nation,-0.23127827791246763
+1,High-tax northern housing-market storm-risk counties,nri_hazard_drought_score,-1.6675762380144248
+1,High-tax northern housing-market storm-risk counties,nri_hazard_drought_pct_nation,-1.7272982555870577
+1,High-tax northern housing-market storm-risk counties,nri_hazard_earthquake_score,0.05510318809924713
+1,High-tax northern housing-market storm-risk counties,nri_hazard_earthquake_pct_nation,0.0550109880213625
+1,High-tax northern housing-market storm-risk counties,nri_hazard_hail_score,-0.6195036106184256
+1,High-tax northern housing-market storm-risk counties,nri_hazard_hail_pct_nation,-0.6189300579484438
+1,High-tax northern housing-market storm-risk counties,nri_hazard_hurricane_score,0.998911669252618
+1,High-tax northern housing-market storm-risk counties,nri_hazard_hurricane_pct_nation,0.7194247427350756
+1,High-tax northern housing-market storm-risk counties,nri_hazard_heat_wave_score,-0.4080297483161123
+1,High-tax northern housing-market storm-risk counties,nri_hazard_heat_wave_pct_nation,-0.40553358748688195
+1,High-tax northern housing-market storm-risk counties,nri_hazard_inland_flooding_score,1.0039662482014104
+1,High-tax northern housing-market storm-risk counties,nri_hazard_inland_flooding_pct_nation,1.0035524838221528
+1,High-tax northern housing-market storm-risk counties,nri_hazard_ice_storm_score,0.24130855380354546
+1,High-tax northern housing-market storm-risk counties,nri_hazard_ice_storm_pct_nation,0.23669142743351934
+1,High-tax northern housing-market storm-risk counties,nri_hazard_landslide_score,0.9437595429371856
+1,High-tax northern housing-market storm-risk counties,nri_hazard_landslide_pct_nation,0.943737930404855
+1,High-tax northern housing-market storm-risk counties,nri_hazard_lightning_score,0.5795432222057904
+1,High-tax northern housing-market storm-risk counties,nri_hazard_lightning_pct_nation,0.5795530774667157
+1,High-tax northern housing-market storm-risk counties,nri_hazard_strong_wind_score,0.26508420389635773
+1,High-tax northern housing-market storm-risk counties,nri_hazard_strong_wind_pct_nation,0.2648888559879855
+1,High-tax northern housing-market storm-risk counties,nri_hazard_tornado_score,-0.36450331674812203
+1,High-tax northern housing-market storm-risk counties,nri_hazard_tornado_pct_nation,-0.3644570941630071
+1,High-tax northern housing-market storm-risk counties,nri_hazard_tsunami_score,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_tsunami_pct_nation,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_volcanic_activity_score,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_volcanic_activity_pct_nation,0.0
+1,High-tax northern housing-market storm-risk counties,nri_hazard_wildfire_score,-0.7785768502065594
+1,High-tax northern housing-market storm-risk counties,nri_hazard_wildfire_pct_nation,-0.7786965839817273
+1,High-tax northern housing-market storm-risk counties,nri_hazard_winter_weather_score,0.5575553503815976
+1,High-tax northern housing-market storm-risk counties,nri_hazard_winter_weather_pct_nation,0.5564391258759269
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_mean,-1.1949369380866974
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_median,-1.1753416142311235
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_percentiles_mean_nationally,-1.5707478433798103
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_percentiles_mean_within_state,-0.4551283687791915
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_percentiles_median_nationally,-1.5291627646605546
+1,High-tax northern housing-market storm-risk counties,insurance_premium_latest_percentiles_median_within_state,-0.4205165002038449
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_mean_cagr,-1.0931753031702711
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_median_cagr,-0.8719462047155937
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_percentiles_mean_cagr_nationally,-1.3853777257133268
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_percentiles_mean_cagr_within_state,-0.1661233268337328
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_percentiles_median_cagr_nationally,-1.2122085244055338
+1,High-tax northern housing-market storm-risk counties,insurance_premium_growth_percentiles_median_cagr_within_state,-0.07440960153207851
+1,High-tax northern housing-market storm-risk counties,insurance_premium_average_mean,-1.0213570901744884
+1,High-tax northern housing-market storm-risk counties,insurance_premium_average_median,-1.1418711780138346
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_mean_latest,-1.1949369380866974
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_mean_mean_last_12,-1.0213702752023905
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_mean_slope,-1.0860565158451398
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_mean_volatility,-0.9692483303939617
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_median_latest,-1.1753416142311235
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_median_mean_last_12,-1.1418562245864843
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_median_slope,-1.043523074457861
+1,High-tax northern housing-market storm-risk counties,insurance_premium_historical_median_volatility,-0.9037637938500243
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_latest_non_renewal_rate,-0.5771060984396108
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,-1.7598340799109706
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,-0.624642926620421
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.16386907641949489
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_average_non_renewal_rate,-0.7153213276510462
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_historical_non_renewal_rate_latest,-0.5771060984396108
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,-0.5985077671817225
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_historical_non_renewal_rate_slope,-0.06344397760297267
+1,High-tax northern housing-market storm-risk counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,-0.7594520125948203
+1,High-tax northern housing-market storm-risk counties,property_tax_effective_tax_rate_2024_value,1.2188983036371497
+1,High-tax northern housing-market storm-risk counties,property_tax_effective_tax_rate_2024_percentile_nationally,1.1619367065013997
+1,High-tax northern housing-market storm-risk counties,property_tax_effective_tax_rate_2024_percentile_within_state,-0.017318529696454598
+1,High-tax northern housing-market storm-risk counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,-0.3132824941514453
+1,High-tax northern housing-market storm-risk counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,-0.7093524227407382
+1,High-tax northern housing-market storm-risk counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,0.0
+1,High-tax northern housing-market storm-risk counties,property_tax_median_property_taxes_paid_2024_value,0.8756238746281491
+1,High-tax northern housing-market storm-risk counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,1.1284725930939734
+1,High-tax northern housing-market storm-risk counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,-0.06921515088748538
+1,High-tax northern housing-market storm-risk counties,storm_total_damage_total_percentile_nationally_sum,0.8603375791879031
+1,High-tax northern housing-market storm-risk counties,storm_total_damage_total_percentile_nationally_mean,0.8452718455813022
+1,High-tax northern housing-market storm-risk counties,storm_total_damage_total_percentile_nationally_max,0.10186297638896062
+1,High-tax northern housing-market storm-risk counties,storm_total_event_count_percentile_nationally_sum,0.5813288598140806
+1,High-tax northern housing-market storm-risk counties,storm_total_event_count_percentile_nationally_mean,0.6118945615257797
+1,High-tax northern housing-market storm-risk counties,storm_total_event_count_percentile_nationally_max,0.4222956744797602
+1,High-tax northern housing-market storm-risk counties,storm_total_deaths_total_percentile_nationally_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_total_deaths_total_percentile_nationally_mean,0.0
+1,High-tax northern housing-market storm-risk counties,storm_total_deaths_total_percentile_nationally_max,0.0
+1,High-tax northern housing-market storm-risk counties,storm_total_injuries_total_percentile_nationally_sum,0.8928005256970907
+1,High-tax northern housing-market storm-risk counties,storm_total_injuries_total_percentile_nationally_mean,0.8803811334864216
+1,High-tax northern housing-market storm-risk counties,storm_total_injuries_total_percentile_nationally_max,1.9572606703114197
+1,High-tax northern housing-market storm-risk counties,storm_event_type_debris_flow_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_drought_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_dust_devil_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_dust_storm_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_excessive_heat_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_flash_flood_sum,0.2367187230086118
+1,High-tax northern housing-market storm-risk counties,storm_event_type_flood_sum,0.15210806999081936
+1,High-tax northern housing-market storm-risk counties,storm_event_type_funnel_cloud_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_hail_sum,-0.11275898787179713
+1,High-tax northern housing-market storm-risk counties,storm_event_type_heat_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_heavy_rain_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_heavy_snow_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_high_wind_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_lightning_sum,0.31550048942707215
+1,High-tax northern housing-market storm-risk counties,storm_event_type_strong_wind_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_thunderstorm_wind_sum,0.8489313658219474
+1,High-tax northern housing-market storm-risk counties,storm_event_type_tornado_sum,-0.32970822148911283
+1,High-tax northern housing-market storm-risk counties,storm_event_type_tropical_storm_sum,0.0
+1,High-tax northern housing-market storm-risk counties,storm_event_type_wildfire_sum,0.0
+1,High-tax northern housing-market storm-risk counties,fema_disaster_total_count,0.0
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_average_temp_f_mean,-0.23553437645118738
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_average_temp_f_volatility,0.11621863490567388
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_max_temp_f_volatility,0.06221309159987269
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_min_temp_f_volatility,-0.09983946005633167
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_trend_slope_temp_f_mean,-0.07715560825488718
+1,High-tax northern housing-market storm-risk counties,temperature_tmax_trend_slope_temp_f_volatility,-0.04490928978636437
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_average_temp_f_mean,-0.17964241117025534
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_average_temp_f_volatility,0.006629575390091979
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_max_temp_f_volatility,0.16331524223241012
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_min_temp_f_volatility,-0.16085637127759705
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_trend_slope_temp_f_mean,-0.07033648701392195
+1,High-tax northern housing-market storm-risk counties,temperature_tmin_trend_slope_temp_f_volatility,-0.6214278782893337
+1,High-tax northern housing-market storm-risk counties,econ_pop_log_population_avg,0.6160702258926114
+1,High-tax northern housing-market storm-risk counties,econ_pop_per_capita_income_avg,0.8317584844218736
+1,High-tax northern housing-market storm-risk counties,econ_pop_employment_rate_proxy_avg,0.0904017028171849
+1,High-tax northern housing-market storm-risk counties,econ_pop_Average Weekly Wage_avg,0.69445973542661
+1,High-tax northern housing-market storm-risk counties,econ_pop_transfer_receipts_share_avg,-0.7868971576794697
+1,High-tax northern housing-market storm-risk counties,econ_pop_dividends_rent_share_avg,0.5930550727578382
+1,High-tax northern housing-market storm-risk counties,econ_pop_proprietors_income_share_avg,0.22591207906498864
+1,High-tax northern housing-market storm-risk counties,econ_pop_youth_share_avg,-0.7061742641970437
+1,High-tax northern housing-market storm-risk counties,econ_pop_prime_working_age_share_avg,0.2956511971303724
+1,High-tax northern housing-market storm-risk counties,econ_pop_senior_share_avg,0.25380132830897795
+1,High-tax northern housing-market storm-risk counties,econ_pop_male_share_avg,-0.09313614304713667
+1,High-tax northern housing-market storm-risk counties,econ_pop_white_share_avg,0.15095239376374578
+1,High-tax northern housing-market storm-risk counties,econ_pop_black_share_avg,0.029838324791437044
+1,High-tax northern housing-market storm-risk counties,econ_pop_asian_share_avg,0.027187823730210413
+1,High-tax northern housing-market storm-risk counties,econ_pop_hispanic_share_avg,-0.12638730035203635
+1,High-tax northern housing-market storm-risk counties,econ_pop_natural_increase_rate_avg,-0.3138278696813419
+1,High-tax northern housing-market storm-risk counties,econ_pop_international_migration_rate_avg,-0.020807490522603386
+1,High-tax northern housing-market storm-risk counties,econ_pop_domestic_migration_rate_avg,-0.13553292432680197
+1,High-tax northern housing-market storm-risk counties,econ_pop_log_population_latest,0.6004800274546426
+1,High-tax northern housing-market storm-risk counties,econ_pop_per_capita_income_latest,0.7492316071810204
+1,High-tax northern housing-market storm-risk counties,econ_pop_employment_rate_proxy_latest,0.07933300808961741
+1,High-tax northern housing-market storm-risk counties,econ_pop_Average Weekly Wage_latest,0.6707295308081488
+1,High-tax northern housing-market storm-risk counties,econ_pop_transfer_receipts_share_latest,-0.6859623701111721
+1,High-tax northern housing-market storm-risk counties,econ_pop_dividends_rent_share_latest,0.6857519675218965
+1,High-tax northern housing-market storm-risk counties,econ_pop_proprietors_income_share_latest,0.27127104186180007
+1,High-tax northern housing-market storm-risk counties,econ_pop_youth_share_latest,-0.7085602063031303
+1,High-tax northern housing-market storm-risk counties,econ_pop_prime_working_age_share_latest,0.18206787880436254
+1,High-tax northern housing-market storm-risk counties,econ_pop_senior_share_latest,0.27223323455239135
+1,High-tax northern housing-market storm-risk counties,econ_pop_male_share_latest,-0.06398944573159031
+1,High-tax northern housing-market storm-risk counties,econ_pop_white_share_latest,0.16924016338231973
+1,High-tax northern housing-market storm-risk counties,econ_pop_black_share_latest,0.028252868407011383
+1,High-tax northern housing-market storm-risk counties,econ_pop_asian_share_latest,0.025401394174250972
+1,High-tax northern housing-market storm-risk counties,econ_pop_hispanic_share_latest,-0.15803111717223214
+1,High-tax northern housing-market storm-risk counties,econ_pop_natural_increase_rate_latest,-0.24914892276732706
+1,High-tax northern housing-market storm-risk counties,econ_pop_international_migration_rate_latest,-0.005393261709005097
+1,High-tax northern housing-market storm-risk counties,econ_pop_domestic_migration_rate_latest,-0.02240327864995103
+1,High-tax northern housing-market storm-risk counties,econ_pop_log_population_slope,-0.1823211699461
+1,High-tax northern housing-market storm-risk counties,econ_pop_per_capita_income_slope,0.26342817925418693
+1,High-tax northern housing-market storm-risk counties,econ_pop_Average Weekly Wage_slope,0.4235410555623372
+1,High-tax northern housing-market storm-risk counties,econ_pop_employment_rate_proxy_slope,-0.015992124799509774
+1,High-tax northern housing-market storm-risk counties,econ_pop_domestic_migration_rate_slope,0.08440424006726195
+1,High-tax northern housing-market storm-risk counties,econ_pop_senior_share_slope,0.49307587030671435
+1,High-tax northern housing-market storm-risk counties,econ_pop_hispanic_share_slope,-0.07407131869036848
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_latest,-0.037176709384247254
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_mean_last_12,-0.04576473985393852
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_change_12,-8.95982775515868e-07
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_change_36,-0.015825718107191328
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_slope,-0.0025706206296355234
+2,Lower-tax severe-storm casualty counties,housing_median_sale_price_volatility,-0.03779119289051987
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_latest,-0.01576964059413911
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_mean_last_12,-0.03620363339055818
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_change_12,0.002553945389016076
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_change_36,-0.0074788119573152715
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_slope,-0.001471150844917868
+2,Lower-tax severe-storm casualty counties,housing_median_ppsf_volatility,-0.0030217116660639
+2,Lower-tax severe-storm casualty counties,housing_inventory_change_12,0.017470607261903245
+2,Lower-tax severe-storm casualty counties,housing_inventory_change_36,0.06851290653328623
+2,Lower-tax severe-storm casualty counties,housing_inventory_slope,0.025494079105524165
+2,Lower-tax severe-storm casualty counties,housing_inventory_volatility,0.0605410032026063
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_latest,0.05370170670816386
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_mean_last_12,0.041959310530381766
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_change_12,0.010074451347130387
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_change_36,0.027391853879413817
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_slope,0.029879802727487255
+2,Lower-tax severe-storm casualty counties,housing_months_of_supply_volatility,-0.020528154135782652
+2,Lower-tax severe-storm casualty counties,housing_median_dom_latest,0.011705749478828421
+2,Lower-tax severe-storm casualty counties,housing_median_dom_mean_last_12,-0.02010388793308102
+2,Lower-tax severe-storm casualty counties,housing_median_dom_change_12,-0.008104483389290904
+2,Lower-tax severe-storm casualty counties,housing_median_dom_change_36,0.008562733606011562
+2,Lower-tax severe-storm casualty counties,housing_median_dom_slope,0.0056314189502757635
+2,Lower-tax severe-storm casualty counties,housing_median_dom_volatility,-0.061059421831309385
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_latest,0.08525875599634995
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_mean_last_12,-0.04928956552005367
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_change_12,0.02039157050778377
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_change_36,0.02276922331252219
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_slope,-0.011973162537119598
+2,Lower-tax severe-storm casualty counties,housing_sold_above_list_volatility,-0.09809373471037353
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_latest,0.01754464333012524
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_mean_last_12,-0.0357101771978258
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_change_12,0.030633517235693714
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_change_36,0.016680714992320347
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_slope,-0.0007040529266230839
+2,Lower-tax severe-storm casualty counties,housing_avg_sale_to_list_volatility,-0.08981731012298079
+2,Lower-tax severe-storm casualty counties,housing_new_listings_change_12,0.0
+2,Lower-tax severe-storm casualty counties,housing_new_listings_change_36,0.039926398074214296
+2,Lower-tax severe-storm casualty counties,housing_new_listings_slope,0.013778670970829026
+2,Lower-tax severe-storm casualty counties,housing_new_listings_volatility,0.03996390335501712
+2,Lower-tax severe-storm casualty counties,housing_homes_sold_change_12,-0.021646113668179937
+2,Lower-tax severe-storm casualty counties,housing_homes_sold_change_36,0.0
+2,Lower-tax severe-storm casualty counties,housing_homes_sold_slope,-0.015493889000954818
+2,Lower-tax severe-storm casualty counties,housing_homes_sold_volatility,0.03890361318232133
+2,Lower-tax severe-storm casualty counties,nri_risk_score,0.5908180067856609
+2,Lower-tax severe-storm casualty counties,nri_risk_value_per_capita,-0.03792529925001611
+2,Lower-tax severe-storm casualty counties,nri_hazard_avalanche_score,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_avalanche_pct_nation,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_coastal_flooding_score,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_coastal_flooding_pct_nation,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_cold_wave_score,0.6065179586773535
+2,Lower-tax severe-storm casualty counties,nri_hazard_cold_wave_pct_nation,0.6044048717574682
+2,Lower-tax severe-storm casualty counties,nri_hazard_drought_score,0.2228025053506491
+2,Lower-tax severe-storm casualty counties,nri_hazard_drought_pct_nation,0.21859859338786458
+2,Lower-tax severe-storm casualty counties,nri_hazard_earthquake_score,0.6000852567027807
+2,Lower-tax severe-storm casualty counties,nri_hazard_earthquake_pct_nation,0.5997799956115556
+2,Lower-tax severe-storm casualty counties,nri_hazard_hail_score,0.5225884425044973
+2,Lower-tax severe-storm casualty counties,nri_hazard_hail_pct_nation,0.5220277650493055
+2,Lower-tax severe-storm casualty counties,nri_hazard_hurricane_score,0.44025122799841754
+2,Lower-tax severe-storm casualty counties,nri_hazard_hurricane_pct_nation,0.31712160557081076
+2,Lower-tax severe-storm casualty counties,nri_hazard_heat_wave_score,0.7174926317970225
+2,Lower-tax severe-storm casualty counties,nri_hazard_heat_wave_pct_nation,0.7132224656019288
+2,Lower-tax severe-storm casualty counties,nri_hazard_inland_flooding_score,0.48294191219685717
+2,Lower-tax severe-storm casualty counties,nri_hazard_inland_flooding_pct_nation,0.48278240158282687
+2,Lower-tax severe-storm casualty counties,nri_hazard_ice_storm_score,0.74944125418719
+2,Lower-tax severe-storm casualty counties,nri_hazard_ice_storm_pct_nation,0.7348688523363138
+2,Lower-tax severe-storm casualty counties,nri_hazard_landslide_score,0.13497992306633438
+2,Lower-tax severe-storm casualty counties,nri_hazard_landslide_pct_nation,0.1347942666634857
+2,Lower-tax severe-storm casualty counties,nri_hazard_lightning_score,0.6175559090985461
+2,Lower-tax severe-storm casualty counties,nri_hazard_lightning_pct_nation,0.6176557989960175
+2,Lower-tax severe-storm casualty counties,nri_hazard_strong_wind_score,0.7654969362253983
+2,Lower-tax severe-storm casualty counties,nri_hazard_strong_wind_pct_nation,0.7644240525052878
+2,Lower-tax severe-storm casualty counties,nri_hazard_tornado_score,0.8958452471623279
+2,Lower-tax severe-storm casualty counties,nri_hazard_tornado_pct_nation,0.8960163423392294
+2,Lower-tax severe-storm casualty counties,nri_hazard_tsunami_score,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_tsunami_pct_nation,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_volcanic_activity_score,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_volcanic_activity_pct_nation,0.0
+2,Lower-tax severe-storm casualty counties,nri_hazard_wildfire_score,-0.06987873539314245
+2,Lower-tax severe-storm casualty counties,nri_hazard_wildfire_pct_nation,-0.06988530657794448
+2,Lower-tax severe-storm casualty counties,nri_hazard_winter_weather_score,0.17575159463731319
+2,Lower-tax severe-storm casualty counties,nri_hazard_winter_weather_pct_nation,0.175408948335848
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_mean,0.03142691289648218
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_median,0.03814496111094924
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_percentiles_mean_nationally,0.05888139655448007
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_percentiles_mean_within_state,-0.09171788420265067
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_percentiles_median_nationally,0.06927124641723924
+2,Lower-tax severe-storm casualty counties,insurance_premium_latest_percentiles_median_within_state,-0.14190268731158534
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_mean_cagr,-0.10735081701446303
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_median_cagr,-0.1694145038486528
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_percentiles_mean_cagr_nationally,-0.17663566002844913
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_percentiles_mean_cagr_within_state,0.06575715020501931
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_percentiles_median_cagr_nationally,-0.27014932829609045
+2,Lower-tax severe-storm casualty counties,insurance_premium_growth_percentiles_median_cagr_within_state,0.09344461587749457
+2,Lower-tax severe-storm casualty counties,insurance_premium_average_mean,0.05441377009427433
+2,Lower-tax severe-storm casualty counties,insurance_premium_average_median,0.11053069825630407
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_mean_latest,0.03142691289648218
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_mean_mean_last_12,0.05439851639952934
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_mean_slope,-0.031433543923617135
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_mean_volatility,-0.012051601895620401
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_median_latest,0.03814496111094924
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_median_mean_last_12,0.11053523058440974
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_median_slope,-0.011267275720889572
+2,Lower-tax severe-storm casualty counties,insurance_premium_historical_median_volatility,-0.05203222530058307
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_latest_non_renewal_rate,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_average_non_renewal_rate,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_slope,0.0
+2,Lower-tax severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,-0.15905247924519156
+2,Lower-tax severe-storm casualty counties,property_tax_effective_tax_rate_2024_value,-0.20105539029066372
+2,Lower-tax severe-storm casualty counties,property_tax_effective_tax_rate_2024_percentile_nationally,-0.31216210025410746
+2,Lower-tax severe-storm casualty counties,property_tax_effective_tax_rate_2024_percentile_within_state,0.13854823757163678
+2,Lower-tax severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,-0.016065768930843365
+2,Lower-tax severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,-0.0346025572068653
+2,Lower-tax severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,-0.034610542629665474
+2,Lower-tax severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_value,-0.22142612470747558
+2,Lower-tax severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,-0.48611127087125017
+2,Lower-tax severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,0.3460757544374265
+2,Lower-tax severe-storm casualty counties,storm_total_damage_total_percentile_nationally_sum,0.6761168816326921
+2,Lower-tax severe-storm casualty counties,storm_total_damage_total_percentile_nationally_mean,0.6415009542358094
+2,Lower-tax severe-storm casualty counties,storm_total_damage_total_percentile_nationally_max,0.19014422259272648
+2,Lower-tax severe-storm casualty counties,storm_total_event_count_percentile_nationally_sum,0.5160174287900945
+2,Lower-tax severe-storm casualty counties,storm_total_event_count_percentile_nationally_mean,0.5430760857757725
+2,Lower-tax severe-storm casualty counties,storm_total_event_count_percentile_nationally_max,0.2965054735708953
+2,Lower-tax severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_sum,1.2051435020800256
+2,Lower-tax severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_mean,1.1702661174158973
+2,Lower-tax severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_max,2.1233361240439654
+2,Lower-tax severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_sum,0.956024597259331
+2,Lower-tax severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_mean,1.0234902984254697
+2,Lower-tax severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_max,2.05386366476885
+2,Lower-tax severe-storm casualty counties,storm_event_type_debris_flow_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_drought_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_dust_devil_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_dust_storm_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_excessive_heat_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_flash_flood_sum,0.2761718435100471
+2,Lower-tax severe-storm casualty counties,storm_event_type_flood_sum,0.05070268999693978
+2,Lower-tax severe-storm casualty counties,storm_event_type_funnel_cloud_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_hail_sum,0.20296617816923482
+2,Lower-tax severe-storm casualty counties,storm_event_type_heat_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_heavy_rain_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_heavy_snow_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_high_wind_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_lightning_sum,0.31550048942707215
+2,Lower-tax severe-storm casualty counties,storm_event_type_strong_wind_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_thunderstorm_wind_sum,0.24473697032704791
+2,Lower-tax severe-storm casualty counties,storm_event_type_tornado_sum,0.4945623322336693
+2,Lower-tax severe-storm casualty counties,storm_event_type_tropical_storm_sum,0.0
+2,Lower-tax severe-storm casualty counties,storm_event_type_wildfire_sum,0.0
+2,Lower-tax severe-storm casualty counties,fema_disaster_total_count,0.0
+2,Lower-tax severe-storm casualty counties,temperature_tmax_average_temp_f_mean,0.33975598930969664
+2,Lower-tax severe-storm casualty counties,temperature_tmax_average_temp_f_volatility,-0.27859726741223023
+2,Lower-tax severe-storm casualty counties,temperature_tmax_max_temp_f_volatility,-0.3004433913677106
+2,Lower-tax severe-storm casualty counties,temperature_tmax_min_temp_f_volatility,-0.09269271640854938
+2,Lower-tax severe-storm casualty counties,temperature_tmax_trend_slope_temp_f_mean,0.04114965773594021
+2,Lower-tax severe-storm casualty counties,temperature_tmax_trend_slope_temp_f_volatility,-0.26974982370362466
+2,Lower-tax severe-storm casualty counties,temperature_tmin_average_temp_f_mean,0.3068048433488739
+2,Lower-tax severe-storm casualty counties,temperature_tmin_average_temp_f_volatility,-0.1384923833612953
+2,Lower-tax severe-storm casualty counties,temperature_tmin_max_temp_f_volatility,-0.12035048425566541
+2,Lower-tax severe-storm casualty counties,temperature_tmin_min_temp_f_volatility,-0.04718863171759101
+2,Lower-tax severe-storm casualty counties,temperature_tmin_trend_slope_temp_f_mean,0.0031971130460872617
+2,Lower-tax severe-storm casualty counties,temperature_tmin_trend_slope_temp_f_volatility,0.06546410633876074
+2,Lower-tax severe-storm casualty counties,econ_pop_log_population_avg,0.32651314791595853
+2,Lower-tax severe-storm casualty counties,econ_pop_per_capita_income_avg,-0.14289171311596643
+2,Lower-tax severe-storm casualty counties,econ_pop_employment_rate_proxy_avg,-0.0005995581082058518
+2,Lower-tax severe-storm casualty counties,econ_pop_Average Weekly Wage_avg,-0.028025009500670293
+2,Lower-tax severe-storm casualty counties,econ_pop_transfer_receipts_share_avg,0.23731443708118943
+2,Lower-tax severe-storm casualty counties,econ_pop_dividends_rent_share_avg,-0.053807520524781015
+2,Lower-tax severe-storm casualty counties,econ_pop_proprietors_income_share_avg,-0.33575253246216014
+2,Lower-tax severe-storm casualty counties,econ_pop_youth_share_avg,0.2584442817962818
+2,Lower-tax severe-storm casualty counties,econ_pop_prime_working_age_share_avg,0.14276937250216534
+2,Lower-tax severe-storm casualty counties,econ_pop_senior_share_avg,-0.2423858149357002
+2,Lower-tax severe-storm casualty counties,econ_pop_male_share_avg,-0.21416109820098772
+2,Lower-tax severe-storm casualty counties,econ_pop_white_share_avg,-0.35404985238415493
+2,Lower-tax severe-storm casualty counties,econ_pop_black_share_avg,0.36071961041348544
+2,Lower-tax severe-storm casualty counties,econ_pop_asian_share_avg,-0.00372927193072493
+2,Lower-tax severe-storm casualty counties,econ_pop_hispanic_share_avg,-0.01450707027676696
+2,Lower-tax severe-storm casualty counties,econ_pop_natural_increase_rate_avg,0.057166622931794926
+2,Lower-tax severe-storm casualty counties,econ_pop_international_migration_rate_avg,-0.007128061801885957
+2,Lower-tax severe-storm casualty counties,econ_pop_domestic_migration_rate_avg,0.1889606732495478
+2,Lower-tax severe-storm casualty counties,econ_pop_log_population_latest,0.3219957325599685
+2,Lower-tax severe-storm casualty counties,econ_pop_per_capita_income_latest,-0.11550410834364612
+2,Lower-tax severe-storm casualty counties,econ_pop_employment_rate_proxy_latest,-0.0014574432437940126
+2,Lower-tax severe-storm casualty counties,econ_pop_Average Weekly Wage_latest,-0.06659725837811406
+2,Lower-tax severe-storm casualty counties,econ_pop_transfer_receipts_share_latest,0.17871689294149043
+2,Lower-tax severe-storm casualty counties,econ_pop_dividends_rent_share_latest,0.0
+2,Lower-tax severe-storm casualty counties,econ_pop_proprietors_income_share_latest,-0.24146757438166758
+2,Lower-tax severe-storm casualty counties,econ_pop_youth_share_latest,0.25293966958554676
+2,Lower-tax severe-storm casualty counties,econ_pop_prime_working_age_share_latest,0.17748312625109589
+2,Lower-tax severe-storm casualty counties,econ_pop_senior_share_latest,-0.29989460070016427
+2,Lower-tax severe-storm casualty counties,econ_pop_male_share_latest,-0.22026336069348249
+2,Lower-tax severe-storm casualty counties,econ_pop_white_share_latest,-0.36846023362715113
+2,Lower-tax severe-storm casualty counties,econ_pop_black_share_latest,0.3787208005687719
+2,Lower-tax severe-storm casualty counties,econ_pop_asian_share_latest,-0.0010103604118882812
+2,Lower-tax severe-storm casualty counties,econ_pop_hispanic_share_latest,-0.03535601804001536
+2,Lower-tax severe-storm casualty counties,econ_pop_natural_increase_rate_latest,0.09072272752834133
+2,Lower-tax severe-storm casualty counties,econ_pop_international_migration_rate_latest,0.03903688315762009
+2,Lower-tax severe-storm casualty counties,econ_pop_domestic_migration_rate_latest,0.1452494499453762
+2,Lower-tax severe-storm casualty counties,econ_pop_log_population_slope,0.07127269010393718
+2,Lower-tax severe-storm casualty counties,econ_pop_per_capita_income_slope,-0.03013153877175262
+2,Lower-tax severe-storm casualty counties,econ_pop_Average Weekly Wage_slope,-0.0443955060580102
+2,Lower-tax severe-storm casualty counties,econ_pop_employment_rate_proxy_slope,-0.0021638390208604903
+2,Lower-tax severe-storm casualty counties,econ_pop_domestic_migration_rate_slope,0.0971084018339051
+2,Lower-tax severe-storm casualty counties,econ_pop_senior_share_slope,-0.21012418618904166
+2,Lower-tax severe-storm casualty counties,econ_pop_hispanic_share_slope,0.08589373112244914
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_latest,0.041159928246845175
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_mean_last_12,0.0986625270871399
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_change_12,-1.5262288466756584e-06
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_change_36,-0.007030419359642508
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_slope,0.005606612263774131
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_sale_price_volatility,0.13664332317705832
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_latest,0.03057364369403363
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_mean_last_12,0.14950983803461962
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_change_12,0.0022216527828423428
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_change_36,-2.5155809820021817e-05
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_slope,0.004013855972245048
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_ppsf_volatility,0.009766222196068904
+3,Older wildfire and mountain-hazard housing-market counties,housing_inventory_change_12,0.06258121216003817
+3,Older wildfire and mountain-hazard housing-market counties,housing_inventory_change_36,0.015962340997837852
+3,Older wildfire and mountain-hazard housing-market counties,housing_inventory_slope,0.0012047063175680333
+3,Older wildfire and mountain-hazard housing-market counties,housing_inventory_volatility,-0.05725919779706442
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_latest,0.020138140015561443
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_mean_last_12,0.11643708672180907
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_change_12,-0.01690481985557866
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_change_36,-0.010367669425326511
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_slope,0.09028304804758502
+3,Older wildfire and mountain-hazard housing-market counties,housing_months_of_supply_volatility,0.19669205430506995
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_latest,0.2341149895765684
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_mean_last_12,0.6003751987288255
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_change_12,-0.0016282980325515986
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_change_36,-0.0070852423171311385
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_slope,-0.008331113369219085
+3,Older wildfire and mountain-hazard housing-market counties,housing_median_dom_volatility,0.39002061752411593
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_latest,-0.6333507588300283
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_mean_last_12,-0.47646580002718303
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_change_12,-0.5669268664908422
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_change_36,-0.6700328556663151
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_slope,0.013657655124920016
+3,Older wildfire and mountain-hazard housing-market counties,housing_sold_above_list_volatility,0.2506076743971986
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_latest,-0.14912946830606552
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_mean_last_12,-0.2972008295819199
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_change_12,-0.04309094150005756
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_change_36,0.03379267907958176
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_slope,-0.00709984508056225
+3,Older wildfire and mountain-hazard housing-market counties,housing_avg_sale_to_list_volatility,0.5677431859608997
+3,Older wildfire and mountain-hazard housing-market counties,housing_new_listings_change_12,0.0
+3,Older wildfire and mountain-hazard housing-market counties,housing_new_listings_change_36,0.08250911387613023
+3,Older wildfire and mountain-hazard housing-market counties,housing_new_listings_slope,0.001768404805688931
+3,Older wildfire and mountain-hazard housing-market counties,housing_new_listings_volatility,-0.06698040044069295
+3,Older wildfire and mountain-hazard housing-market counties,housing_homes_sold_change_12,0.03674142977888437
+3,Older wildfire and mountain-hazard housing-market counties,housing_homes_sold_change_36,0.0
+3,Older wildfire and mountain-hazard housing-market counties,housing_homes_sold_slope,0.02509706390898979
+3,Older wildfire and mountain-hazard housing-market counties,housing_homes_sold_volatility,-0.06532710919291389
+3,Older wildfire and mountain-hazard housing-market counties,nri_risk_score,-1.118198801504343
+3,Older wildfire and mountain-hazard housing-market counties,nri_risk_value_per_capita,0.23835288854306835
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_avalanche_score,0.7047721223584417
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_avalanche_pct_nation,2.228900229144924
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_coastal_flooding_score,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_coastal_flooding_pct_nation,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_cold_wave_score,-0.8919094963129337
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_cold_wave_pct_nation,-0.8886327707234026
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_drought_score,-0.8679224624815045
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_drought_pct_nation,-0.851896515245794
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_earthquake_score,-0.5262453214711256
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_earthquake_pct_nation,-0.5262539824956245
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_hail_score,-1.0985877417083176
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_hail_pct_nation,-1.0975740441585018
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_hurricane_score,-1.034812463459352
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_hurricane_pct_nation,-1.5020392274955885
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_heat_wave_score,-1.1315787475017178
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_heat_wave_pct_nation,-1.1249487562136102
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_inland_flooding_score,-0.9167615582336736
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_inland_flooding_pct_nation,-0.9166980214760737
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_ice_storm_score,-1.1804694856572282
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_ice_storm_pct_nation,-1.1577833270596534
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_landslide_score,0.39942978363226045
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_landslide_pct_nation,0.3993970146977528
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_lightning_score,-0.8588508223795119
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_lightning_pct_nation,-0.8587356352141229
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_strong_wind_score,-1.3215692250046587
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_strong_wind_pct_nation,-1.3199968511960054
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_tornado_score,-1.3842363096875447
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_tornado_pct_nation,-1.3841539445311866
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_tsunami_score,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_tsunami_pct_nation,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_volcanic_activity_score,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_volcanic_activity_pct_nation,0.0
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_wildfire_score,0.4357845807335509
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_wildfire_pct_nation,0.435671758564794
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_winter_weather_score,-0.4501202465878112
+3,Older wildfire and mountain-hazard housing-market counties,nri_hazard_winter_weather_pct_nation,-0.44927438844278006
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_mean,-0.481403165732477
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_median,-0.49906324120158596
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_percentiles_mean_nationally,-0.7879716303614263
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_percentiles_mean_within_state,-0.06922104468124575
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_percentiles_median_nationally,-0.7931557714773882
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_latest_percentiles_median_within_state,0.00692208230788223
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_mean_cagr,0.28694875906164935
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_median_cagr,0.3938053694162799
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_percentiles_mean_cagr_nationally,0.4485160386996893
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_percentiles_mean_cagr_within_state,0.1678537781549175
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_percentiles_median_cagr_nationally,0.5662745535437279
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_growth_percentiles_median_cagr_within_state,0.067487778133746
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_average_mean,-0.5284231383564257
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_average_median,-0.6193146604766161
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_mean_latest,-0.481403165732477
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_mean_mean_last_12,-0.5284282050997339
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_mean_slope,-0.13654290307873235
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_mean_volatility,-0.14124751726293813
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_median_latest,-0.49906324120158596
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_median_mean_last_12,-0.6193157055171792
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_median_slope,-0.0784994813960939
+3,Older wildfire and mountain-hazard housing-market counties,insurance_premium_historical_median_volatility,-0.10315427194364073
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_latest_non_renewal_rate,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.183165970963883
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_average_non_renewal_rate,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_historical_non_renewal_rate_slope,0.12688795520594603
+3,Older wildfire and mountain-hazard housing-market counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,0.0
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_effective_tax_rate_2024_value,-0.3769788567949947
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_effective_tax_rate_2024_percentile_nationally,-0.6243242005082148
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_effective_tax_rate_2024_percentile_within_state,-0.48491883150072834
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,0.06426307572337339
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,0.17301278603432652
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,0.0
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_median_property_taxes_paid_2024_value,-0.17762755058951338
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,-0.3819445699702679
+3,Older wildfire and mountain-hazard housing-market counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,-0.7959742352060811
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_damage_total_percentile_nationally_sum,-0.973600617663914
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_damage_total_percentile_nationally_mean,-0.8153947847654677
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_damage_total_percentile_nationally_max,-0.660977535679479
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_event_count_percentile_nationally_sum,-1.0935380418972365
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_event_count_percentile_nationally_mean,-1.00903615386825
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_event_count_percentile_nationally_max,-1.1590668512316826
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_deaths_total_percentile_nationally_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_deaths_total_percentile_nationally_mean,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_deaths_total_percentile_nationally_max,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_injuries_total_percentile_nationally_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_injuries_total_percentile_nationally_mean,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_total_injuries_total_percentile_nationally_max,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_debris_flow_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_drought_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_dust_devil_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_dust_storm_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_excessive_heat_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_flash_flood_sum,-0.19726560250717648
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_flood_sum,-0.07605403499540968
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_funnel_cloud_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_hail_sum,-0.22551797574359425
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_heat_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_heavy_rain_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_heavy_snow_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_high_wind_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_lightning_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_strong_wind_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_thunderstorm_wind_sum,-0.44358575871777434
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_tornado_sum,-0.6594164429782257
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_tropical_storm_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,storm_event_type_wildfire_sum,0.0
+3,Older wildfire and mountain-hazard housing-market counties,fema_disaster_total_count,0.0
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_average_temp_f_mean,0.44228344265669006
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_average_temp_f_volatility,-0.31792316346810207
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_max_temp_f_volatility,-0.38334885221102005
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_min_temp_f_volatility,-0.10696055121250778
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_trend_slope_temp_f_mean,0.08487116908037624
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmax_trend_slope_temp_f_volatility,-0.0839508026859416
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_average_temp_f_mean,0.4574126559625616
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_average_temp_f_volatility,-0.26010055928625003
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_max_temp_f_volatility,-0.15872760094133512
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_min_temp_f_volatility,-0.0594530903194279
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_trend_slope_temp_f_mean,0.0255769043686984
+3,Older wildfire and mountain-hazard housing-market counties,temperature_tmin_trend_slope_temp_f_volatility,-0.2088628323087019
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_log_population_avg,-0.7669185032573937
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_per_capita_income_avg,-0.022094416859951376
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_employment_rate_proxy_avg,0.007273787042914806
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_Average Weekly Wage_avg,0.13115704446313706
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_transfer_receipts_share_avg,0.019881292667823205
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_dividends_rent_share_avg,-0.07530840028801113
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_proprietors_income_share_avg,-0.009353177852110183
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_youth_share_avg,-0.426591825544443
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_prime_working_age_share_avg,-0.31973001306971
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_senior_share_avg,0.6511891718073045
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_male_share_avg,0.3395303433306813
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_white_share_avg,0.1620387388073119
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_black_share_avg,-0.11773420770046486
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_asian_share_avg,-0.04761589340787838
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_hispanic_share_avg,-0.01815812107468129
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_natural_increase_rate_avg,-0.32778905008005976
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_international_migration_rate_avg,-0.16019481040471242
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_domestic_migration_rate_avg,0.15630430928307285
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_log_population_latest,-0.7838672650107724
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_per_capita_income_latest,0.005251169004210666
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_employment_rate_proxy_latest,0.006939622389698848
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_Average Weekly Wage_latest,0.08562504648614665
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_transfer_receipts_share_latest,0.003919657911249304
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_dividends_rent_share_latest,-0.08305470820501223
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_proprietors_income_share_latest,0.02668797865164325
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_youth_share_latest,-0.43654942159711935
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_prime_working_age_share_latest,-0.3430157018844928
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_senior_share_latest,0.6642429758714304
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_male_share_latest,0.29822013858107943
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_white_share_latest,0.16264157110690125
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_black_share_latest,-0.11957209391151889
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_asian_share_latest,-0.04983297609790413
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_hispanic_share_latest,-0.03776302832149053
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_natural_increase_rate_latest,-0.33734402340161457
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_international_migration_rate_latest,-0.2147552244297415
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_domestic_migration_rate_latest,0.08844778574251526
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_log_population_slope,-0.0916072008217527
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_per_capita_income_slope,-0.026152101266247167
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_Average Weekly Wage_slope,-0.008324157385876885
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_employment_rate_proxy_slope,0.0005514127258983085
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_domestic_migration_rate_slope,0.07005841535552665
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_senior_share_slope,0.5510985468275558
+3,Older wildfire and mountain-hazard housing-market counties,econ_pop_hispanic_share_slope,-0.3248034190107191
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_latest,-0.1150707671417177
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_mean_last_12,-0.23106157726685697
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_change_12,1.3582169522376152e-05
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_change_36,0.09135125373995204
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_slope,-0.002841631791691454
+4,"High-premium, high-tax low-hazard counties",housing_median_sale_price_volatility,0.033575614440313296
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_latest,-0.09847185886698956
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_mean_last_12,-0.3480876527694591
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_change_12,0.01032894310323581
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_change_36,0.041771850957088304
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_slope,-0.0026339145784788557
+4,"High-premium, high-tax low-hazard counties",housing_median_ppsf_volatility,0.0013334304721674586
+4,"High-premium, high-tax low-hazard counties",housing_inventory_change_12,-0.03486929709796849
+4,"High-premium, high-tax low-hazard counties",housing_inventory_change_36,0.009975032806354945
+4,"High-premium, high-tax low-hazard counties",housing_inventory_slope,-0.012629326105699914
+4,"High-premium, high-tax low-hazard counties",housing_inventory_volatility,-0.07455075246497388
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_latest,-0.03356356669260242
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_mean_last_12,-0.057169560597645046
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_change_12,0.07438120736454648
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_change_36,0.05969535052341213
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_slope,-0.04755193881874557
+4,"High-premium, high-tax low-hazard counties",housing_months_of_supply_volatility,0.12391083131184946
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_latest,-0.052675872654727895
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_mean_last_12,0.17727973904625918
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_change_12,0.004298706805936214
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_change_36,-0.011058538129934315
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_slope,-0.029191826323048693
+4,"High-premium, high-tax low-hazard counties",housing_median_dom_volatility,0.3187439077788327
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_latest,-0.6333507588300283
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_mean_last_12,-0.23617916811692274
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_change_12,-0.2360938453690777
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_change_36,-0.2800670318164616
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_slope,0.020809482785598476
+4,"High-premium, high-tax low-hazard counties",housing_sold_above_list_volatility,0.44127880588307744
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_latest,-0.03508928666025048
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_mean_last_12,-0.2511231815847212
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_change_12,0.030633517235693714
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_change_36,-0.07022721185842432
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_slope,0.006326414943774046
+4,"High-premium, high-tax low-hazard counties",housing_avg_sale_to_list_volatility,0.6457112700623004
+4,"High-premium, high-tax low-hazard counties",housing_new_listings_change_12,0.0
+4,"High-premium, high-tax low-hazard counties",housing_new_listings_change_36,-0.0925174870778334
+4,"High-premium, high-tax low-hazard counties",housing_new_listings_slope,0.0016145573929012304
+4,"High-premium, high-tax low-hazard counties",housing_new_listings_volatility,-0.0794523257227507
+4,"High-premium, high-tax low-hazard counties",housing_homes_sold_change_12,-0.021949425582190662
+4,"High-premium, high-tax low-hazard counties",housing_homes_sold_change_36,0.0
+4,"High-premium, high-tax low-hazard counties",housing_homes_sold_slope,0.034393568518037855
+4,"High-premium, high-tax low-hazard counties",housing_homes_sold_volatility,-0.07380386416253756
+4,"High-premium, high-tax low-hazard counties",nri_risk_score,-0.8854031728061212
+4,"High-premium, high-tax low-hazard counties",nri_risk_value_per_capita,0.4038114401787451
+4,"High-premium, high-tax low-hazard counties",nri_hazard_avalanche_score,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_avalanche_pct_nation,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_coastal_flooding_score,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_coastal_flooding_pct_nation,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_cold_wave_score,0.037391101030920804
+4,"High-premium, high-tax low-hazard counties",nri_hazard_cold_wave_pct_nation,0.03718869706096368
+4,"High-premium, high-tax low-hazard counties",nri_hazard_drought_score,0.5937878279314701
+4,"High-premium, high-tax low-hazard counties",nri_hazard_drought_pct_nation,0.5827616879026711
+4,"High-premium, high-tax low-hazard counties",nri_hazard_earthquake_score,-1.3351755764698232
+4,"High-premium, high-tax low-hazard counties",nri_hazard_earthquake_pct_nation,-1.334684068595973
+4,"High-premium, high-tax low-hazard counties",nri_hazard_hail_score,0.7527675935265927
+4,"High-premium, high-tax low-hazard counties",nri_hazard_hail_pct_nation,0.7521040347951505
+4,"High-premium, high-tax low-hazard counties",nri_hazard_hurricane_score,-1.034812463459352
+4,"High-premium, high-tax low-hazard counties",nri_hazard_hurricane_pct_nation,-1.5020392274955885
+4,"High-premium, high-tax low-hazard counties",nri_hazard_heat_wave_score,-1.0175966100664688
+4,"High-premium, high-tax low-hazard counties",nri_hazard_heat_wave_pct_nation,-1.0117107562172731
+4,"High-premium, high-tax low-hazard counties",nri_hazard_inland_flooding_score,-1.075168199066141
+4,"High-premium, high-tax low-hazard counties",nri_hazard_inland_flooding_pct_nation,-1.0750691971707727
+4,"High-premium, high-tax low-hazard counties",nri_hazard_ice_storm_score,-0.028846753548125107
+4,"High-premium, high-tax low-hazard counties",nri_hazard_ice_storm_pct_nation,-0.028311530324515003
+4,"High-premium, high-tax low-hazard counties",nri_hazard_landslide_score,-0.871036740663016
+4,"High-premium, high-tax low-hazard counties",nri_hazard_landslide_pct_nation,-0.8710879161397269
+4,"High-premium, high-tax low-hazard counties",nri_hazard_lightning_score,-1.1723104324020215
+4,"High-premium, high-tax low-hazard counties",nri_hazard_lightning_pct_nation,-1.1722818623781435
+4,"High-premium, high-tax low-hazard counties",nri_hazard_strong_wind_score,-0.39514940966592355
+4,"High-premium, high-tax low-hazard counties",nri_hazard_strong_wind_pct_nation,-0.3947537753105035
+4,"High-premium, high-tax low-hazard counties",nri_hazard_tornado_score,-0.37881969567045237
+4,"High-premium, high-tax low-hazard counties",nri_hazard_tornado_pct_nation,-0.37887165696925884
+4,"High-premium, high-tax low-hazard counties",nri_hazard_tsunami_score,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_tsunami_pct_nation,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_volcanic_activity_score,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_volcanic_activity_pct_nation,0.0
+4,"High-premium, high-tax low-hazard counties",nri_hazard_wildfire_score,0.13370618058464004
+4,"High-premium, high-tax low-hazard counties",nri_hazard_wildfire_pct_nation,0.1335467308906775
+4,"High-premium, high-tax low-hazard counties",nri_hazard_winter_weather_score,0.3063241168173806
+4,"High-premium, high-tax low-hazard counties",nri_hazard_winter_weather_pct_nation,0.3056771946683469
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_mean,0.5985398410739106
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_median,0.7080658406219953
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_percentiles_mean_nationally,0.881489142536189
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_percentiles_mean_within_state,0.03634104845765431
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_percentiles_median_nationally,0.9940423860873826
+4,"High-premium, high-tax low-hazard counties",insurance_premium_latest_percentiles_median_within_state,0.15401633135037981
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_mean_cagr,1.0274754951499254
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_median_cagr,0.8363986619287183
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_percentiles_mean_cagr_nationally,1.2139372321563027
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_percentiles_mean_cagr_within_state,0.17304513211847186
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_percentiles_median_cagr_nationally,1.0909876719649803
+4,"High-premium, high-tax low-hazard counties",insurance_premium_growth_percentiles_median_cagr_within_state,0.1557410264624907
+4,"High-premium, high-tax low-hazard counties",insurance_premium_average_mean,0.30108207136028403
+4,"High-premium, high-tax low-hazard counties",insurance_premium_average_median,0.42815009158199785
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_mean_latest,0.5985398410739106
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_mean_mean_last_12,0.3010729103906695
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_mean_slope,0.8138530547802671
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_mean_volatility,0.8598284833843293
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_median_latest,0.7080658406219953
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_median_mean_last_12,0.4281534394550452
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_median_slope,0.894200717101884
+4,"High-premium, high-tax low-hazard counties",insurance_premium_historical_median_volatility,0.8905752209916658
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_latest_non_renewal_rate,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,-0.33815256177947606
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,-0.20483634552436833
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_average_non_renewal_rate,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_historical_non_renewal_rate_slope,0.0
+4,"High-premium, high-tax low-hazard counties",insurance_nonrenewal_historical_non_renewal_rate_volatility,0.0
+4,"High-premium, high-tax low-hazard counties",property_tax_effective_tax_rate_2024_value,0.7665236754831557
+4,"High-premium, high-tax low-hazard counties",property_tax_effective_tax_rate_2024_percentile_nationally,0.8324322673442863
+4,"High-premium, high-tax low-hazard counties",property_tax_effective_tax_rate_2024_percentile_within_state,0.034637059392909196
+4,"High-premium, high-tax low-hazard counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,0.09639461358506009
+4,"High-premium, high-tax low-hazard counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,0.24221790044805674
+4,"High-premium, high-tax low-hazard counties",property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,0.034610542629665474
+4,"High-premium, high-tax low-hazard counties",property_tax_median_property_taxes_paid_2024_value,0.10567275025286119
+4,"High-premium, high-tax low-hazard counties",property_tax_median_property_taxes_paid_2024_percentile_nationally,0.20833340180196452
+4,"High-premium, high-tax low-hazard counties",property_tax_median_property_taxes_paid_2024_percentile_within_state,-0.25955681582807
+4,"High-premium, high-tax low-hazard counties",storm_total_damage_total_percentile_nationally_sum,-0.5247790016995498
+4,"High-premium, high-tax low-hazard counties",storm_total_damage_total_percentile_nationally_mean,-0.6323588848455475
+4,"High-premium, high-tax low-hazard counties",storm_total_damage_total_percentile_nationally_max,0.006790865092597643
+4,"High-premium, high-tax low-hazard counties",storm_total_event_count_percentile_nationally_sum,0.15385316696029377
+4,"High-premium, high-tax low-hazard counties",storm_total_event_count_percentile_nationally_mean,0.18561326030859163
+4,"High-premium, high-tax low-hazard counties",storm_total_event_count_percentile_nationally_max,0.19767031571393004
+4,"High-premium, high-tax low-hazard counties",storm_total_deaths_total_percentile_nationally_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_total_deaths_total_percentile_nationally_mean,0.0
+4,"High-premium, high-tax low-hazard counties",storm_total_deaths_total_percentile_nationally_max,0.0
+4,"High-premium, high-tax low-hazard counties",storm_total_injuries_total_percentile_nationally_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_total_injuries_total_percentile_nationally_mean,0.0
+4,"High-premium, high-tax low-hazard counties",storm_total_injuries_total_percentile_nationally_max,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_debris_flow_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_drought_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_dust_devil_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_dust_storm_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_excessive_heat_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_flash_flood_sum,-0.1578124820057412
+4,"High-premium, high-tax low-hazard counties",storm_event_type_flood_sum,-0.05070268999693978
+4,"High-premium, high-tax low-hazard counties",storm_event_type_funnel_cloud_sum,0.44895275310711474
+4,"High-premium, high-tax low-hazard counties",storm_event_type_hail_sum,0.5412431417846262
+4,"High-premium, high-tax low-hazard counties",storm_event_type_heat_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_heavy_rain_sum,0.06149602284188932
+4,"High-premium, high-tax low-hazard counties",storm_event_type_heavy_snow_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_high_wind_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_lightning_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_strong_wind_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_thunderstorm_wind_sum,-0.07648030322720246
+4,"High-premium, high-tax low-hazard counties",storm_event_type_tornado_sum,0.16485411074455641
+4,"High-premium, high-tax low-hazard counties",storm_event_type_tropical_storm_sum,0.0
+4,"High-premium, high-tax low-hazard counties",storm_event_type_wildfire_sum,0.0
+4,"High-premium, high-tax low-hazard counties",fema_disaster_total_count,0.47459798709675843
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_average_temp_f_mean,0.5990317010972822
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_average_temp_f_volatility,-0.9225534326390975
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_max_temp_f_volatility,-1.032530255615942
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_min_temp_f_volatility,-0.736684082056391
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_trend_slope_temp_f_mean,0.6223885732560921
+4,"High-premium, high-tax low-hazard counties",temperature_tmax_trend_slope_temp_f_volatility,-0.9835205465413213
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_average_temp_f_mean,0.4812826316969169
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_average_temp_f_volatility,-0.3621625877499888
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_max_temp_f_volatility,-0.6768680981913068
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_min_temp_f_volatility,-0.38845245729049277
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_trend_slope_temp_f_mean,0.1822354436269793
+4,"High-premium, high-tax low-hazard counties",temperature_tmin_trend_slope_temp_f_volatility,0.014655742993259464
+4,"High-premium, high-tax low-hazard counties",econ_pop_log_population_avg,-0.7902006903333111
+4,"High-premium, high-tax low-hazard counties",econ_pop_per_capita_income_avg,-0.23262064001117208
+4,"High-premium, high-tax low-hazard counties",econ_pop_employment_rate_proxy_avg,0.06680862951010746
+4,"High-premium, high-tax low-hazard counties",econ_pop_Average Weekly Wage_avg,-0.2645560896863278
+4,"High-premium, high-tax low-hazard counties",econ_pop_transfer_receipts_share_avg,0.17257198515382804
+4,"High-premium, high-tax low-hazard counties",econ_pop_dividends_rent_share_avg,-0.05175623000808797
+4,"High-premium, high-tax low-hazard counties",econ_pop_proprietors_income_share_avg,-0.08846746322793445
+4,"High-premium, high-tax low-hazard counties",econ_pop_youth_share_avg,0.336408890536953
+4,"High-premium, high-tax low-hazard counties",econ_pop_prime_working_age_share_avg,-0.7501182344125531
+4,"High-premium, high-tax low-hazard counties",econ_pop_senior_share_avg,0.40389150039966426
+4,"High-premium, high-tax low-hazard counties",econ_pop_male_share_avg,0.2722997359131403
+4,"High-premium, high-tax low-hazard counties",econ_pop_white_share_avg,0.2664030020750399
+4,"High-premium, high-tax low-hazard counties",econ_pop_black_share_avg,-0.12692187709083413
+4,"High-premium, high-tax low-hazard counties",econ_pop_asian_share_avg,-0.04606154136819821
+4,"High-premium, high-tax low-hazard counties",econ_pop_hispanic_share_avg,-0.07801273567572821
+4,"High-premium, high-tax low-hazard counties",econ_pop_natural_increase_rate_avg,0.1563306975585605
+4,"High-premium, high-tax low-hazard counties",econ_pop_international_migration_rate_avg,0.0036776756570194294
+4,"High-premium, high-tax low-hazard counties",econ_pop_domestic_migration_rate_avg,-0.37742976258892363
+4,"High-premium, high-tax low-hazard counties",econ_pop_log_population_latest,-0.7934839911510673
+4,"High-premium, high-tax low-hazard counties",econ_pop_per_capita_income_latest,-0.22969002199899244
+4,"High-premium, high-tax low-hazard counties",econ_pop_employment_rate_proxy_latest,0.06237625899057555
+4,"High-premium, high-tax low-hazard counties",econ_pop_Average Weekly Wage_latest,-0.2410186493684128
+4,"High-premium, high-tax low-hazard counties",econ_pop_transfer_receipts_share_latest,0.16298359986034827
+4,"High-premium, high-tax low-hazard counties",econ_pop_dividends_rent_share_latest,-0.04524771005180061
+4,"High-premium, high-tax low-hazard counties",econ_pop_proprietors_income_share_latest,-0.12288374765081425
+4,"High-premium, high-tax low-hazard counties",econ_pop_youth_share_latest,0.3617421397488478
+4,"High-premium, high-tax low-hazard counties",econ_pop_prime_working_age_share_latest,-0.8087150064160266
+4,"High-premium, high-tax low-hazard counties",econ_pop_senior_share_latest,0.3674218448616928
+4,"High-premium, high-tax low-hazard counties",econ_pop_male_share_latest,0.3009821427968603
+4,"High-premium, high-tax low-hazard counties",econ_pop_white_share_latest,0.2512963862481074
+4,"High-premium, high-tax low-hazard counties",econ_pop_black_share_latest,-0.12618246705772843
+4,"High-premium, high-tax low-hazard counties",econ_pop_asian_share_latest,-0.04697514910622872
+4,"High-premium, high-tax low-hazard counties",econ_pop_hispanic_share_latest,-0.08224386673328493
+4,"High-premium, high-tax low-hazard counties",econ_pop_natural_increase_rate_latest,0.19288703180447378
+4,"High-premium, high-tax low-hazard counties",econ_pop_international_migration_rate_latest,-0.01684842523331828
+4,"High-premium, high-tax low-hazard counties",econ_pop_domestic_migration_rate_latest,-0.38181007665195443
+4,"High-premium, high-tax low-hazard counties",econ_pop_log_population_slope,-0.27216897283430297
+4,"High-premium, high-tax low-hazard counties",econ_pop_per_capita_income_slope,-0.16150801122750214
+4,"High-premium, high-tax low-hazard counties",econ_pop_Average Weekly Wage_slope,-0.098304334842732
+4,"High-premium, high-tax low-hazard counties",econ_pop_employment_rate_proxy_slope,0.011815094815263957
+4,"High-premium, high-tax low-hazard counties",econ_pop_domestic_migration_rate_slope,-0.051778535451717865
+4,"High-premium, high-tax low-hazard counties",econ_pop_senior_share_slope,-0.09777280149861352
+4,"High-premium, high-tax low-hazard counties",econ_pop_hispanic_share_slope,0.04367390940910524
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_latest,-0.010816652111321464
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_mean_last_12,-0.014362188700476121
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_change_12,6.899661542500708e-07
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_change_36,0.02222810643055195
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_slope,-0.0008327640147120857
+5,Cold-region severe-storm casualty counties,housing_median_sale_price_volatility,-0.02086988452320052
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_latest,-0.0015752571244493016
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_mean_last_12,-0.02554311883044324
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_change_12,-0.003355461766089867
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_change_36,-0.001305287506838569
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_slope,-0.0006076919992844827
+5,Cold-region severe-storm casualty counties,housing_median_ppsf_volatility,-0.0013421601080862461
+5,Cold-region severe-storm casualty counties,housing_inventory_change_12,0.11694799968247226
+5,Cold-region severe-storm casualty counties,housing_inventory_change_36,0.10530711074962468
+5,Cold-region severe-storm casualty counties,housing_inventory_slope,0.010263725846818438
+5,Cold-region severe-storm casualty counties,housing_inventory_volatility,0.001545253904949843
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_latest,0.04027628003112289
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_mean_last_12,0.06398794855883214
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_change_12,0.007364974881310322
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_change_36,0.04245737351309139
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_slope,0.017314247118677014
+5,Cold-region severe-storm casualty counties,housing_months_of_supply_volatility,0.009014129445680778
+5,Cold-region severe-storm casualty counties,housing_median_dom_latest,0.11120462004887
+5,Cold-region severe-storm casualty counties,housing_median_dom_mean_last_12,0.057570224535640806
+5,Cold-region severe-storm casualty counties,housing_median_dom_change_12,0.012116216257047957
+5,Cold-region severe-storm casualty counties,housing_median_dom_change_36,0.013171809966778279
+5,Cold-region severe-storm casualty counties,housing_median_dom_slope,-0.0008932709871096633
+5,Cold-region severe-storm casualty counties,housing_median_dom_volatility,-0.01605107031291177
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_latest,0.024359644570385728
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_mean_last_12,-0.06366568879673569
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_change_12,-0.08083878121092346
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_change_36,-0.02060821375977512
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_slope,0.003385763060140886
+5,Cold-region severe-storm casualty counties,housing_sold_above_list_volatility,-0.0339868056056219
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_latest,-0.01754464333012524
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_mean_last_12,-0.08869947239460343
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_change_12,0.030633517235693714
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_change_36,0.03363488432877709
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_slope,0.0008792323020658817
+5,Cold-region severe-storm casualty counties,housing_avg_sale_to_list_volatility,0.041792954114315634
+5,Cold-region severe-storm casualty counties,housing_new_listings_change_12,0.0
+5,Cold-region severe-storm casualty counties,housing_new_listings_change_36,0.024598783737103325
+5,Cold-region severe-storm casualty counties,housing_new_listings_slope,0.008828517442185952
+5,Cold-region severe-storm casualty counties,housing_new_listings_volatility,-0.00820711961314714
+5,Cold-region severe-storm casualty counties,housing_homes_sold_change_12,-0.005166763562655614
+5,Cold-region severe-storm casualty counties,housing_homes_sold_change_36,0.0
+5,Cold-region severe-storm casualty counties,housing_homes_sold_slope,0.0044982258389868164
+5,Cold-region severe-storm casualty counties,housing_homes_sold_volatility,-0.0009612922417667009
+5,Cold-region severe-storm casualty counties,nri_risk_score,0.1334998110022835
+5,Cold-region severe-storm casualty counties,nri_risk_value_per_capita,0.004933799045082647
+5,Cold-region severe-storm casualty counties,nri_hazard_avalanche_score,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_avalanche_pct_nation,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_coastal_flooding_score,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_coastal_flooding_pct_nation,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_cold_wave_score,0.18641092420284017
+5,Cold-region severe-storm casualty counties,nri_hazard_cold_wave_pct_nation,0.18594348530481722
+5,Cold-region severe-storm casualty counties,nri_hazard_drought_score,0.01640578243512148
+5,Cold-region severe-storm casualty counties,nri_hazard_drought_pct_nation,0.01611786863689369
+5,Cold-region severe-storm casualty counties,nri_hazard_earthquake_score,-0.03361526626075888
+5,Cold-region severe-storm casualty counties,nri_hazard_earthquake_pct_nation,-0.03364749752762981
+5,Cold-region severe-storm casualty counties,nri_hazard_hail_score,0.08315299955953857
+5,Cold-region severe-storm casualty counties,nri_hazard_hail_pct_nation,0.08303370786036327
+5,Cold-region severe-storm casualty counties,nri_hazard_hurricane_score,0.33255035508360853
+5,Cold-region severe-storm casualty counties,nri_hazard_hurricane_pct_nation,0.23941728243048274
+5,Cold-region severe-storm casualty counties,nri_hazard_heat_wave_score,0.17180055532189703
+5,Cold-region severe-storm casualty counties,nri_hazard_heat_wave_pct_nation,0.17091860624447117
+5,Cold-region severe-storm casualty counties,nri_hazard_inland_flooding_score,0.2709984564862783
+5,Cold-region severe-storm casualty counties,nri_hazard_inland_flooding_pct_nation,0.2709074503155943
+5,Cold-region severe-storm casualty counties,nri_hazard_ice_storm_score,0.39607851171072744
+5,Cold-region severe-storm casualty counties,nri_hazard_ice_storm_pct_nation,0.38844826389349524
+5,Cold-region severe-storm casualty counties,nri_hazard_landslide_score,0.08925102681923801
+5,Cold-region severe-storm casualty counties,nri_hazard_landslide_pct_nation,0.08920994398732694
+5,Cold-region severe-storm casualty counties,nri_hazard_lightning_score,0.25010744123058715
+5,Cold-region severe-storm casualty counties,nri_hazard_lightning_pct_nation,0.24998234124831628
+5,Cold-region severe-storm casualty counties,nri_hazard_strong_wind_score,0.27224892281805435
+5,Cold-region severe-storm casualty counties,nri_hazard_strong_wind_pct_nation,0.27200474197826047
+5,Cold-region severe-storm casualty counties,nri_hazard_tornado_score,0.30228679214491067
+5,Cold-region severe-storm casualty counties,nri_hazard_tornado_pct_nation,0.30234990380026855
+5,Cold-region severe-storm casualty counties,nri_hazard_tsunami_score,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_tsunami_pct_nation,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_volcanic_activity_score,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_volcanic_activity_pct_nation,0.0
+5,Cold-region severe-storm casualty counties,nri_hazard_wildfire_score,-0.08638398405348724
+5,Cold-region severe-storm casualty counties,nri_hazard_wildfire_pct_nation,-0.08642305088264884
+5,Cold-region severe-storm casualty counties,nri_hazard_winter_weather_score,0.048483676055884856
+5,Cold-region severe-storm casualty counties,nri_hazard_winter_weather_pct_nation,0.04833964938941283
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_mean,-0.042854881222475695
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_median,-0.06595899525434973
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_percentiles_mean_nationally,-0.07273584280259326
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_percentiles_mean_within_state,-0.26650102202279646
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_percentiles_median_nationally,-0.13334714935318515
+5,Cold-region severe-storm casualty counties,insurance_premium_latest_percentiles_median_within_state,-0.21804559269828985
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_mean_cagr,-0.14610589733002963
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_median_cagr,-0.2600343531393525
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_percentiles_mean_cagr_nationally,-0.2528314349426822
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_percentiles_mean_cagr_within_state,0.029417672460140022
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_percentiles_median_cagr_nationally,-0.41734607768819093
+5,Cold-region severe-storm casualty counties,insurance_premium_growth_percentiles_median_cagr_within_state,-0.006921823398332903
+5,Cold-region severe-storm casualty counties,insurance_premium_average_mean,-0.02838687533386842
+5,Cold-region severe-storm casualty counties,insurance_premium_average_median,-0.07813204405940223
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_mean_latest,-0.042854881222475695
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_mean_mean_last_12,-0.028399075944651936
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_mean_slope,-0.047095169317139224
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_mean_volatility,-0.06970862891870443
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_median_latest,-0.06595899525434973
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_median_mean_last_12,-0.07812520927108063
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_median_slope,-0.1588562060428839
+5,Cold-region severe-storm casualty counties,insurance_premium_historical_median_volatility,-0.10334972626210782
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_latest_non_renewal_rate,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_average_non_renewal_rate,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_slope,0.0
+5,Cold-region severe-storm casualty counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,-0.15905247924519156
+5,Cold-region severe-storm casualty counties,property_tax_effective_tax_rate_2024_value,-0.21362135218383022
+5,Cold-region severe-storm casualty counties,property_tax_effective_tax_rate_2024_percentile_nationally,-0.32950443915711325
+5,Cold-region severe-storm casualty counties,property_tax_effective_tax_rate_2024_percentile_within_state,-0.20782235635745497
+5,Cold-region severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,-0.03213153786168672
+5,Cold-region severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,-0.10380767162059591
+5,Cold-region severe-storm casualty counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,0.05191581394449821
+5,Cold-region severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_value,-0.22281655563185532
+5,Cold-region severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,-0.48611127087125017
+5,Cold-region severe-storm casualty counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,-0.10382272633122808
+5,Cold-region severe-storm casualty counties,storm_total_damage_total_percentile_nationally_sum,0.3999781324789534
+5,Cold-region severe-storm casualty counties,storm_total_damage_total_percentile_nationally_mean,0.3314486434256579
+5,Cold-region severe-storm casualty counties,storm_total_damage_total_percentile_nationally_max,0.058854164135844066
+5,Cold-region severe-storm casualty counties,storm_total_event_count_percentile_nationally_sum,0.05331545389713173
+5,Cold-region severe-storm casualty counties,storm_total_event_count_percentile_nationally_mean,0.06921172418286506
+5,Cold-region severe-storm casualty counties,storm_total_event_count_percentile_nationally_max,0.07188011480506515
+5,Cold-region severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_sum,1.1672919837776135
+5,Cold-region severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_mean,1.1702661174158973
+5,Cold-region severe-storm casualty counties,storm_total_deaths_total_percentile_nationally_max,2.1233361240439654
+5,Cold-region severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_mean,0.0
+5,Cold-region severe-storm casualty counties,storm_total_injuries_total_percentile_nationally_max,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_debris_flow_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_drought_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_dust_devil_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_dust_storm_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_excessive_heat_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_flash_flood_sum,0.1578124820057412
+5,Cold-region severe-storm casualty counties,storm_event_type_flood_sum,0.05070268999693978
+5,Cold-region severe-storm casualty counties,storm_event_type_funnel_cloud_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_hail_sum,0.022551797574359423
+5,Cold-region severe-storm casualty counties,storm_event_type_heat_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_heavy_rain_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_heavy_snow_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_high_wind_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_lightning_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_strong_wind_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_thunderstorm_wind_sum,0.07648030322720246
+5,Cold-region severe-storm casualty counties,storm_event_type_tornado_sum,-0.16485411074455641
+5,Cold-region severe-storm casualty counties,storm_event_type_tropical_storm_sum,0.0
+5,Cold-region severe-storm casualty counties,storm_event_type_wildfire_sum,0.0
+5,Cold-region severe-storm casualty counties,fema_disaster_total_count,0.0
+5,Cold-region severe-storm casualty counties,temperature_tmax_average_temp_f_mean,-0.2727365791790918
+5,Cold-region severe-storm casualty counties,temperature_tmax_average_temp_f_volatility,0.22459984743968983
+5,Cold-region severe-storm casualty counties,temperature_tmax_max_temp_f_volatility,0.2594492189000995
+5,Cold-region severe-storm casualty counties,temperature_tmax_min_temp_f_volatility,0.11823738092012867
+5,Cold-region severe-storm casualty counties,temperature_tmax_trend_slope_temp_f_mean,-0.9438702743181235
+5,Cold-region severe-storm casualty counties,temperature_tmax_trend_slope_temp_f_volatility,0.2576801303499
+5,Cold-region severe-storm casualty counties,temperature_tmin_average_temp_f_mean,-0.3778589367056006
+5,Cold-region severe-storm casualty counties,temperature_tmin_average_temp_f_volatility,0.10011385769883309
+5,Cold-region severe-storm casualty counties,temperature_tmin_max_temp_f_volatility,0.20072391869134204
+5,Cold-region severe-storm casualty counties,temperature_tmin_min_temp_f_volatility,0.23700059147635447
+5,Cold-region severe-storm casualty counties,temperature_tmin_trend_slope_temp_f_mean,-0.5211294265122389
+5,Cold-region severe-storm casualty counties,temperature_tmin_trend_slope_temp_f_volatility,0.10896528214162911
+5,Cold-region severe-storm casualty counties,econ_pop_log_population_avg,0.038759077741854414
+5,Cold-region severe-storm casualty counties,econ_pop_per_capita_income_avg,0.06595470906520855
+5,Cold-region severe-storm casualty counties,econ_pop_employment_rate_proxy_avg,0.001249777641436174
+5,Cold-region severe-storm casualty counties,econ_pop_Average Weekly Wage_avg,0.029146009880696936
+5,Cold-region severe-storm casualty counties,econ_pop_transfer_receipts_share_avg,-0.06895599056690944
+5,Cold-region severe-storm casualty counties,econ_pop_dividends_rent_share_avg,-0.16080596461033725
+5,Cold-region severe-storm casualty counties,econ_pop_proprietors_income_share_avg,0.33282050316816064
+5,Cold-region severe-storm casualty counties,econ_pop_youth_share_avg,-0.04199629376893918
+5,Cold-region severe-storm casualty counties,econ_pop_prime_working_age_share_avg,0.04551724105771987
+5,Cold-region severe-storm casualty counties,econ_pop_senior_share_avg,0.09643658846188914
+5,Cold-region severe-storm casualty counties,econ_pop_male_share_avg,-0.11753075303985237
+5,Cold-region severe-storm casualty counties,econ_pop_white_share_avg,0.1267059940665037
+5,Cold-region severe-storm casualty counties,econ_pop_black_share_avg,-0.02863302375176709
+5,Cold-region severe-storm casualty counties,econ_pop_asian_share_avg,-0.02416896701742419
+5,Cold-region severe-storm casualty counties,econ_pop_hispanic_share_avg,-0.05913954325828518
+5,Cold-region severe-storm casualty counties,econ_pop_natural_increase_rate_avg,-0.15659544394212813
+5,Cold-region severe-storm casualty counties,econ_pop_international_migration_rate_avg,-0.08158158467453404
+5,Cold-region severe-storm casualty counties,econ_pop_domestic_migration_rate_avg,0.06496339720484004
+5,Cold-region severe-storm casualty counties,econ_pop_log_population_latest,0.022042534181315538
+5,Cold-region severe-storm casualty counties,econ_pop_per_capita_income_latest,0.05715778607463872
+5,Cold-region severe-storm casualty counties,econ_pop_employment_rate_proxy_latest,0.0007863659277052619
+5,Cold-region severe-storm casualty counties,econ_pop_Average Weekly Wage_latest,0.07928245045013578
+5,Cold-region severe-storm casualty counties,econ_pop_transfer_receipts_share_latest,-0.12792162563057458
+5,Cold-region severe-storm casualty counties,econ_pop_dividends_rent_share_latest,-0.11873759449799971
+5,Cold-region severe-storm casualty counties,econ_pop_proprietors_income_share_latest,0.20042047791985973
+5,Cold-region severe-storm casualty counties,econ_pop_youth_share_latest,-0.03072073749367004
+5,Cold-region severe-storm casualty counties,econ_pop_prime_working_age_share_latest,0.03528615404971429
+5,Cold-region severe-storm casualty counties,econ_pop_senior_share_latest,0.07465668104353196
+5,Cold-region severe-storm casualty counties,econ_pop_male_share_latest,-0.14461785374857675
+5,Cold-region severe-storm casualty counties,econ_pop_white_share_latest,0.14011422357488135
+5,Cold-region severe-storm casualty counties,econ_pop_black_share_latest,-0.02641801626161298
+5,Cold-region severe-storm casualty counties,econ_pop_asian_share_latest,-0.028296228987714524
+5,Cold-region severe-storm casualty counties,econ_pop_hispanic_share_latest,-0.06815507986519041
+5,Cold-region severe-storm casualty counties,econ_pop_natural_increase_rate_latest,-0.1231136555238375
+5,Cold-region severe-storm casualty counties,econ_pop_international_migration_rate_latest,-0.041664376829308035
+5,Cold-region severe-storm casualty counties,econ_pop_domestic_migration_rate_latest,0.13395340214163995
+5,Cold-region severe-storm casualty counties,econ_pop_log_population_slope,0.003531805189674756
+5,Cold-region severe-storm casualty counties,econ_pop_per_capita_income_slope,7.831871686379244e-05
+5,Cold-region severe-storm casualty counties,econ_pop_Average Weekly Wage_slope,-0.1050429384408234
+5,Cold-region severe-storm casualty counties,econ_pop_employment_rate_proxy_slope,-0.002488753843736571
+5,Cold-region severe-storm casualty counties,econ_pop_domestic_migration_rate_slope,0.1016455932404441
+5,Cold-region severe-storm casualty counties,econ_pop_senior_share_slope,-0.14702104956842266
+5,Cold-region severe-storm casualty counties,econ_pop_hispanic_share_slope,-0.029668972090845333
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_latest,-0.046116822831411476
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_mean_last_12,-0.08770796599789997
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_change_12,-6.911555763580704e-07
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_change_36,0.03322742145494058
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_slope,-0.002063468620928447
+6,Lower-wage tornado and storm-injury counties,housing_median_sale_price_volatility,-0.019550892293882644
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_latest,-0.034815377080999035
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_mean_last_12,-0.10899927428720145
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_change_12,0.0019402335625578737
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_change_36,0.014531510344611137
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_slope,-0.000886464629524137
+6,Lower-wage tornado and storm-injury counties,housing_median_ppsf_volatility,-0.0014938880884260311
+6,Lower-wage tornado and storm-injury counties,housing_inventory_change_12,0.05679699803323615
+6,Lower-wage tornado and storm-injury counties,housing_inventory_change_36,0.02046121217338023
+6,Lower-wage tornado and storm-injury counties,housing_inventory_slope,-0.004259537749592407
+6,Lower-wage tornado and storm-injury counties,housing_inventory_volatility,-0.005637986114489284
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_latest,-0.013425426677040981
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_mean_last_12,-0.029371517371267194
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_change_12,0.00589673807986774
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_change_36,0.008217556163824174
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_slope,-0.02181067033555355
+6,Lower-wage tornado and storm-injury counties,housing_months_of_supply_volatility,-0.022674215601222902
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_latest,-0.04097012317589947
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_mean_last_12,-0.04294921512976398
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_change_12,0.0025456490368060175
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_change_36,-0.004286556338524578
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_slope,-0.0027046720797086576
+6,Lower-wage tornado and storm-injury counties,housing_median_dom_volatility,-0.02284543368393333
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_latest,0.042629377998175025
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_mean_last_12,0.03696717414003985
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_change_12,-0.02042572691772486
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_change_36,-0.02884129978314917
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_slope,0.0042309188359427475
+6,Lower-wage tornado and storm-injury counties,housing_sold_above_list_volatility,-0.01210943832803694
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_latest,-0.03508928666025048
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_mean_last_12,-0.017279117998942623
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_change_12,-0.03201251801157703
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_change_36,-0.034444188904077036
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_slope,0.0025157642121651997
+6,Lower-wage tornado and storm-injury counties,housing_avg_sale_to_list_volatility,0.003602096233204173
+6,Lower-wage tornado and storm-injury counties,housing_new_listings_change_12,0.0
+6,Lower-wage tornado and storm-injury counties,housing_new_listings_change_36,0.014641656363368834
+6,Lower-wage tornado and storm-injury counties,housing_new_listings_slope,0.007747603015133643
+6,Lower-wage tornado and storm-injury counties,housing_new_listings_volatility,-0.00835379123363568
+6,Lower-wage tornado and storm-injury counties,housing_homes_sold_change_12,0.03674142977888437
+6,Lower-wage tornado and storm-injury counties,housing_homes_sold_change_36,0.0
+6,Lower-wage tornado and storm-injury counties,housing_homes_sold_slope,0.010410988105327996
+6,Lower-wage tornado and storm-injury counties,housing_homes_sold_volatility,-0.005936386658974336
+6,Lower-wage tornado and storm-injury counties,nri_risk_score,-0.001654612322613103
+6,Lower-wage tornado and storm-injury counties,nri_risk_value_per_capita,-0.0629828828872756
+6,Lower-wage tornado and storm-injury counties,nri_hazard_avalanche_score,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_avalanche_pct_nation,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_coastal_flooding_score,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_coastal_flooding_pct_nation,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_cold_wave_score,0.10282725666345033
+6,Lower-wage tornado and storm-injury counties,nri_hazard_cold_wave_pct_nation,0.10253455046808505
+6,Lower-wage tornado and storm-injury counties,nri_hazard_drought_score,0.16352871290959684
+6,Lower-wage tornado and storm-injury counties,nri_hazard_drought_pct_nation,0.16050710850906197
+6,Lower-wage tornado and storm-injury counties,nri_hazard_earthquake_score,0.13390320719961052
+6,Lower-wage tornado and storm-injury counties,nri_hazard_earthquake_pct_nation,0.1336998446732793
+6,Lower-wage tornado and storm-injury counties,nri_hazard_hail_score,0.24725158077613185
+6,Lower-wage tornado and storm-injury counties,nri_hazard_hail_pct_nation,0.24714529748587727
+6,Lower-wage tornado and storm-injury counties,nri_hazard_hurricane_score,0.1795009516228845
+6,Lower-wage tornado and storm-injury counties,nri_hazard_hurricane_pct_nation,0.1291651107294886
+6,Lower-wage tornado and storm-injury counties,nri_hazard_heat_wave_score,0.17014928641045712
+6,Lower-wage tornado and storm-injury counties,nri_hazard_heat_wave_pct_nation,0.16932619686952285
+6,Lower-wage tornado and storm-injury counties,nri_hazard_inland_flooding_score,-0.049122266160040735
+6,Lower-wage tornado and storm-injury counties,nri_hazard_inland_flooding_pct_nation,-0.049045127608155825
+6,Lower-wage tornado and storm-injury counties,nri_hazard_ice_storm_score,0.27903007900247023
+6,Lower-wage tornado and storm-injury counties,nri_hazard_ice_storm_pct_nation,0.27344366245105717
+6,Lower-wage tornado and storm-injury counties,nri_hazard_landslide_score,-0.07878534533723248
+6,Lower-wage tornado and storm-injury counties,nri_hazard_landslide_pct_nation,-0.07888224588100962
+6,Lower-wage tornado and storm-injury counties,nri_hazard_lightning_score,-0.04021755090216367
+6,Lower-wage tornado and storm-injury counties,nri_hazard_lightning_pct_nation,-0.04006127263594803
+6,Lower-wage tornado and storm-injury counties,nri_hazard_strong_wind_score,0.2650859365974269
+6,Lower-wage tornado and storm-injury counties,nri_hazard_strong_wind_pct_nation,0.2648888559879855
+6,Lower-wage tornado and storm-injury counties,nri_hazard_tornado_score,0.4421424072302978
+6,Lower-wage tornado and storm-injury counties,nri_hazard_tornado_pct_nation,0.44222455029056335
+6,Lower-wage tornado and storm-injury counties,nri_hazard_tsunami_score,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_tsunami_pct_nation,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_volcanic_activity_score,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_volcanic_activity_pct_nation,0.0
+6,Lower-wage tornado and storm-injury counties,nri_hazard_wildfire_score,-0.3482969022407703
+6,Lower-wage tornado and storm-injury counties,nri_hazard_wildfire_pct_nation,-0.3483595816442575
+6,Lower-wage tornado and storm-injury counties,nri_hazard_winter_weather_score,-0.20770705950419477
+6,Lower-wage tornado and storm-injury counties,nri_hazard_winter_weather_pct_nation,-0.207398422196489
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_mean,-0.017856200509364872
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_median,0.029403407523023374
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_percentiles_mean_nationally,-0.032904309839268384
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_percentiles_mean_within_state,-0.09517893643671298
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_percentiles_median_nationally,0.04675809133163668
+6,Lower-wage tornado and storm-injury counties,insurance_premium_latest_percentiles_median_within_state,-0.029418849808499285
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_mean_cagr,-0.036841249188871446
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_median_cagr,-0.06034926967056629
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_percentiles_mean_cagr_nationally,-0.0692688862856664
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_percentiles_mean_cagr_within_state,-0.010382707927108312
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_percentiles_median_cagr_nationally,-0.10390358780618872
+6,Lower-wage tornado and storm-injury counties,insurance_premium_growth_percentiles_median_cagr_within_state,-0.015574102646248839
+6,Lower-wage tornado and storm-injury counties,insurance_premium_average_mean,-0.005379860928128644
+6,Lower-wage tornado and storm-injury counties,insurance_premium_average_median,0.03241116332979666
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_mean_latest,-0.017856200509364872
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_mean_mean_last_12,-0.0053890119050003515
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_mean_slope,-0.029448267465283465
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_mean_volatility,-0.0674307149777564
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_median_latest,0.029403407523023374
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_median_mean_last_12,0.03241002131332967
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_median_slope,-0.018077167640109124
+6,Lower-wage tornado and storm-injury counties,insurance_premium_historical_median_volatility,-0.05531427708498956
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_latest_non_renewal_rate,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.004696563358048282
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.04096726910487372
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_average_non_renewal_rate,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_slope,0.0
+6,Lower-wage tornado and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,-0.06185079447467527
+6,Lower-wage tornado and storm-injury counties,property_tax_effective_tax_rate_2024_value,0.1382255808248315
+6,Lower-wage tornado and storm-injury counties,property_tax_effective_tax_rate_2024_percentile_nationally,0.1734233890300598
+6,Lower-wage tornado and storm-injury counties,property_tax_effective_tax_rate_2024_percentile_within_state,0.0
+6,Lower-wage tornado and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,-0.016065768930843365
+6,Lower-wage tornado and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,-0.0346025572068653
+6,Lower-wage tornado and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,-0.034610542629665474
+6,Lower-wage tornado and storm-injury counties,property_tax_median_property_taxes_paid_2024_value,-0.13382897647155118
+6,Lower-wage tornado and storm-injury counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,-0.2777778690692858
+6,Lower-wage tornado and storm-injury counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,0.0
+6,Lower-wage tornado and storm-injury counties,storm_total_damage_total_percentile_nationally_sum,0.1380693745768695
+6,Lower-wage tornado and storm-injury counties,storm_total_damage_total_percentile_nationally_mean,0.0824731366270416
+6,Lower-wage tornado and storm-injury counties,storm_total_damage_total_percentile_nationally_max,-0.009054486790129856
+6,Lower-wage tornado and storm-injury counties,storm_total_event_count_percentile_nationally_sum,0.17708347187261567
+6,Lower-wage tornado and storm-injury counties,storm_total_event_count_percentile_nationally_mean,0.16870357769573288
+6,Lower-wage tornado and storm-injury counties,storm_total_event_count_percentile_nationally_max,0.1347752152594976
+6,Lower-wage tornado and storm-injury counties,storm_total_deaths_total_percentile_nationally_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_total_deaths_total_percentile_nationally_mean,0.0
+6,Lower-wage tornado and storm-injury counties,storm_total_deaths_total_percentile_nationally_max,0.0
+6,Lower-wage tornado and storm-injury counties,storm_total_injuries_total_percentile_nationally_sum,0.9244125614782107
+6,Lower-wage tornado and storm-injury counties,storm_total_injuries_total_percentile_nationally_mean,0.923833421190687
+6,Lower-wage tornado and storm-injury counties,storm_total_injuries_total_percentile_nationally_max,2.0265628185091416
+6,Lower-wage tornado and storm-injury counties,storm_event_type_debris_flow_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_drought_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_dust_devil_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_dust_storm_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_excessive_heat_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_flash_flood_sum,0.0394531205014353
+6,Lower-wage tornado and storm-injury counties,storm_event_type_flood_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_funnel_cloud_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_hail_sum,0.045103595148718846
+6,Lower-wage tornado and storm-injury counties,storm_event_type_heat_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_heavy_rain_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_heavy_snow_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_high_wind_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_lightning_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_strong_wind_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_thunderstorm_wind_sum,0.13766454580896445
+6,Lower-wage tornado and storm-injury counties,storm_event_type_tornado_sum,0.16485411074455641
+6,Lower-wage tornado and storm-injury counties,storm_event_type_tropical_storm_sum,0.0
+6,Lower-wage tornado and storm-injury counties,storm_event_type_wildfire_sum,0.0
+6,Lower-wage tornado and storm-injury counties,fema_disaster_total_count,0.0
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_average_temp_f_mean,-0.21933975166609526
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_average_temp_f_volatility,0.30974371906793047
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_max_temp_f_volatility,0.3711582455310024
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_min_temp_f_volatility,0.07496425798413378
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_trend_slope_temp_f_mean,-0.6043855979966185
+6,Lower-wage tornado and storm-injury counties,temperature_tmax_trend_slope_temp_f_volatility,0.2906263473905213
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_average_temp_f_mean,-0.28081189111809407
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_average_temp_f_volatility,0.20593214429853143
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_max_temp_f_volatility,0.32981975559202736
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_min_temp_f_volatility,0.22425869072289029
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_trend_slope_temp_f_mean,-0.11509606965914501
+6,Lower-wage tornado and storm-injury counties,temperature_tmin_trend_slope_temp_f_volatility,0.22052662423676517
+6,Lower-wage tornado and storm-injury counties,econ_pop_log_population_avg,0.04834092648625052
+6,Lower-wage tornado and storm-injury counties,econ_pop_per_capita_income_avg,-0.15351632177508692
+6,Lower-wage tornado and storm-injury counties,econ_pop_employment_rate_proxy_avg,-0.003930574203432788
+6,Lower-wage tornado and storm-injury counties,econ_pop_Average Weekly Wage_avg,-0.28548143011349464
+6,Lower-wage tornado and storm-injury counties,econ_pop_transfer_receipts_share_avg,0.2351654408080275
+6,Lower-wage tornado and storm-injury counties,econ_pop_dividends_rent_share_avg,-0.11751703171764952
+6,Lower-wage tornado and storm-injury counties,econ_pop_proprietors_income_share_avg,-0.14222899226930052
+6,Lower-wage tornado and storm-injury counties,econ_pop_youth_share_avg,0.08679262489964502
+6,Lower-wage tornado and storm-injury counties,econ_pop_prime_working_age_share_avg,0.06910743050226485
+6,Lower-wage tornado and storm-injury counties,econ_pop_senior_share_avg,-0.04189276915159606
+6,Lower-wage tornado and storm-injury counties,econ_pop_male_share_avg,-0.03722179916515712
+6,Lower-wage tornado and storm-injury counties,econ_pop_white_share_avg,0.019314031474330178
+6,Lower-wage tornado and storm-injury counties,econ_pop_black_share_avg,0.0830745533344102
+6,Lower-wage tornado and storm-injury counties,econ_pop_asian_share_avg,-0.03297599235431398
+6,Lower-wage tornado and storm-injury counties,econ_pop_hispanic_share_avg,-0.06731396808444041
+6,Lower-wage tornado and storm-injury counties,econ_pop_natural_increase_rate_avg,-0.08531374512767387
+6,Lower-wage tornado and storm-injury counties,econ_pop_international_migration_rate_avg,-0.08789552567198299
+6,Lower-wage tornado and storm-injury counties,econ_pop_domestic_migration_rate_avg,0.006643726800319387
+6,Lower-wage tornado and storm-injury counties,econ_pop_log_population_latest,0.04616119198177796
+6,Lower-wage tornado and storm-injury counties,econ_pop_per_capita_income_latest,-0.17704867346295466
+6,Lower-wage tornado and storm-injury counties,econ_pop_employment_rate_proxy_latest,-0.004001704377332274
+6,Lower-wage tornado and storm-injury counties,econ_pop_Average Weekly Wage_latest,-0.323472397836554
+6,Lower-wage tornado and storm-injury counties,econ_pop_transfer_receipts_share_latest,0.2528531425065502
+6,Lower-wage tornado and storm-injury counties,econ_pop_dividends_rent_share_latest,-0.05382853744465529
+6,Lower-wage tornado and storm-injury counties,econ_pop_proprietors_income_share_latest,-0.17137978138808702
+6,Lower-wage tornado and storm-injury counties,econ_pop_youth_share_latest,0.09308406545222342
+6,Lower-wage tornado and storm-injury counties,econ_pop_prime_working_age_share_latest,0.06618443899099237
+6,Lower-wage tornado and storm-injury counties,econ_pop_senior_share_latest,-0.0754347338490832
+6,Lower-wage tornado and storm-injury counties,econ_pop_male_share_latest,-0.04996456876052033
+6,Lower-wage tornado and storm-injury counties,econ_pop_white_share_latest,0.02595936165783948
+6,Lower-wage tornado and storm-injury counties,econ_pop_black_share_latest,0.08005301270772273
+6,Lower-wage tornado and storm-injury counties,econ_pop_asian_share_latest,-0.04407579491198523
+6,Lower-wage tornado and storm-injury counties,econ_pop_hispanic_share_latest,-0.08713110549153845
+6,Lower-wage tornado and storm-injury counties,econ_pop_natural_increase_rate_latest,-0.11924993718787154
+6,Lower-wage tornado and storm-injury counties,econ_pop_international_migration_rate_latest,-0.05366917317014298
+6,Lower-wage tornado and storm-injury counties,econ_pop_domestic_migration_rate_latest,0.05356948978976554
+6,Lower-wage tornado and storm-injury counties,econ_pop_log_population_slope,-0.0526010874041074
+6,Lower-wage tornado and storm-injury counties,econ_pop_per_capita_income_slope,-0.045469306944573934
+6,Lower-wage tornado and storm-injury counties,econ_pop_Average Weekly Wage_slope,-0.2695441439236215
+6,Lower-wage tornado and storm-injury counties,econ_pop_employment_rate_proxy_slope,-0.00046503562847361043
+6,Lower-wage tornado and storm-injury counties,econ_pop_domestic_migration_rate_slope,0.1093125040008942
+6,Lower-wage tornado and storm-injury counties,econ_pop_senior_share_slope,-0.11324943145986388
+6,Lower-wage tornado and storm-injury counties,econ_pop_hispanic_share_slope,-0.028564808006790444
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_latest,0.21243833933855574
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_mean_last_12,0.4921552076318045
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_change_12,-2.077200951410396e-06
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_change_36,-0.06123982166825595
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_slope,0.00630744635585529
+7,High-risk inland-flood and storm-injury counties,housing_median_sale_price_volatility,0.018093641607268302
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_latest,0.14134153050225504
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_mean_last_12,0.49564716996283875
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_change_12,-0.008206471793078818
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_change_36,-0.030557826697241282
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_slope,0.002756013512998527
+7,High-risk inland-flood and storm-injury counties,housing_median_ppsf_volatility,0.0013048239324669792
+7,High-risk inland-flood and storm-injury counties,housing_inventory_change_12,-0.046771694258950954
+7,High-risk inland-flood and storm-injury counties,housing_inventory_change_36,-0.051092378140520534
+7,High-risk inland-flood and storm-injury counties,housing_inventory_slope,0.021317559297015377
+7,High-risk inland-flood and storm-injury counties,housing_inventory_volatility,0.30131955510873304
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_latest,-0.030207210023342194
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_mean_last_12,-0.05454710368949612
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_change_12,-0.005981705487358619
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_change_36,-0.025043980689749723
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_slope,0.013972107043045669
+7,High-risk inland-flood and storm-injury counties,housing_months_of_supply_volatility,-0.11528923830143623
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_latest,-0.03511724843648526
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_mean_last_12,-0.14803772023450493
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_change_12,0.006132101101311329
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_change_36,0.0010720820937607965
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_slope,0.016868569095168196
+7,High-risk inland-flood and storm-injury counties,housing_median_dom_volatility,-0.11288382988311639
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_latest,0.27100104584554097
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_mean_last_12,0.20434632371855477
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_change_12,0.03546056782889436
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_change_36,0.1213471866690434
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_slope,-0.03063267476533517
+7,High-risk inland-flood and storm-injury counties,housing_sold_above_list_volatility,-0.031064321338755353
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_latest,0.1754464333012524
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_mean_last_12,0.3536459483784916
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_change_12,-0.01258029002697703
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_change_36,0.033412028715658855
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_slope,-0.0054106338463567735
+7,High-risk inland-flood and storm-injury counties,housing_avg_sale_to_list_volatility,-0.19727809432535282
+7,High-risk inland-flood and storm-injury counties,housing_new_listings_change_12,-0.06301017376236168
+7,High-risk inland-flood and storm-injury counties,housing_new_listings_change_36,0.0280796196887929
+7,High-risk inland-flood and storm-injury counties,housing_new_listings_slope,-0.13492542310976322
+7,High-risk inland-flood and storm-injury counties,housing_new_listings_volatility,0.31873751496422137
+7,High-risk inland-flood and storm-injury counties,housing_homes_sold_change_12,-0.03674142977888437
+7,High-risk inland-flood and storm-injury counties,housing_homes_sold_change_36,0.0
+7,High-risk inland-flood and storm-injury counties,housing_homes_sold_slope,-0.22939065730263047
+7,High-risk inland-flood and storm-injury counties,housing_homes_sold_volatility,0.3183857975772262
+7,High-risk inland-flood and storm-injury counties,nri_risk_score,1.0911665293237889
+7,High-risk inland-flood and storm-injury counties,nri_risk_value_per_capita,-0.09880842191466736
+7,High-risk inland-flood and storm-injury counties,nri_hazard_avalanche_score,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_avalanche_pct_nation,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_coastal_flooding_score,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_coastal_flooding_pct_nation,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_cold_wave_score,0.060488248699364505
+7,High-risk inland-flood and storm-injury counties,nri_hazard_cold_wave_pct_nation,0.060210271432036507
+7,High-risk inland-flood and storm-injury counties,nri_hazard_drought_score,-0.19263649768850324
+7,High-risk inland-flood and storm-injury counties,nri_hazard_drought_pct_nation,-0.18921706201852748
+7,High-risk inland-flood and storm-injury counties,nri_hazard_earthquake_score,0.5758374977693381
+7,High-risk inland-flood and storm-injury counties,nri_hazard_earthquake_pct_nation,0.575568039718658
+7,High-risk inland-flood and storm-injury counties,nri_hazard_hail_score,-0.4124512739817291
+7,High-risk inland-flood and storm-injury counties,nri_hazard_hail_pct_nation,-0.41214589897285053
+7,High-risk inland-flood and storm-injury counties,nri_hazard_hurricane_score,0.06802279581887243
+7,High-risk inland-flood and storm-injury counties,nri_hazard_hurricane_pct_nation,0.048968384771451885
+7,High-risk inland-flood and storm-injury counties,nri_hazard_heat_wave_score,0.7389659864989563
+7,High-risk inland-flood and storm-injury counties,nri_hazard_heat_wave_pct_nation,0.7346315249762362
+7,High-risk inland-flood and storm-injury counties,nri_hazard_inland_flooding_score,0.959810349349199
+7,High-risk inland-flood and storm-injury counties,nri_hazard_inland_flooding_pct_nation,0.9595010419340999
+7,High-risk inland-flood and storm-injury counties,nri_hazard_ice_storm_score,-0.2873504895653469
+7,High-risk inland-flood and storm-injury counties,nri_hazard_ice_storm_pct_nation,-0.2818843671440804
+7,High-risk inland-flood and storm-injury counties,nri_hazard_landslide_score,0.16528224545067913
+7,High-risk inland-flood and storm-injury counties,nri_hazard_landslide_pct_nation,0.16524316970107653
+7,High-risk inland-flood and storm-injury counties,nri_hazard_lightning_score,0.7999031855403977
+7,High-risk inland-flood and storm-injury counties,nri_hazard_lightning_pct_nation,0.7998010519141283
+7,High-risk inland-flood and storm-injury counties,nri_hazard_strong_wind_score,0.06503173653424832
+7,High-risk inland-flood and storm-injury counties,nri_hazard_strong_wind_pct_nation,0.06493245966125899
+7,High-risk inland-flood and storm-injury counties,nri_hazard_tornado_score,-0.15802547157496147
+7,High-risk inland-flood and storm-injury counties,nri_hazard_tornado_pct_nation,-0.15784836060673196
+7,High-risk inland-flood and storm-injury counties,nri_hazard_tsunami_score,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_tsunami_pct_nation,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_volcanic_activity_score,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_volcanic_activity_pct_nation,0.0
+7,High-risk inland-flood and storm-injury counties,nri_hazard_wildfire_score,0.8143431237683064
+7,High-risk inland-flood and storm-injury counties,nri_hazard_wildfire_pct_nation,0.8140838002896432
+7,High-risk inland-flood and storm-injury counties,nri_hazard_winter_weather_score,0.49474884028949523
+7,High-risk inland-flood and storm-injury counties,nri_hazard_winter_weather_pct_nation,0.4937042132492257
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_mean,0.41712084389876347
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_median,0.3862177312483611
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_percentiles_mean_nationally,0.6944541181866635
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_percentiles_mean_within_state,0.5260799395774691
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_percentiles_median_nationally,0.599196281509119
+7,High-risk inland-flood and storm-injury counties,insurance_premium_latest_percentiles_median_within_state,0.4914678438596383
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_mean_cagr,0.1143010458429863
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_median_cagr,0.25300639764910005
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_percentiles_mean_cagr_nationally,0.1939528815998659
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_percentiles_mean_cagr_within_state,-0.08652256605923593
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_percentiles_median_cagr_nationally,0.3809798219560249
+7,High-risk inland-flood and storm-injury counties,insurance_premium_growth_percentiles_median_cagr_within_state,-0.03633957284124755
+7,High-risk inland-flood and storm-injury counties,insurance_premium_average_mean,0.405514007921485
+7,High-risk inland-flood and storm-injury counties,insurance_premium_average_median,0.2558618042252661
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_mean_latest,0.41712084389876347
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_mean_mean_last_12,0.4054977259837856
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_mean_slope,0.2266523956597705
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_mean_volatility,0.2825900991623386
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_median_latest,0.3862177312483611
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_median_mean_last_12,0.2558685893157636
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_median_slope,0.204544390010014
+7,High-risk inland-flood and storm-injury counties,insurance_premium_historical_median_volatility,0.241285551028557
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_latest_non_renewal_rate,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_nationally,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_latest_percentiles_non_renewal_rate_within_state,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_growth_non_renewal_rate_cagr,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_nationally,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_average_non_renewal_rate,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_latest,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,0.0
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_slope,0.06344397760297313
+7,High-risk inland-flood and storm-injury counties,insurance_nonrenewal_historical_non_renewal_rate_volatility,0.0
+7,High-risk inland-flood and storm-injury counties,property_tax_effective_tax_rate_2024_value,-0.100527695145332
+7,High-risk inland-flood and storm-injury counties,property_tax_effective_tax_rate_2024_percentile_nationally,-0.17342338903005963
+7,High-risk inland-flood and storm-injury counties,property_tax_effective_tax_rate_2024_percentile_within_state,0.2770964751432732
+7,High-risk inland-flood and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_value,0.08032884465421676
+7,High-risk inland-flood and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_nationally,0.20761534324119182
+7,High-risk inland-flood and storm-injury counties,property_tax_inflation_adjusted_change_in_property_taxes_paid_2023_2024_percentile_within_state,0.034610542629665474
+7,High-risk inland-flood and storm-injury counties,property_tax_median_property_taxes_paid_2024_value,0.5029883868943754
+7,High-risk inland-flood and storm-injury counties,property_tax_median_property_taxes_paid_2024_percentile_nationally,0.7638891399405358
+7,High-risk inland-flood and storm-injury counties,property_tax_median_property_taxes_paid_2024_percentile_within_state,0.6229363579873677
+7,High-risk inland-flood and storm-injury counties,storm_total_damage_total_percentile_nationally_sum,0.014422288430731699
+7,High-risk inland-flood and storm-injury counties,storm_total_damage_total_percentile_nationally_mean,0.02751265799953491
+7,High-risk inland-flood and storm-injury counties,storm_total_damage_total_percentile_nationally_max,0.1493990320371421
+7,High-risk inland-flood and storm-injury counties,storm_total_event_count_percentile_nationally_sum,0.20945356888158836
+7,High-risk inland-flood and storm-injury counties,storm_total_event_count_percentile_nationally_mean,0.22495995072946862
+7,High-risk inland-flood and storm-injury counties,storm_total_event_count_percentile_nationally_max,0.2965054735708953
+7,High-risk inland-flood and storm-injury counties,storm_total_deaths_total_percentile_nationally_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_total_deaths_total_percentile_nationally_mean,0.0
+7,High-risk inland-flood and storm-injury counties,storm_total_deaths_total_percentile_nationally_max,0.0
+7,High-risk inland-flood and storm-injury counties,storm_total_injuries_total_percentile_nationally_sum,0.8928005256970907
+7,High-risk inland-flood and storm-injury counties,storm_total_injuries_total_percentile_nationally_mean,0.8803811334864216
+7,High-risk inland-flood and storm-injury counties,storm_total_injuries_total_percentile_nationally_max,1.9572606703114197
+7,High-risk inland-flood and storm-injury counties,storm_event_type_debris_flow_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_drought_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_dust_devil_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_dust_storm_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_excessive_heat_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_flash_flood_sum,0.0789062410028706
+7,High-risk inland-flood and storm-injury counties,storm_event_type_flood_sum,0.10140537999387957
+7,High-risk inland-flood and storm-injury counties,storm_event_type_funnel_cloud_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_hail_sum,-0.06765539272307827
+7,High-risk inland-flood and storm-injury counties,storm_event_type_heat_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_heavy_rain_sum,0.06149602284188932
+7,High-risk inland-flood and storm-injury counties,storm_event_type_heavy_snow_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_high_wind_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_lightning_sum,0.31550048942707215
+7,High-risk inland-flood and storm-injury counties,storm_event_type_strong_wind_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_thunderstorm_wind_sum,-0.04588818193632148
+7,High-risk inland-flood and storm-injury counties,storm_event_type_tornado_sum,-0.16485411074455641
+7,High-risk inland-flood and storm-injury counties,storm_event_type_tropical_storm_sum,0.0
+7,High-risk inland-flood and storm-injury counties,storm_event_type_wildfire_sum,0.0
+7,High-risk inland-flood and storm-injury counties,fema_disaster_total_count,0.0
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_average_temp_f_mean,0.11816762592831558
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_average_temp_f_volatility,-0.09839743286048352
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_max_temp_f_volatility,-0.27303774905515643
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_min_temp_f_volatility,-0.06542437310902835
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_trend_slope_temp_f_mean,0.14916750929278252
+7,High-risk inland-flood and storm-injury counties,temperature_tmax_trend_slope_temp_f_volatility,0.08806995748456159
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_average_temp_f_mean,0.206129437931113
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_average_temp_f_volatility,-0.14052450186826446
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_max_temp_f_volatility,-0.29452188739007906
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_min_temp_f_volatility,0.03655288574729102
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_trend_slope_temp_f_mean,0.0479566956913102
+7,High-risk inland-flood and storm-injury counties,temperature_tmin_trend_slope_temp_f_volatility,-0.14946875700013218
+7,High-risk inland-flood and storm-injury counties,econ_pop_log_population_avg,0.79825079090534
+7,High-risk inland-flood and storm-injury counties,econ_pop_per_capita_income_avg,0.4130084782502992
+7,High-risk inland-flood and storm-injury counties,econ_pop_employment_rate_proxy_avg,-0.0010241077970931873
+7,High-risk inland-flood and storm-injury counties,econ_pop_Average Weekly Wage_avg,0.2938889329636957
+7,High-risk inland-flood and storm-injury counties,econ_pop_transfer_receipts_share_avg,-0.6432598364946284
+7,High-risk inland-flood and storm-injury counties,econ_pop_dividends_rent_share_avg,0.41230987305171224
+7,High-risk inland-flood and storm-injury counties,econ_pop_proprietors_income_share_avg,0.4151182620903577
+7,High-risk inland-flood and storm-injury counties,econ_pop_youth_share_avg,-0.07650768320527837
+7,High-risk inland-flood and storm-injury counties,econ_pop_prime_working_age_share_avg,0.34769448935333225
+7,High-risk inland-flood and storm-injury counties,econ_pop_senior_share_avg,-0.4375147014790244
+7,High-risk inland-flood and storm-injury counties,econ_pop_male_share_avg,-0.08111677380412487
+7,High-risk inland-flood and storm-injury counties,econ_pop_white_share_avg,-0.389994065137175
+7,High-risk inland-flood and storm-injury counties,econ_pop_black_share_avg,0.22142035601719107
+7,High-risk inland-flood and storm-injury counties,econ_pop_asian_share_avg,0.3340833060604282
+7,High-risk inland-flood and storm-injury counties,econ_pop_hispanic_share_avg,0.36700831590060945
+7,High-risk inland-flood and storm-injury counties,econ_pop_natural_increase_rate_avg,0.5500773797704912
+7,High-risk inland-flood and storm-injury counties,econ_pop_international_migration_rate_avg,0.4431760498986959
+7,High-risk inland-flood and storm-injury counties,econ_pop_domestic_migration_rate_avg,0.12030855741756122
+7,High-risk inland-flood and storm-injury counties,econ_pop_log_population_latest,0.7995990580322498
+7,High-risk inland-flood and storm-injury counties,econ_pop_per_capita_income_latest,0.40609040299229143
+7,High-risk inland-flood and storm-injury counties,econ_pop_employment_rate_proxy_latest,-0.0008031599793555573
+7,High-risk inland-flood and storm-injury counties,econ_pop_Average Weekly Wage_latest,0.30603025873752415
+7,High-risk inland-flood and storm-injury counties,econ_pop_transfer_receipts_share_latest,-0.6346295530634546
+7,High-risk inland-flood and storm-injury counties,econ_pop_dividends_rent_share_latest,0.3907100075788614
+7,High-risk inland-flood and storm-injury counties,econ_pop_proprietors_income_share_latest,0.33194771781461535
+7,High-risk inland-flood and storm-injury counties,econ_pop_youth_share_latest,-0.12519377630895315
+7,High-risk inland-flood and storm-injury counties,econ_pop_prime_working_age_share_latest,0.341924374284104
+7,High-risk inland-flood and storm-injury counties,econ_pop_senior_share_latest,-0.3950789245545422
+7,High-risk inland-flood and storm-injury counties,econ_pop_male_share_latest,-0.1127151427347153
+7,High-risk inland-flood and storm-injury counties,econ_pop_white_share_latest,-0.413521481168039
+7,High-risk inland-flood and storm-injury counties,econ_pop_black_share_latest,0.22663605568579737
+7,High-risk inland-flood and storm-injury counties,econ_pop_asian_share_latest,0.35206570217611416
+7,High-risk inland-flood and storm-injury counties,econ_pop_hispanic_share_latest,0.3751777139366186
+7,High-risk inland-flood and storm-injury counties,econ_pop_natural_increase_rate_latest,0.45473097598561235
+7,High-risk inland-flood and storm-injury counties,econ_pop_international_migration_rate_latest,0.3929887221346687
+7,High-risk inland-flood and storm-injury counties,econ_pop_domestic_migration_rate_latest,-0.11198566089211459
+7,High-risk inland-flood and storm-injury counties,econ_pop_log_population_slope,0.39469254719562347
+7,High-risk inland-flood and storm-injury counties,econ_pop_per_capita_income_slope,0.28046779197723726
+7,High-risk inland-flood and storm-injury counties,econ_pop_Average Weekly Wage_slope,0.3414886470444109
+7,High-risk inland-flood and storm-injury counties,econ_pop_employment_rate_proxy_slope,0.0001644284507290138
+7,High-risk inland-flood and storm-injury counties,econ_pop_domestic_migration_rate_slope,-0.38271877954262395
+7,High-risk inland-flood and storm-injury counties,econ_pop_senior_share_slope,0.17165717284600163
+7,High-risk inland-flood and storm-injury counties,econ_pop_hispanic_share_slope,0.3589639158511167

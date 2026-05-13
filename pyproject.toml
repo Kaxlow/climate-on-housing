@@ -25,6 +25,8 @@ dependencies = [
 
 [project.scripts]
 build-page = "housing_climate_risk.cli.build_page:main"
+run-county-clustering = "housing_climate_risk.cli.run_county_clustering:main"
+run-broad-county-profiles = "housing_climate_risk.cli.run_broad_county_profiles:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
