@@ -7,8 +7,11 @@ import json
 import numpy as np
 import pandas as pd
 
+from housing_climate_risk.data_sources.raw import load_profile_inputs
 from housing_climate_risk.data_sources.processed import prepare_housing_df, prepare_natural_disasters_df
-from housing_climate_risk.paths import CLIMATE_DIR, GEOGRAPHIC_DIR, OUTPUT_DIR
+from housing_climate_risk.modeling.economic_risk_profiles import build_economic_profile_outputs
+from housing_climate_risk.modeling.insurance_risk_profiles import build_insurance_profile_outputs
+from housing_climate_risk.paths import CLIMATE_DIR, DATA_DIR, GEOGRAPHIC_DIR, OUTPUT_DIR
 
 DATA_JS = OUTPUT_DIR / "stormhouse_data.js"
 HTML_PATH = OUTPUT_DIR / "stormhouse.html"
@@ -32,6 +35,8 @@ RISK_RATING_MAP = {
     "Relatively High": "High",
     "Very High": "Very High",
 }
+ECONOMIC_PROFILE_DIR = OUTPUT_DIR / "stormhouse_economic_profiles"
+INSURANCE_PROFILE_DIR = OUTPUT_DIR / "stormhouse_insurance_profiles"
 OFFSETS = list(range(-12, 25))
 US_STATE_FIPS = {
     "01",
@@ -252,6 +257,364 @@ def build_complete_windows() -> pd.DataFrame:
     return matched
 
 
+def build_nri_rating_lookup() -> pd.DataFrame:
+    nri = pd.read_csv(CLIMATE_DIR / "NRI_Table_Counties.csv", usecols=["STCOFIPS", "RISK_RATNG"])
+    return (
+        nri.assign(
+            fips=nri["STCOFIPS"].astype(str).str.zfill(5),
+            nri_risk_rating=nri["RISK_RATNG"].map(RISK_RATING_MAP),
+        )[["fips", "nri_risk_rating"]]
+        .dropna(subset=["nri_risk_rating"])
+        .drop_duplicates("fips")
+    )
+
+
+def load_county_processed_data() -> pd.DataFrame:
+    """Load the nested county feature file used by county clustering workflows."""
+
+    return pd.read_feather(DATA_DIR / "county_processed_data.feather")
+
+
+def build_economic_profile_payload() -> dict[str, object]:
+    outputs = build_economic_profile_outputs(
+        profile_inputs=load_profile_inputs(),
+        nri_ratings=build_nri_rating_lookup(),
+        output_dir=ECONOMIC_PROFILE_DIR,
+        risk_order=VALID_RISK_RATINGS,
+    )
+    summary = outputs["risk_profile_summary"].copy()
+    lifts = outputs["risk_lifts"].copy()
+    profile_summary = outputs["profile_summary"].copy()
+    assignments = outputs["assignments"].copy()
+    scores = outputs["scores"].copy()
+
+    profile_rows = [
+        {
+            "profile": int(row.economic_profile),
+            "label": row.economic_profile_label,
+            "countyCount": int(row.county_count),
+            "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+            "topHighFeatures": row.top_high_features,
+            "topLowFeatures": row.top_low_features,
+            "demographicDescription": row.demographic_description,
+        }
+        for row in profile_summary.itertuples(index=False)
+    ]
+
+    by_risk: dict[str, list[dict[str, object]]] = {}
+    cards: list[dict[str, object]] = []
+    for rating in VALID_RISK_RATINGS:
+        rows = summary.loc[summary["nri_risk_rating"] == rating].copy()
+        by_risk[rating] = [
+            {
+                "profile": int(row.economic_profile),
+                "label": row.economic_profile_label,
+                "counties": int(row.counties),
+                "share": _num(row.share, 4),
+                "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+            }
+            for row in rows.itertuples(index=False)
+        ]
+        top_profiles = by_risk[rating][:3]
+        high_lifts = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "higher")].head(3)
+        low_lifts = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "lower")].head(2)
+        cards.append(
+            {
+                "riskRating": rating,
+                "countyCount": int(rows["risk_group_count"].max()) if not rows.empty else 0,
+                "topProfiles": top_profiles,
+                "higherTraits": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_traits(high_lifts, limit=3)
+                ],
+                "lowerTraits": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_traits(low_lifts, limit=2)
+                ],
+            }
+        )
+
+    contrast_rows = []
+    for rating in VALID_RISK_RATINGS:
+        higher = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "higher")].head(4)
+        lower = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "lower")].head(3)
+        contrast_rows.append(
+            {
+                "riskRating": rating,
+                "higher": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_traits(higher, limit=4)
+                ],
+                "lower": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_traits(lower, limit=3)
+                ],
+            }
+        )
+
+    return {
+        "bestK": int(outputs["best_k"]),
+        "modelScores": [
+            {
+                "k": int(row.k),
+                "silhouette": _num(row.silhouette_score, 3),
+                "daviesBouldin": _num(row.davies_bouldin_index, 3),
+                "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+                "minClusterSize": int(row.min_cluster_size),
+                "maxClusterShare": _num(row.max_cluster_share, 3),
+            }
+            for row in scores.itertuples(index=False)
+        ],
+        "profiles": profile_rows,
+        "assignments": [
+            {
+                "fips": str(row.fips).zfill(5),
+                "countyName": row.county_name,
+                "profile": int(row.economic_profile),
+                "label": row.economic_profile_label,
+                "assignmentConfidence": _num(row.assignment_confidence, 3),
+            }
+            for row in assignments.itertuples(index=False)
+        ],
+        "byRiskRating": by_risk,
+        "cards": cards,
+        "featureContrasts": contrast_rows,
+        "commentary": build_economic_profile_commentary(summary, lifts),
+    }
+
+
+def build_economic_profile_commentary(summary: pd.DataFrame, lifts: pd.DataFrame) -> list[str]:
+    """Write short, data-driven notes on how economic profiles differ by NRI rating."""
+
+    return [
+        "Lower-risk counties are more often smaller mixed-economy or average-economy counties, while higher-risk counties are more often large high-wage metro counties. The very-high-risk group is small, but it leans toward high-wage investment-income counties.",
+    ]
+
+
+def plain_economic_feature_label(label: str) -> str:
+    """Convert model feature labels into page-friendly wording."""
+
+    out = str(label).replace(" latest", "").replace(" trend", " change")
+    replacements = {
+        "population scale": "population size",
+        "average weekly wage": "weekly wages",
+        "per capita income": "income per person",
+        "dividends, interest, and rent share": "investment and rent income share",
+        "transfer receipts share": "public transfer income share",
+        "proprietors income share": "business-owner income share",
+        "prime working-age share": "working-age adult share",
+        "natural increase rate": "births minus deaths rate",
+        "international migration rate": "international migration",
+        "domestic migration rate": "domestic migration",
+        "White share": "White population share",
+        "Black share": "Black population share",
+        "Asian share": "Asian population share",
+        "Hispanic share": "Hispanic population share",
+        "senior share": "senior population share",
+        "youth share": "youth population share",
+        "male share": "male population share",
+    }
+    return replacements.get(out, out)
+
+
+def serialize_plain_traits(rows: pd.DataFrame, limit: int) -> list[tuple[str, float | None]]:
+    """Return deduplicated plain feature labels and rounded standardized lifts."""
+
+    traits: list[tuple[str, float | None]] = []
+    seen: set[str] = set()
+    for row in rows.itertuples(index=False):
+        label = plain_economic_feature_label(row.feature_label)
+        if label in seen:
+            continue
+        seen.add(label)
+        traits.append((label, _num(row.standardized_lift, 2)))
+        if len(traits) >= limit:
+            break
+    return traits
+
+
+def build_insurance_profile_payload() -> dict[str, object]:
+    outputs = build_insurance_profile_outputs(
+        counties=load_county_processed_data(),
+        nri_ratings=build_nri_rating_lookup(),
+        output_dir=INSURANCE_PROFILE_DIR,
+        risk_order=VALID_RISK_RATINGS,
+    )
+    summary = outputs["risk_profile_summary"].copy()
+    lifts = outputs["risk_lifts"].copy()
+    profile_summary = outputs["profile_summary"].copy()
+    assignments = outputs["assignments"].copy()
+    scores = outputs["scores"].copy()
+
+    profile_rows = [
+        {
+            "profile": int(row.insurance_profile),
+            "label": row.insurance_profile_label,
+            "countyCount": int(row.county_count),
+            "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+            "topHighFeatures": row.top_high_features,
+            "topLowFeatures": row.top_low_features,
+        }
+        for row in profile_summary.itertuples(index=False)
+    ]
+
+    by_risk: dict[str, list[dict[str, object]]] = {}
+    cards: list[dict[str, object]] = []
+    for rating in VALID_RISK_RATINGS:
+        rows = summary.loc[summary["nri_risk_rating"] == rating].copy()
+        by_risk[rating] = [
+            {
+                "profile": int(row.insurance_profile),
+                "label": row.insurance_profile_label,
+                "counties": int(row.counties),
+                "share": _num(row.share, 4),
+                "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+            }
+            for row in rows.itertuples(index=False)
+        ]
+        top_profiles = by_risk[rating][:3]
+        high_lifts = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "higher")].head(12)
+        low_lifts = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "lower")].head(10)
+        cards.append(
+            {
+                "riskRating": rating,
+                "countyCount": int(rows["risk_group_count"].max()) if not rows.empty else 0,
+                "topProfiles": top_profiles,
+                "higherTraits": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_insurance_traits(high_lifts, limit=3)
+                ],
+                "lowerTraits": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_insurance_traits(low_lifts, limit=2)
+                ],
+            }
+        )
+
+    contrast_rows = []
+    for rating in VALID_RISK_RATINGS:
+        higher = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "higher")].head(14)
+        lower = lifts.loc[(lifts["nri_risk_rating"] == rating) & (lifts["direction"] == "lower")].head(12)
+        contrast_rows.append(
+            {
+                "riskRating": rating,
+                "higher": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_insurance_traits(higher, limit=4)
+                ],
+                "lower": [
+                    {"label": label, "lift": lift}
+                    for label, lift in serialize_plain_insurance_traits(lower, limit=3)
+                ],
+            }
+        )
+
+    return {
+        "bestK": int(outputs["best_k"]),
+        "modelScores": [
+            {
+                "k": int(row.k),
+                "silhouette": _num(row.silhouette_score, 3),
+                "daviesBouldin": _num(row.davies_bouldin_index, 3),
+                "calinskiHarabasz": _num(row.calinski_harabasz_score, 1),
+                "meanAssignmentConfidence": _num(row.mean_assignment_confidence, 3),
+                "minClusterSize": int(row.min_cluster_size),
+                "maxClusterShare": _num(row.max_cluster_share, 3),
+                "lowConfidenceRate": _num(row.low_confidence_under_0_60_rate, 3),
+            }
+            for row in scores.itertuples(index=False)
+        ],
+        "profiles": profile_rows,
+        "assignments": [
+            {
+                "fips": str(row.fips).zfill(5),
+                "countyName": row.county_name,
+                "profile": int(row.insurance_profile),
+                "label": row.insurance_profile_label,
+                "assignmentConfidence": _num(row.assignment_confidence, 3),
+            }
+            for row in assignments.itertuples(index=False)
+        ],
+        "byRiskRating": by_risk,
+        "cards": cards,
+        "featureContrasts": contrast_rows,
+        "commentary": build_insurance_profile_commentary(summary, lifts),
+    }
+
+
+def build_insurance_profile_commentary(summary: pd.DataFrame, lifts: pd.DataFrame) -> list[str]:
+    """Write short, plain notes on insurance differences by NRI rating."""
+
+    return [
+        "Higher-risk counties generally have higher premium levels, while lower-risk counties generally have lower premium levels but face faster premium growth.",
+    ]
+
+
+def plain_insurance_feature_label(label: str) -> str:
+    """Convert insurance model labels into short page wording."""
+
+    out = str(label).lower()
+    if "premium growth" in out:
+        return "premium growth"
+    if "premium historical" in out and "slope" in out:
+        return "premium trend"
+    if "premium historical" in out and "volatility" in out:
+        return "premium volatility"
+    if (
+        "premium latest" in out
+        or "premium average" in out
+        or ("premium historical" in out and "latest" in out)
+        or ("premium historical" in out and "mean last 12" in out)
+    ):
+        return "premium level"
+    if "nonrenewal growth" in out:
+        return "nonrenewal-rate growth"
+    if "nonrenewal historical" in out and "slope" in out:
+        return "nonrenewal-rate trend"
+    if "nonrenewal historical" in out and "volatility" in out:
+        return "nonrenewal-rate volatility"
+    if (
+        "nonrenewal latest" in out
+        or "nonrenewal average" in out
+        or ("nonrenewal historical" in out and "mean last 12" in out)
+    ):
+        return "nonrenewal rate"
+    replacements = {
+        "home-insurance premium latest percentile mean national percentile": "premium level",
+        "home-insurance premium latest percentile median national percentile": "premium level",
+        "home-insurance premium growth percentile mean growth national percentile": "premium growth",
+        "home-insurance premium growth percentile median growth national percentile": "premium growth",
+        "home-insurance premium latest mean": "premium level",
+        "home-insurance premium latest median": "premium level",
+        "home-insurance premium growth mean growth": "premium growth",
+        "home-insurance premium growth median growth": "premium growth",
+        "home-insurance nonrenewal latest percentile nonrenewal rate national percentile": "nonrenewal rate",
+        "home-insurance nonrenewal average nonrenewal rate": "nonrenewal rate",
+        "home-insurance nonrenewal latest nonrenewal rate": "nonrenewal rate",
+    }
+    out = replacements.get(out, out)
+    out = out.replace("home-insurance", "home insurance")
+    out = out.replace(" national percentile", "")
+    out = out.replace(" state percentile", "")
+    return " ".join(out.split())
+
+
+def serialize_plain_insurance_traits(rows: pd.DataFrame, limit: int) -> list[tuple[str, float | None]]:
+    """Return deduplicated plain insurance labels and rounded standardized lifts."""
+
+    traits: list[tuple[str, float | None]] = []
+    seen: set[str] = set()
+    for row in rows.itertuples(index=False):
+        label = plain_insurance_feature_label(row.feature_label)
+        if label in seen:
+            continue
+        seen.add(label)
+        traits.append((label, _num(row.standardized_lift, 2)))
+        if len(traits) >= limit:
+            break
+    return traits
+
+
 def build_payload(windows: pd.DataFrame) -> dict[str, object]:
     county_risk_map = build_county_risk_map()
     county_windows = windows.loc[windows["nri_risk_rating"].isin(VALID_RISK_RATINGS)].copy()
@@ -364,6 +727,8 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
         "groupSummaries": group_summaries,
         "commentary": commentary,
         "countyRiskMap": county_risk_map,
+        "economicProfiles": build_economic_profile_payload(),
+        "insuranceProfiles": build_insurance_profile_payload(),
     }
 
 
@@ -373,7 +738,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Stormhouse: Housing Market Index Around FEMA Incidents</title>
-  <script src="stormhouse_data.js"></script>
+  <script src="stormhouse_data.js?v=housing-insurance-premium-only"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
   <style>
@@ -443,10 +808,46 @@ HTML = r"""<!doctype html>
       z-index: 10;
     }
     .tooltip strong { display: block; margin-bottom: 4px; }
+    .profile-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .profile-card { border: 1px solid #e6e0d6; border-radius: 6px; padding: 10px; background: #fbfaf7; min-height: 150px; }
+    .profile-card h3 { font-size: 13px; margin-bottom: 6px; }
+    .profile-card .count { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .profile-card ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .profile-card li + li { margin-top: 4px; }
+    .profile-card .trait { margin-top: 8px; font-size: 12px; line-height: 1.35; color: var(--muted); }
+    .profile-card .trait strong { color: #2f3941; }
+    .econ-commentary { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .econ-commentary p { margin: 0; border-left: 3px solid #2f3941; padding: 8px 10px; background: #fbfaf7; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .key-takeaway { grid-template-columns: 1fr; }
+    .key-takeaway p { border-left-width: 5px; background: #f6f1e7; color: #2f3941; font-size: 15px; font-weight: 700; padding: 12px 14px; }
+    .dominance-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .dominance-tile { border: 1px solid #e6e0d6; border-radius: 6px; padding: 10px; background: #fffdf8; min-height: 118px; }
+    .dominance-tile h3 { font-size: 13px; margin-bottom: 8px; }
+    .dominance-tile .dominant-label { font-size: 14px; font-weight: 700; color: #2f3941; line-height: 1.25; }
+    .dominance-tile .dominant-share { font-size: 22px; font-weight: 800; margin-top: 6px; color: #111827; }
+    .dominance-tile .dominant-next { margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.35; }
+    .heatmap-wrap { margin-top: 14px; overflow-x: auto; }
+    .profile-heatmap { display: grid; gap: 4px; min-width: 760px; }
+    .heatmap-cell { min-height: 54px; border: 1px solid #fffaf0; border-radius: 4px; padding: 6px; color: #111827; font-size: 11px; line-height: 1.2; }
+    .heatmap-cell strong { display: block; font-size: 13px; margin-bottom: 2px; }
+    .heatmap-label { min-height: 54px; display: flex; align-items: center; color: #2f3941; font-size: 12px; font-weight: 700; }
+    .heatmap-col-label { color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.2; align-self: end; }
+    .profile-map { width: 100%; height: 520px; margin-top: 14px; display: block; }
+    .profile-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+    .profile-table th, .profile-table td { border-top: 1px solid #e6e0d6; padding: 8px 6px; text-align: left; vertical-align: top; }
+    .profile-table th { color: #2f3941; font-size: 11px; text-transform: uppercase; letter-spacing: 0; }
+    .trait-list { margin: 0; padding-left: 16px; color: var(--muted); }
+    .trait-list li + li { margin-top: 3px; }
+    .bar-label { fill: #2f3941; font-size: 11px; font-weight: 700; }
+    .bar-axis-label { fill: var(--muted); font-size: 11px; }
     @media (max-width: 820px) {
       main { width: min(100vw - 20px, 1180px); padding-top: 18px; }
       .chart { height: 390px; }
       .map { height: 430px; }
+      .profile-grid { grid-template-columns: 1fr; }
+      .dominance-grid { grid-template-columns: 1fr; }
+      .econ-commentary { grid-template-columns: 1fr; }
+      .profile-map { height: 430px; }
     }
   </style>
 </head>
@@ -478,6 +879,72 @@ HTML = r"""<!doctype html>
       <div id="mapLegend" class="legend"></div>
     </div>
   </section>
+  <section>
+    <div class="section-head">
+      <div>
+        <h2>Economic Profile of Risk Groups</h2>
+        <div class="sub">Counties are grouped by income, wages, employment, income sources, population size, and migration patterns, then compared across FEMA National Risk Index ratings. Demographics are described after grouping, but they are not used to assign or label the economic profiles.</div>
+      </div>
+    </div>
+    <div id="economicProfileCards" class="profile-grid"></div>
+    <div id="economicProfileCommentary" class="econ-commentary key-takeaway" aria-label="Commentary on economic profile differences"></div>
+    <div id="economicDominanceTiles" class="dominance-grid" aria-label="Dominant economic profile by NRI risk rating"></div>
+    <div class="heatmap-wrap">
+      <div id="economicProfileHeatmap" class="profile-heatmap" aria-label="Heatmap of economic profile shares by NRI risk rating"></div>
+    </div>
+    <svg id="economicProfileMap" class="profile-map" role="img" aria-label="US county map colored by assigned economic profile"></svg>
+    <div id="economicProfileMapLegend" class="legend"></div>
+    <table class="profile-table" aria-label="Demographic descriptions of economic profiles">
+      <thead>
+        <tr>
+          <th>Economic profile</th>
+          <th>Demographic description</th>
+        </tr>
+      </thead>
+      <tbody id="economicProfileDemographicsBody"></tbody>
+    </table>
+    <table class="profile-table" aria-label="Economic feature contrasts by NRI risk rating">
+      <thead>
+        <tr>
+          <th>Risk group</th>
+          <th>What is unusually high</th>
+          <th>What is unusually low</th>
+        </tr>
+      </thead>
+      <tbody id="economicContrastBody"></tbody>
+    </table>
+    <p class="note">The table compares the median county in each risk group with the median county nationally. "Higher" and "lower" describe the size of that gap after putting all features on the same scale.</p>
+    <p class="note">The demographic descriptions are added after clustering. Race, ethnicity, age, and sex shares are not part of the economic profile model.</p>
+    <p class="note">Counties are assigned probabilistically to the economic profile they most closely match. Hover over a profile in the chart or legend to see its average assignment confidence.</p>
+  </section>
+  <section>
+    <div class="section-head">
+      <div>
+        <h2>Insurance Profile of Risk Groups</h2>
+        <div class="sub">Counties are grouped by current home-insurance premium levels, premium growth, nonrenewal rates, and nonrenewal volatility or trend. The cards summarize the dominant insurance profile in each NRI risk group, the chart shows the full profile mix, and the table shows which insurance traits are unusually high or low.</div>
+      </div>
+    </div>
+    <div id="insuranceProfileCards" class="profile-grid"></div>
+    <div id="insuranceProfileCommentary" class="econ-commentary key-takeaway" aria-label="Commentary on insurance profile differences"></div>
+    <div id="insuranceDominanceTiles" class="dominance-grid" aria-label="Dominant insurance profile by NRI risk rating"></div>
+    <div class="heatmap-wrap">
+      <div id="insuranceProfileHeatmap" class="profile-heatmap" aria-label="Heatmap of insurance profile shares by NRI risk rating"></div>
+    </div>
+    <svg id="insuranceProfileMap" class="profile-map" role="img" aria-label="US county map colored by assigned insurance profile"></svg>
+    <div id="insuranceProfileMapLegend" class="legend"></div>
+    <table class="profile-table" aria-label="Insurance feature contrasts by NRI risk rating">
+      <thead>
+        <tr>
+          <th>Risk group</th>
+          <th>What is unusually high</th>
+          <th>What is unusually low</th>
+        </tr>
+      </thead>
+      <tbody id="insuranceContrastBody"></tbody>
+    </table>
+    <p class="note">The table compares the median county in each risk group with the median county nationally, using home-insurance premium and nonrenewal rate levels, percentiles, growth, volatility, and trend measures.</p>
+    <p class="note">Counties are assigned probabilistically to the insurance profile they most closely match. Hover over a profile in the chart or legend to see its average assignment confidence.</p>
+  </section>
   <div id="riskTooltip" class="tooltip" role="status" aria-live="polite"></div>
   <div id="mapTooltip" class="tooltip" role="status" aria-live="polite"></div>
 </main>
@@ -493,7 +960,56 @@ const colors = {
   "High": "#f97316",
   "Very High": "#dc2626"
 };
+const profileColors = ["#005AB5", "#DC3220", "#009E73", "#F0E442", "#7A3E9D", "#8C564B", "#00A1C9", "#111111"];
 const allOffsets = data.meta.offsets;
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmtPct(value) {
+  if (value == null || Number.isNaN(value)) return "n/a";
+  return `${Math.round(value * 100)}%`;
+}
+
+function fmtLift(value) {
+  if (value == null || Number.isNaN(value)) return "n/a";
+  return `${value > 0 ? "+" : ""}${Number(value).toFixed(2)} SD`;
+}
+
+function fmtConfidence(value) {
+  if (value == null || Number.isNaN(value)) return "n/a";
+  return `${Math.round(Number(value) * 100)}%`;
+}
+
+function liftPhrase(value, label = "") {
+  if (value == null || Number.isNaN(value)) return "near typical";
+  const abs = Math.abs(Number(value));
+  const lowerLabel = String(label).toLowerCase();
+  if (lowerLabel.includes("volatility")) {
+    const direction = value > 0 ? "more volatile" : "less volatile";
+    if (abs >= 1) return `much ${direction} than typical`;
+    if (abs >= 0.5) return `${direction} than typical`;
+    return `slightly ${direction} than typical`;
+  }
+  if (lowerLabel.includes("growth") || lowerLabel.includes("trend")) {
+    const direction = value > 0 ? "faster" : "slower";
+    if (abs >= 1) return `much ${direction} than typical`;
+    if (abs >= 0.5) return `${direction} than typical`;
+    return `slightly ${direction} than typical`;
+  }
+  const direction = value > 0 ? "higher" : "lower";
+  if (abs >= 1) return `much ${direction} than typical`;
+  if (abs >= 0.5) return `${direction} than typical`;
+  return `slightly ${direction} than typical`;
+}
+
+function traitPhrase(trait) {
+  return `${escapeHtml(trait.label)} is ${liftPhrase(trait.lift, trait.label)}`;
+}
 function extent(values) {
   let min = Infinity, max = -Infinity;
   values.forEach(v => {
@@ -794,6 +1310,17 @@ function hideMapTooltip() {
   document.getElementById("mapTooltip").style.display = "none";
 }
 
+function showProfileMapTooltip(event, feature, assignment, title) {
+  const tooltip = document.getElementById("mapTooltip");
+  const props = feature.properties;
+  tooltip.innerHTML = `<strong>${props.name}</strong>` +
+    `<div>${escapeHtml(title)}: ${escapeHtml(assignment?.label || "Not assigned")}</div>` +
+    `<div>Assignment confidence: ${fmtConfidence(assignment?.assignmentConfidence)}</div>` +
+    `<div>NRI risk rating: ${escapeHtml(props.riskRating || "n/a")}</div>`;
+  tooltip.style.display = "block";
+  moveMapTooltip(event);
+}
+
 function padFips(value) {
   return String(value ?? "").padStart(5, "0");
 }
@@ -817,6 +1344,34 @@ async function loadUsCountyFeatures() {
       },
     }));
   return usCountyFeatures;
+}
+
+async function loadAssignedCountyFeatures(payload) {
+  if (!usAtlasPromise) {
+    usAtlasPromise = d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json");
+  }
+  const usTopo = await usAtlasPromise;
+  const assignmentByFips = new Map((payload?.assignments || []).map(row => [padFips(row.fips), row]));
+  const riskByFips = new Map(data.countyRiskMap.features.map(feature => [feature.properties.fips, feature.properties]));
+  return topojson
+    .feature(usTopo, usTopo.objects.counties)
+    .features
+    .filter(feature => assignmentByFips.has(padFips(feature.id)))
+    .map(feature => {
+      const fips = padFips(feature.id);
+      const assignment = assignmentByFips.get(fips);
+      const risk = riskByFips.get(fips) || {};
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          ...risk,
+          fips,
+          stateFips: fips.slice(0, 2),
+          name: risk.name || assignment.countyName || fips,
+        },
+      };
+    });
 }
 
 async function drawCountyRiskMap() {
@@ -863,14 +1418,244 @@ function drawMapLegend() {
   });
 }
 
+async function drawAssignedProfileMap(payload, svgId, legendId, title) {
+  const svg = document.getElementById(svgId);
+  clear(svg);
+  const box = svg.getBoundingClientRect();
+  const dims = { width: Math.max(360, box.width), height: Math.max(360, box.height) };
+  svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  const features = await loadAssignedCountyFeatures(payload);
+  const assignments = new Map((payload?.assignments || []).map(row => [padFips(row.fips), row]));
+  const projection = d3.geoAlbersUsa();
+  projection.fitExtent(
+    [[34, 24], [dims.width - 34, dims.height - 34]],
+    { type: "FeatureCollection", features }
+  );
+  const geoPath = d3.geoPath(projection);
+  const layer = add("g", svg);
+  features.forEach(feature => {
+    const assignment = assignments.get(padFips(feature.properties.fips));
+    const countyPath = add("path", layer, {
+      d: geoPath(feature),
+      class: "county",
+      fill: assignment ? profileColors[assignment.profile % profileColors.length] : "#e6e0d6",
+      "data-profile": assignment?.profile ?? "missing"
+    });
+    countyPath.addEventListener("mouseenter", event => showProfileMapTooltip(event, feature, assignment, title));
+    countyPath.addEventListener("mousemove", moveMapTooltip);
+    countyPath.addEventListener("mouseleave", hideMapTooltip);
+  });
+  drawAssignedProfileMapLegend(payload, legendId);
+}
+
+function drawAssignedProfileMapLegend(payload, legendId) {
+  const legend = document.getElementById(legendId);
+  const profiles = payload?.profiles || [];
+  const counts = new Map((payload?.assignments || []).map(row => [row.profile, 0]));
+  (payload?.assignments || []).forEach(row => counts.set(row.profile, (counts.get(row.profile) || 0) + 1));
+  legend.innerHTML = "";
+  profiles.forEach(profile => {
+    const item = document.createElement("span");
+    item.className = "legend-item";
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = profileColors[profile.profile % profileColors.length];
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(`${profile.label} (${counts.get(profile.profile) || 0})`));
+    legend.appendChild(item);
+  });
+}
+
+function drawEconomicProfileCards() {
+  const container = document.getElementById("economicProfileCards");
+  const cards = data.economicProfiles?.cards || [];
+  container.innerHTML = cards.map(card => {
+    const profileItems = (card.topProfiles || []).map(profile =>
+      `<li>${fmtPct(profile.share)} are <strong>${escapeHtml(profile.label)}</strong></li>`
+    ).join("");
+    const higher = (card.higherTraits || []).map(traitPhrase).join("; ");
+    const lower = (card.lowerTraits || []).map(traitPhrase).join("; ");
+    return `<article class="profile-card">` +
+      `<h3>${escapeHtml(card.riskRating)}</h3>` +
+      `<div class="count">${card.countyCount ?? 0} counties</div>` +
+      `<ul>${profileItems}</ul>` +
+      `<div class="trait"><strong>Stands out for:</strong> ${higher || "No clear high traits"}</div>` +
+      `<div class="trait"><strong>Lower on:</strong> ${lower || "No clear low traits"}</div>` +
+      `</article>`;
+  }).join("");
+}
+
+function drawEconomicProfileCommentary() {
+  const container = document.getElementById("economicProfileCommentary");
+  const notes = data.economicProfiles?.commentary || [];
+  container.innerHTML = notes.map(text => `<p>${escapeHtml(text)}</p>`).join("");
+}
+
+function drawEconomicProfileChart() {
+  drawProfileDominanceTiles(data.economicProfiles, "economicDominanceTiles");
+  drawProfileHeatmap(data.economicProfiles, "economicProfileHeatmap");
+}
+
+function drawEconomicProfileMap() {
+  drawAssignedProfileMap(data.economicProfiles, "economicProfileMap", "economicProfileMapLegend", "Economic profile");
+}
+
+function drawEconomicContrastTable() {
+  const body = document.getElementById("economicContrastBody");
+  const rows = data.economicProfiles?.featureContrasts || [];
+  body.innerHTML = rows.map(row => {
+    const higher = (row.higher || []).map(item => `<li>${traitPhrase(item)}</li>`).join("");
+    const lower = (row.lower || []).map(item => `<li>${traitPhrase(item)}</li>`).join("");
+    return `<tr>` +
+      `<td><strong>${escapeHtml(row.riskRating)}</strong></td>` +
+      `<td><ul class="trait-list">${higher}</ul></td>` +
+      `<td><ul class="trait-list">${lower}</ul></td>` +
+      `</tr>`;
+  }).join("");
+}
+
+function drawEconomicProfileDemographics() {
+  const body = document.getElementById("economicProfileDemographicsBody");
+  const profiles = data.economicProfiles?.profiles || [];
+  body.innerHTML = profiles.map(profile => {
+    return `<tr>` +
+      `<td><strong>${escapeHtml(profile.label)}</strong><br><span class="count">${profile.countyCount ?? 0} counties</span></td>` +
+      `<td>${escapeHtml(profile.demographicDescription || "Demographic mix is close to the national county pattern.")}</td>` +
+      `</tr>`;
+  }).join("");
+}
+
+function drawProfileCards(payload, containerId) {
+  const container = document.getElementById(containerId);
+  const cards = payload?.cards || [];
+  container.innerHTML = cards.map(card => {
+    const profileItems = (card.topProfiles || []).map(profile =>
+      `<li>${fmtPct(profile.share)} are <strong>${escapeHtml(profile.label)}</strong></li>`
+    ).join("");
+    const higher = (card.higherTraits || []).map(traitPhrase).join("; ");
+    const lower = (card.lowerTraits || []).map(traitPhrase).join("; ");
+    return `<article class="profile-card">` +
+      `<h3>${escapeHtml(card.riskRating)}</h3>` +
+      `<div class="count">${card.countyCount ?? 0} counties</div>` +
+      `<ul>${profileItems}</ul>` +
+      `<div class="trait"><strong>Stands out for:</strong> ${higher || "No clear high traits"}</div>` +
+      `<div class="trait"><strong>Lower on:</strong> ${lower || "No clear low traits"}</div>` +
+      `</article>`;
+  }).join("");
+}
+
+function drawProfileCommentary(payload, containerId) {
+  const container = document.getElementById(containerId);
+  const notes = payload?.commentary || [];
+  container.innerHTML = notes.map(text => `<p>${escapeHtml(text)}</p>`).join("");
+}
+
+function drawProfileDominanceTiles(payload, containerId) {
+  const container = document.getElementById(containerId);
+  const ratings = data.meta.riskRatings;
+  const byRisk = payload?.byRiskRating || {};
+  container.innerHTML = ratings.map(rating => {
+    const rows = [...(byRisk[rating] || [])].sort((a, b) => (b.share || 0) - (a.share || 0));
+    const top = rows[0];
+    const next = rows[1];
+    const gap = top && next ? (top.share || 0) - (next.share || 0) : null;
+    const color = top ? profileColors[top.profile % profileColors.length] : "#e6e0d6";
+    return `<article class="dominance-tile" style="border-top: 5px solid ${color}">` +
+      `<h3>${escapeHtml(rating)}</h3>` +
+      `<div class="dominant-label">${escapeHtml(top?.label || "No assigned profile")}</div>` +
+      `<div class="dominant-share">${fmtPct(top?.share)}</div>` +
+      `<div class="dominant-next">${next ? `Next: ${escapeHtml(next.label)} (${fmtPct(next.share)})<br>Lead: ${fmtPct(gap)}` : "No second profile"}</div>` +
+      `</article>`;
+  }).join("");
+}
+
+function heatmapColor(share) {
+  const value = Math.max(0, Math.min(1, Number(share) || 0));
+  const alpha = 0.10 + value * 0.82;
+  return `rgba(0, 90, 181, ${alpha.toFixed(3)})`;
+}
+
+function drawProfileHeatmap(payload, containerId) {
+  const container = document.getElementById(containerId);
+  const ratings = data.meta.riskRatings;
+  const profiles = payload?.profiles || [];
+  const byRisk = payload?.byRiskRating || {};
+  const profileLookup = new Map(profiles.map(profile => [profile.profile, profile]));
+  const shareLookup = new Map();
+  ratings.forEach(rating => {
+    (byRisk[rating] || []).forEach(row => shareLookup.set(`${rating}|${row.profile}`, row));
+  });
+  container.style.gridTemplateColumns = `120px repeat(${profiles.length}, minmax(110px, 1fr))`;
+  const header = [`<div></div>`, ...profiles.map(profile => `<div class="heatmap-col-label">${escapeHtml(profile.label)}</div>`)].join("");
+  const rows = ratings.map(rating => {
+    const cells = profiles.map(profile => {
+      const row = shareLookup.get(`${rating}|${profile.profile}`);
+      const share = row?.share || 0;
+      const textColor = share >= 0.45 ? "#fffaf0" : "#111827";
+      return `<div class="heatmap-cell" style="background:${heatmapColor(share)}; color:${textColor}" title="${escapeHtml(rating)}: ${escapeHtml(profile.label)} ${fmtPct(share)}">` +
+        `<strong>${fmtPct(share)}</strong>` +
+        `${row?.counties ?? 0} counties` +
+        `</div>`;
+    }).join("");
+    return `<div class="heatmap-label">${escapeHtml(rating)}</div>${cells}`;
+  }).join("");
+  container.innerHTML = header + rows;
+}
+
+function drawProfileContrastTable(payload, bodyId) {
+  const body = document.getElementById(bodyId);
+  const rows = payload?.featureContrasts || [];
+  body.innerHTML = rows.map(row => {
+    const higher = (row.higher || []).map(item => `<li>${traitPhrase(item)}</li>`).join("");
+    const lower = (row.lower || []).map(item => `<li>${traitPhrase(item)}</li>`).join("");
+    return `<tr>` +
+      `<td><strong>${escapeHtml(row.riskRating)}</strong></td>` +
+      `<td><ul class="trait-list">${higher}</ul></td>` +
+      `<td><ul class="trait-list">${lower}</ul></td>` +
+      `</tr>`;
+  }).join("");
+}
+
+function drawInsuranceProfileCards() {
+  drawProfileCards(data.insuranceProfiles, "insuranceProfileCards");
+}
+
+function drawInsuranceProfileCommentary() {
+  drawProfileCommentary(data.insuranceProfiles, "insuranceProfileCommentary");
+}
+
+function drawInsuranceProfileChart() {
+  drawProfileDominanceTiles(data.insuranceProfiles, "insuranceDominanceTiles");
+  drawProfileHeatmap(data.insuranceProfiles, "insuranceProfileHeatmap");
+}
+
+function drawInsuranceProfileMap() {
+  drawAssignedProfileMap(data.insuranceProfiles, "insuranceProfileMap", "insuranceProfileMapLegend", "Insurance profile");
+}
+
+function drawInsuranceContrastTable() {
+  drawProfileContrastTable(data.insuranceProfiles, "insuranceContrastBody");
+}
+
 function redraw() {
   drawRiskChart();
   drawCountyRiskMap();
+  drawEconomicProfileChart();
+  drawEconomicProfileMap();
+  drawInsuranceProfileChart();
+  drawInsuranceProfileMap();
 }
 
 window.addEventListener("resize", redraw);
 drawLegend();
 drawMapLegend();
+drawEconomicProfileCards();
+drawEconomicProfileCommentary();
+drawEconomicContrastTable();
+drawEconomicProfileDemographics();
+drawInsuranceProfileCards();
+drawInsuranceProfileCommentary();
+drawInsuranceContrastTable();
 document.getElementById("riskCommentary").innerHTML = data.commentary.map(text => `<p>${text}</p>`).join("");
 redraw();
 </script>
