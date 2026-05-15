@@ -1,8 +1,11 @@
 # Analyzing the Impact of Climate on Housing
 
-This project aims to show the impact of climate on the housing market across counties. There are multiple views that examine how different housing market metrics are affected by different types of extreme climate events across the months before and after the event’s occurrence, and how housing market movements vary by county attributes. The underlying pipeline for querying, processing, and transforming raw data runs on Python. The page is rendered with HTML, CSS, and JavaScript code.
+This project aims to show the impact of climate on the housing market across counties. There are multiple views that examine how different housing market metrics are affected by different types of extreme climate events across the months before and after the event’s occurrence, and how housing market movements vary by county attributes. The underlying pipeline for querying, processing, and transforming raw data runs on Python. The pages are rendered with HTML, CSS, and JavaScript code.
 
-## Visualizations
+## Which Way the Wind Blows: How Extreme Climate Events Affect Local Housing Markets
+https://kaxlow.github.io/climate-on-housing/output/visualizations/stormhouse.html
+
+## Additional Visualizations
 Visualizations of the impact of climate on the housing market: https://kaxlow.github.io/climate-on-housing/output/visualizations/index.html
 
 County-level housing market responses to extreme climate events by NRI risk ratings: https://kaxlow.github.io/climate-on-housing/output/visualizations/climate-housing-story-1.html

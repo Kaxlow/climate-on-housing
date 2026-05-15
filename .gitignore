@@ -5,3 +5,4 @@ src/__pycache__/
 output/visualizations/incident_housing_yoy_after.csv
 *.egg-info/
 __pycache__/
+.playwright-mcp/
