@@ -615,6 +615,210 @@ def serialize_plain_insurance_traits(rows: pd.DataFrame, limit: int) -> list[tup
     return traits
 
 
+def build_profile_response_payload(weighted: pd.DataFrame, profile_payload: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+    """Summarize housing response trajectories by NRI rating and assigned profile."""
+
+    assignments = pd.DataFrame(profile_payload.get("assignments", []))
+    if assignments.empty:
+        return {rating: [] for rating in VALID_RISK_RATINGS}
+
+    assignments = assignments[["fips", "profile", "label"]].copy()
+    assignments["fips"] = assignments["fips"].astype(str).str.zfill(5)
+    profile_windows = weighted.merge(assignments, on="fips", how="inner")
+    if profile_windows.empty:
+        return {rating: [] for rating in VALID_RISK_RATINGS}
+
+    stats = (
+        profile_windows.groupby(["riskRating", "profile", "label", "month_offset"], sort=True)["housing_market_yoy_index"]
+        .agg(
+            median=lambda values: values.quantile(0.5),
+            q1=lambda values: values.quantile(0.25),
+            q3=lambda values: values.quantile(0.75),
+            n="count",
+        )
+        .reset_index()
+    )
+    counts = (
+        profile_windows.groupby(["riskRating", "profile"], sort=False)["fips"]
+        .nunique()
+        .rename("county_count")
+        .reset_index()
+    )
+    stats = stats.merge(counts, on=["riskRating", "profile"], how="left")
+
+    response: dict[str, list[dict[str, object]]] = {}
+    for rating in VALID_RISK_RATINGS:
+        rating_rows = stats.loc[stats["riskRating"] == rating]
+        profile_rows: list[dict[str, object]] = []
+        for (profile, label), rows in rating_rows.groupby(["profile", "label"], sort=True):
+            rows = rows.sort_values("month_offset")
+            profile_rows.append(
+                {
+                    "profile": int(profile),
+                    "label": str(label),
+                    "countyCount": int(rows["county_count"].max()) if not rows.empty else 0,
+                    "rows": [
+                        {
+                            "offset": int(row.month_offset),
+                            "median": _num(row.median),
+                            "q1": _num(row.q1),
+                            "q3": _num(row.q3),
+                            "n": int(row.n),
+                        }
+                        for row in rows.itertuples(index=False)
+                    ],
+                }
+            )
+        response[rating] = sorted(profile_rows, key=lambda row: row["countyCount"], reverse=True)
+    return response
+
+
+def movement_phrase(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return "a change that could not be measured"
+    direction = "strengthening" if value > 0 else "weakening" if value < 0 else "little net movement"
+    return f"{direction} of {abs(float(value)):.3f}"
+
+
+def build_risk_takeaway(group_summaries: dict[str, dict[str, object]]) -> str:
+    rows = []
+    for rating, summary in group_summaries.items():
+        if summary.get("countyCount", 0) <= 0:
+            continue
+        year_1 = summary.get("avgPreToMonths1To12")
+        year_2 = summary.get("avgPreToMonths13To24")
+        if year_1 is None or year_2 is None:
+            continue
+        values = [0, year_1, year_2]
+        rows.append(
+            {
+                "rating": rating,
+                "year1": year_1,
+                "year2": year_2,
+                "range": max(values) - min(values),
+                "lateWeakening": year_2 < year_1,
+            }
+        )
+    if not rows:
+        return "The post-incident housing market movement could not be summarized for the risk groups."
+
+    high_risk = [row for row in rows if row["rating"] in {"Moderate", "High", "Very High"}]
+    high_risk_weakening = sum(1 for row in high_risk if row["lateWeakening"])
+    high_risk_comment = (
+        "Higher-risk counties generally show weakening markets over time, with the later post-incident year often softer than the first year."
+        if high_risk_weakening >= max(1, len(high_risk) // 2)
+        else "Higher-risk counties show more uneven post-incident movement, but the largest swings are still concentrated in the higher-risk groups."
+    )
+    strongest_rows = sorted(rows, key=lambda row: row["range"], reverse=True)[:2]
+
+    def risk_trend_text(row: dict[str, object]) -> str:
+        year_1 = float(row["year1"])
+        year_2 = float(row["year2"])
+        threshold = 0.01
+        if year_1 < -threshold and year_2 < year_1:
+            trend = "weakened after the incident and softened further in the second year"
+        elif year_1 < -threshold and year_2 > year_1:
+            trend = "weakened at first, then partly recovered"
+        elif year_1 > threshold and year_2 < year_1:
+            trend = "strengthened at first, then lost momentum"
+        elif year_1 > threshold and year_2 > year_1:
+            trend = "strengthened and kept improving"
+        elif year_2 < -threshold:
+            trend = "looked stable at first, then weakened in the second year"
+        elif year_2 > threshold:
+            trend = "looked stable at first, then improved in the second year"
+        else:
+            trend = "stayed comparatively stable"
+        return f"{row['rating']} risk counties {trend}"
+
+    return (
+        f"{high_risk_comment} "
+        f"The biggest movement trends were: {'; '.join(risk_trend_text(row) for row in strongest_rows)}."
+    )
+
+
+def build_profile_response_takeaway(weighted: pd.DataFrame, profile_payload: dict[str, object]) -> str:
+    assignments = pd.DataFrame(profile_payload.get("assignments", []))
+    if assignments.empty:
+        return "No profile-specific housing market movement could be measured."
+
+    assignments = assignments[["fips", "profile", "label"]].copy()
+    assignments["fips"] = assignments["fips"].astype(str).str.zfill(5)
+    profile_windows = weighted.merge(assignments, on="fips", how="inner")
+    if profile_windows.empty:
+        return "No profile-specific housing market movement could be measured."
+
+    period_means = (
+        profile_windows.assign(
+            period=np.select(
+                [
+                    profile_windows["month_offset"].between(-12, -1),
+                    profile_windows["month_offset"].between(1, 12),
+                    profile_windows["month_offset"].between(13, 24),
+                ],
+                ["pre", "months_1_12", "months_13_24"],
+                default="other",
+            )
+        )
+        .loc[lambda df: df["period"].isin(["pre", "months_1_12", "months_13_24"])]
+        .groupby(["riskRating", "profile", "label", "fips", "period"], sort=False)["housing_market_yoy_index"]
+        .mean()
+        .unstack("period")
+        .reset_index()
+    )
+    summary = (
+        period_means.dropna(subset=["pre", "months_1_12", "months_13_24"])
+        .groupby(["riskRating", "profile", "label"], as_index=False)
+        .agg(
+            avg_pre=("pre", "mean"),
+            avg_months_1_12=("months_1_12", "mean"),
+            avg_months_13_24=("months_13_24", "mean"),
+            county_count=("fips", "nunique"),
+        )
+    )
+    if summary.empty:
+        return "No profile-specific housing market movement could be measured."
+
+    minimum_count = min(10, max(1, int(summary["county_count"].max())))
+    eligible = summary.loc[summary["county_count"] >= minimum_count].copy()
+    if eligible.empty:
+        eligible = summary.copy()
+    eligible["change_pre_to_1_12"] = eligible["avg_months_1_12"] - eligible["avg_pre"]
+    eligible["change_1_12_to_13_24"] = eligible["avg_months_13_24"] - eligible["avg_months_1_12"]
+    eligible["change_pre_to_13_24"] = eligible["avg_months_13_24"] - eligible["avg_pre"]
+    eligible["movement_range"] = eligible[["avg_pre", "avg_months_1_12", "avg_months_13_24"]].max(axis=1) - eligible[
+        ["avg_pre", "avg_months_1_12", "avg_months_13_24"]
+    ].min(axis=1)
+    strongest_rows = eligible.sort_values(["movement_range", "county_count"], ascending=[False, False]).head(3)
+
+    def trend_text(row: pd.Series) -> str:
+        first_change = float(row.change_pre_to_1_12)
+        second_change = float(row.change_1_12_to_13_24)
+        threshold = 0.01
+        if abs(first_change) < threshold and abs(second_change) < threshold:
+            trend = "stayed close to its pre-incident level"
+        elif first_change < -threshold and second_change < -threshold:
+            trend = "weakened in year 1 and kept weakening in year 2"
+        elif first_change > threshold and second_change > threshold:
+            trend = "strengthened in year 1 and kept strengthening in year 2"
+        elif first_change > threshold and second_change < -threshold:
+            trend = "strengthened in year 1, then gave back ground in year 2"
+        elif first_change < -threshold and second_change > threshold:
+            trend = "weakened in year 1, then recovered in year 2"
+        elif first_change < -threshold:
+            trend = "weakened mainly in year 1"
+        elif second_change < -threshold:
+            trend = "weakened mainly in year 2"
+        elif first_change > threshold:
+            trend = "strengthened mainly in year 1"
+        else:
+            trend = "strengthened mainly in year 2"
+        return f"{row.label} in the {row.riskRating} risk group {trend}"
+
+    details = "; ".join(trend_text(row) for _, row in strongest_rows.iterrows())
+    return f"The largest peak-to-trough movement trends appeared in these clusters: {details}."
+
+
 def build_payload(windows: pd.DataFrame) -> dict[str, object]:
     county_risk_map = build_county_risk_map()
     county_windows = windows.loc[windows["nri_risk_rating"].isin(VALID_RISK_RATINGS)].copy()
@@ -691,26 +895,25 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
     )
     period_means["change_pre_to_1_12"] = period_means["months_1_12"] - period_means["pre"]
     period_means["change_1_12_to_13_24"] = period_means["months_13_24"] - period_means["months_1_12"]
+    period_means["change_pre_to_13_24"] = period_means["months_13_24"] - period_means["pre"]
     group_summaries: dict[str, dict[str, object]] = {}
     for rating in risk_ratings:
         group = period_means.loc[period_means["riskRating"] == rating]
         group_summaries[rating] = {
             "avgPreToMonths1To12": _num(group["change_pre_to_1_12"].mean()),
+            "avgPreToMonths13To24": _num(group["change_pre_to_13_24"].mean()),
             "avgMonths1To12To13To24": _num(group["change_1_12_to_13_24"].mean()),
             "countyCount": int(group["fips"].nunique()),
         }
 
-    rated_summaries = {rating: group_summaries[rating] for rating in VALID_RISK_RATINGS if rating in group_summaries}
-    lower_risk = [rating for rating in ["Very Low", "Low"] if rating in rated_summaries]
-    higher_risk = [rating for rating in ["High", "Very High"] if rating in rated_summaries]
-    lower_late = np.mean([rated_summaries[rating]["avgMonths1To12To13To24"] for rating in lower_risk])
-    higher_late = np.mean([rated_summaries[rating]["avgMonths1To12To13To24"] for rating in higher_risk])
-    lower_initial = np.mean([rated_summaries[rating]["avgPreToMonths1To12"] for rating in lower_risk])
-    higher_initial = np.mean([rated_summaries[rating]["avgPreToMonths1To12"] for rating in higher_risk])
-    commentary = [
-        f"In the first year after an incident, higher-risk counties moved only modestly differently from lower-risk counties on average ({higher_initial:+.3f} vs. {lower_initial:+.3f}).",
-        f"The longer-run pattern is clearer: higher-risk counties had a larger drop from months 1-12 to months 13-24 ({higher_late:+.3f}) than lower-risk counties ({lower_late:+.3f}), suggesting a more persistent weakening in higher-risk housing markets.",
-    ]
+    commentary = [build_risk_takeaway(group_summaries)]
+
+    economic_profiles = build_economic_profile_payload()
+    insurance_profiles = build_insurance_profile_payload()
+    economic_profiles["responseByRiskRating"] = build_profile_response_payload(weighted, economic_profiles)
+    insurance_profiles["responseByRiskRating"] = build_profile_response_payload(weighted, insurance_profiles)
+    economic_profiles["responseTakeaway"] = build_profile_response_takeaway(weighted, economic_profiles)
+    insurance_profiles["responseTakeaway"] = build_profile_response_takeaway(weighted, insurance_profiles)
 
     incident_types = sorted(windows["incident_type"].dropna().astype(str).unique())
     return {
@@ -727,8 +930,8 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
         "groupSummaries": group_summaries,
         "commentary": commentary,
         "countyRiskMap": county_risk_map,
-        "economicProfiles": build_economic_profile_payload(),
-        "insuranceProfiles": build_insurance_profile_payload(),
+        "economicProfiles": economic_profiles,
+        "insuranceProfiles": insurance_profiles,
     }
 
 
@@ -793,6 +996,8 @@ HTML = r"""<!doctype html>
     .note { color: var(--muted); font-size: 12px; line-height: 1.4; margin-top: 10px; max-width: none; }
     .commentary { border-top: 1px solid #e6e0d6; margin-top: 12px; padding-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.45; }
     .commentary p { margin: 0 0 6px; }
+    .takeaway-banner { margin-top: 12px; border-left: 5px solid var(--accent); background: #eef7f4; color: #172026; padding: 12px 14px; font-size: 15px; line-height: 1.45; font-weight: 700; }
+    .takeaway-banner p { margin: 0; }
     .tooltip {
       position: fixed;
       display: none;
@@ -832,6 +1037,15 @@ HTML = r"""<!doctype html>
     .heatmap-cell strong { display: block; font-size: 13px; margin-bottom: 2px; }
     .heatmap-label { min-height: 54px; display: flex; align-items: center; color: #2f3941; font-size: 12px; font-weight: 700; }
     .heatmap-col-label { color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.2; align-self: end; }
+    .profile-response-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .profile-response-panel { border-top: 1px solid #e6e0d6; padding-top: 10px; min-width: 0; }
+    .profile-response-panel h3 { font-size: 13px; margin-bottom: 6px; }
+    .profile-response-chart { width: 100%; height: 250px; display: block; }
+    .profile-response-chart text { font-size: 10px; }
+    .profile-response-band { stroke: none; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+    .profile-response-band.active { opacity: 0.18; }
+    .profile-response-line { fill: none; stroke-width: 2.3; stroke-linejoin: round; stroke-linecap: round; }
+    .profile-response-hit-line { fill: none; stroke: transparent; stroke-width: 12; stroke-linejoin: round; stroke-linecap: round; cursor: pointer; }
     .profile-map { width: 100%; height: 520px; margin-top: 14px; display: block; }
     .profile-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
     .profile-table th, .profile-table td { border-top: 1px solid #e6e0d6; padding: 8px 6px; text-align: left; vertical-align: top; }
@@ -847,6 +1061,7 @@ HTML = r"""<!doctype html>
       .profile-grid { grid-template-columns: 1fr; }
       .dominance-grid { grid-template-columns: 1fr; }
       .econ-commentary { grid-template-columns: 1fr; }
+      .profile-response-grid { grid-template-columns: 1fr; }
       .profile-map { height: 430px; }
     }
   </style>
@@ -871,7 +1086,7 @@ HTML = r"""<!doctype html>
     <div id="riskLegend" class="legend"></div>
     <p class="note">Housing market index: this score combines prices, sale-to-list ratios, homes sold, and inventory into one number. The inputs use year-over-year changes so normal seasonal swings, like busier spring markets, have less influence.</p>
     <p class="note">Incident weighting: when a county was hit by multiple incidents, its values are averaged by month, with more recent incidents counted more heavily.</p>
-    <div id="riskCommentary" class="commentary" aria-label="Commentary on NRI risk group responses"></div>
+    <div id="riskCommentary" class="takeaway-banner" aria-label="Takeaway on NRI risk group responses"></div>
     <div class="map-wrap">
       <h3>County Risk Map</h3>
       <div class="sub">The same FEMA risk levels are mapped county by county across the US, including Alaska and Hawaii. Green marks the lowest-risk counties and red marks the highest-risk counties.</div>
@@ -892,6 +1107,9 @@ HTML = r"""<!doctype html>
     <div class="heatmap-wrap">
       <div id="economicProfileHeatmap" class="profile-heatmap" aria-label="Heatmap of economic profile shares by NRI risk rating"></div>
     </div>
+    <div id="economicProfileResponseCharts" class="profile-response-grid" aria-label="Housing market response by economic profile and NRI risk rating"></div>
+    <div id="economicProfileResponseLegend" class="legend"></div>
+    <div id="economicProfileResponseTakeaway" class="takeaway-banner" aria-label="Takeaway on economic profile housing response"></div>
     <svg id="economicProfileMap" class="profile-map" role="img" aria-label="US county map colored by assigned economic profile"></svg>
     <div id="economicProfileMapLegend" class="legend"></div>
     <table class="profile-table" aria-label="Demographic descriptions of economic profiles">
@@ -930,6 +1148,9 @@ HTML = r"""<!doctype html>
     <div class="heatmap-wrap">
       <div id="insuranceProfileHeatmap" class="profile-heatmap" aria-label="Heatmap of insurance profile shares by NRI risk rating"></div>
     </div>
+    <div id="insuranceProfileResponseCharts" class="profile-response-grid" aria-label="Housing market response by insurance profile and NRI risk rating"></div>
+    <div id="insuranceProfileResponseLegend" class="legend"></div>
+    <div id="insuranceProfileResponseTakeaway" class="takeaway-banner" aria-label="Takeaway on insurance profile housing response"></div>
     <svg id="insuranceProfileMap" class="profile-map" role="img" aria-label="US county map colored by assigned insurance profile"></svg>
     <div id="insuranceProfileMapLegend" class="legend"></div>
     <table class="profile-table" aria-label="Insurance feature contrasts by NRI risk rating">
@@ -1076,6 +1297,24 @@ function drawAxes(svg, dims, x, y, xDomain, yDomain) {
   add("text", g, { x: 4, y: dims.top - 8 }).textContent = "Housing market YOY index";
 }
 
+function drawCompactAxes(svg, dims, x, y, xDomain, yDomain) {
+  const g = add("g", svg);
+  const yTicks = 3;
+  for (let i = 0; i <= yTicks; i++) {
+    const value = yDomain[0] + ((yDomain[1] - yDomain[0]) * i / yTicks);
+    const yy = y(value);
+    add("line", g, { x1: dims.left, x2: dims.width - dims.right, y1: yy, y2: yy, stroke: "#e5e0d7" });
+    add("text", g, { x: dims.left - 6, y: yy + 3, "text-anchor": "end" }).textContent = value.toFixed(2);
+  }
+  [-12, 0, 12, 24].filter(d => d >= xDomain[0] && d <= xDomain[1]).forEach(value => {
+    const xx = x(value);
+    add("line", g, { x1: xx, x2: xx, y1: dims.top, y2: dims.height - dims.bottom, stroke: "#eee9df" });
+    add("text", g, { x: xx, y: dims.height - dims.bottom + 17, "text-anchor": "middle" }).textContent = value;
+  });
+  add("line", g, { x1: dims.left, x2: dims.width - dims.right, y1: y(0), y2: y(0), class: "zero-line" });
+  add("text", g, { x: dims.width - dims.right, y: dims.height - 7, "text-anchor": "end" }).textContent = "Month offset";
+}
+
 function chartDims(svg) {
   const box = svg.getBoundingClientRect();
   return { width: Math.max(320, box.width), height: Math.max(300, box.height), top: 26, right: 22, bottom: 46, left: 58 };
@@ -1088,6 +1327,13 @@ function drawPeriodShading(svg, dims, x) {
   add("rect", svg, { x: x(13), y, width: x(24) - x(13), height, class: "period-band-late" });
   add("text", svg, { x: x(6.5), y: dims.top + 13, class: "period-label", "text-anchor": "middle" }).textContent = "Months 1-12";
   add("text", svg, { x: x(18.5), y: dims.top + 13, class: "period-label", "text-anchor": "middle" }).textContent = "Months 13-24";
+}
+
+function drawCompactPeriodShading(svg, dims, x) {
+  const y = dims.top;
+  const height = dims.height - dims.bottom - dims.top;
+  add("rect", svg, { x: x(1), y, width: x(12) - x(1), height, class: "period-band-early" });
+  add("rect", svg, { x: x(13), y, width: x(24) - x(13), height, class: "period-band-late" });
 }
 
 function formatChange(value) {
@@ -1494,6 +1740,9 @@ function drawEconomicProfileCommentary() {
 function drawEconomicProfileChart() {
   drawProfileDominanceTiles(data.economicProfiles, "economicDominanceTiles");
   drawProfileHeatmap(data.economicProfiles, "economicProfileHeatmap");
+  drawProfileResponseCharts(data.economicProfiles, "economicProfileResponseCharts");
+  drawProfileLineLegend(data.economicProfiles, "economicProfileResponseLegend");
+  drawProfileResponseTakeaway(data.economicProfiles, "economicProfileResponseTakeaway");
 }
 
 function drawEconomicProfileMap() {
@@ -1602,6 +1851,104 @@ function drawProfileHeatmap(payload, containerId) {
   container.innerHTML = header + rows;
 }
 
+function profileResponseDims(svg) {
+  const box = svg.getBoundingClientRect();
+  return { width: Math.max(300, box.width), height: Math.max(220, box.height), top: 16, right: 12, bottom: 34, left: 46 };
+}
+
+function nearestResponseRow(event, svg, x, series) {
+  const rect = svg.getBoundingClientRect();
+  const viewWidth = Number(svg.getAttribute("viewBox").split(" ")[2]) || rect.width;
+  const svgX = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * viewWidth;
+  return (series.rows || []).reduce((best, row) => {
+    const distance = Math.abs(x(row.offset) - svgX);
+    return !best || distance < best.distance ? { row, distance } : best;
+  }, null)?.row || series.rows?.[0];
+}
+
+function showProfileResponseTooltip(event, rating, series, row) {
+  const tooltip = document.getElementById("riskTooltip");
+  tooltip.innerHTML = `<strong>${escapeHtml(series.label)}</strong>` +
+    `<div>NRI risk rating: ${escapeHtml(rating)}</div>` +
+    `<div>Counties: ${series.countyCount ?? "n/a"}</div>` +
+    `<div>Month offset: ${row?.offset ?? "n/a"}</div>` +
+    `<div>Median: ${formatChange(row?.median)}</div>`;
+  tooltip.style.display = "block";
+  moveTooltip(event);
+}
+
+function drawProfileResponseSvg(svg, rating, seriesRows) {
+  clear(svg);
+  const dims = profileResponseDims(svg);
+  svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  const offsets = allOffsets;
+  const series = (seriesRows || [])
+    .map(item => ({ ...item, rows: (item.rows || []).filter(d => offsets.includes(d.offset)) }))
+    .filter(item => item.rows.length);
+  const yValues = series.flatMap(item => item.rows.flatMap(d => [d.q1, d.q3, d.median]));
+  const xDomain = [Math.min(...offsets), Math.max(...offsets)];
+  const yDomain = symmetricExtent(yValues);
+  const x = makeScale(xDomain, [dims.left, dims.width - dims.right]);
+  const y = makeScale(yDomain, [dims.height - dims.bottom, dims.top]);
+  drawCompactPeriodShading(svg, dims, x);
+  drawCompactAxes(svg, dims, x, y, xDomain, yDomain);
+  const incidentX = x(0);
+  add("line", svg, { x1: incidentX, x2: incidentX, y1: dims.top, y2: dims.height - dims.bottom, class: "incident-line" });
+  series.forEach(item => {
+    const linePath = pathFor(item.rows, x, y);
+    const color = profileColors[item.profile % profileColors.length] || "#5e6872";
+    const band = add("path", svg, { d: bandPath(item.rows, x, y), class: "profile-response-band", fill: color });
+    add("path", svg, { d: linePath, class: "profile-response-line", stroke: color });
+    const hitLine = add("path", svg, { d: linePath, class: "profile-response-hit-line" });
+    hitLine.addEventListener("mouseenter", event => {
+      band.classList.add("active");
+      showProfileResponseTooltip(event, rating, item, nearestResponseRow(event, svg, x, item));
+    });
+    hitLine.addEventListener("mousemove", event => showProfileResponseTooltip(event, rating, item, nearestResponseRow(event, svg, x, item)));
+    hitLine.addEventListener("mouseleave", () => {
+      band.classList.remove("active");
+      hideTooltip();
+    });
+  });
+}
+
+function drawProfileResponseCharts(payload, containerId) {
+  const container = document.getElementById(containerId);
+  const ratings = data.meta.riskRatings;
+  const byRisk = payload?.responseByRiskRating || {};
+  container.innerHTML = ratings.map((rating, index) =>
+    `<article class="profile-response-panel">` +
+      `<h3>${escapeHtml(rating)}</h3>` +
+      `<svg id="${containerId}-${index}" class="profile-response-chart" role="img" aria-label="Housing response lines for ${escapeHtml(rating)} risk counties"></svg>` +
+    `</article>`
+  ).join("");
+  ratings.forEach((rating, index) => {
+    const svg = document.getElementById(`${containerId}-${index}`);
+    drawProfileResponseSvg(svg, rating, byRisk[rating] || []);
+  });
+}
+
+function drawProfileLineLegend(payload, legendId) {
+  const legend = document.getElementById(legendId);
+  const profiles = payload?.profiles || [];
+  legend.innerHTML = "";
+  profiles.forEach(profile => {
+    const item = document.createElement("span");
+    item.className = "legend-item";
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = profileColors[profile.profile % profileColors.length];
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(profile.label));
+    legend.appendChild(item);
+  });
+}
+
+function drawProfileResponseTakeaway(payload, containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = `<p>${escapeHtml(payload?.responseTakeaway || "No profile-specific housing market movement could be measured.")}</p>`;
+}
+
 function drawProfileContrastTable(payload, bodyId) {
   const body = document.getElementById(bodyId);
   const rows = payload?.featureContrasts || [];
@@ -1627,6 +1974,9 @@ function drawInsuranceProfileCommentary() {
 function drawInsuranceProfileChart() {
   drawProfileDominanceTiles(data.insuranceProfiles, "insuranceDominanceTiles");
   drawProfileHeatmap(data.insuranceProfiles, "insuranceProfileHeatmap");
+  drawProfileResponseCharts(data.insuranceProfiles, "insuranceProfileResponseCharts");
+  drawProfileLineLegend(data.insuranceProfiles, "insuranceProfileResponseLegend");
+  drawProfileResponseTakeaway(data.insuranceProfiles, "insuranceProfileResponseTakeaway");
 }
 
 function drawInsuranceProfileMap() {
@@ -1656,7 +2006,7 @@ drawEconomicProfileDemographics();
 drawInsuranceProfileCards();
 drawInsuranceProfileCommentary();
 drawInsuranceContrastTable();
-document.getElementById("riskCommentary").innerHTML = data.commentary.map(text => `<p>${text}</p>`).join("");
+document.getElementById("riskCommentary").innerHTML = data.commentary.map(text => `<p>${escapeHtml(text)}</p>`).join("");
 redraw();
 </script>
 </body>
