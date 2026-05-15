@@ -6,3 +6,4 @@ output/visualizations/incident_housing_yoy_after.csv
 *.egg-info/
 __pycache__/
 .playwright-mcp/
+output/county_clustering/
