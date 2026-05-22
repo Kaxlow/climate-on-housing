@@ -10,12 +10,13 @@ ratings.
 
 ## Current Stormhouse Workflows
 
-`stormhouse.html` currently uses two county profile workflows:
+`stormhouse.html` currently uses three page-specific county profile workflows:
 
 1. Economic profiles
 2. Insurance profiles
+3. Migration trend profiles
 
-Both workflows follow the same broad modeling pattern:
+The workflows follow the same broad modeling pattern:
 
 1. Build a county-level feature matrix.
 2. Clean, winsorize where appropriate, and impute missing values.
@@ -210,6 +211,111 @@ Key fields:
 - `assignment_margin`: difference between best and second-best profile
 - `second_best_profile`: next most likely profile
 - `second_best_profile_label`: plain label for the next most likely profile
+
+## Migration Trend Profile Clustering
+
+Implementation:
+
+- `src/housing_climate_risk/modeling/migration_trend_profiles.py`
+- wired into `src/housing_climate_risk/page_data/stormhouse.py`
+- output directory: `output/visualizations/stormhouse_migration_trends/`
+
+### Feature Matrix
+
+The migration trend profile matrix is built from the same FEMA incident windows
+used by the Migration Trend section. Annual county net migration is computed as:
+
+```text
+(Net International Migration + Net Domestic Migration) / Population * 1,000
+```
+
+Each county is summarized across the two years before through two years after
+incident occurrence. When a county has multiple incident windows, observations
+are recency-weighted within the same year offset, matching the page's migration
+trend logic.
+
+The clustering inputs are feature-based time-series summaries:
+
+- pre-incident average migration rate
+- incident-year change from the pre-incident average
+- first-year post-incident change from the pre-incident average
+- second-year change from year 1 to year 2
+- post-incident average migration rate
+- overall before-to-after change
+- five-point volatility
+- linear slope across year offsets `-2, -1, 0, +1, +2`
+
+The raw county identifiers, NRI risk ratings, and county names are retained for
+summaries but are not clustering inputs.
+
+### Model
+
+The current Stormhouse migration trend run uses:
+
+- outlier handling: 1st to 99th percentile clipping of annual migration rates
+- imputation: median
+- scaling: quantile normalization to a normal distribution
+- dimensionality reduction: PCA, up to 6 components
+- clustering: GaussianMixture with diagonal covariance
+- candidate `k`: 4, 5, and 6
+
+The current selected solution is `k=4`. The 5- and 6-cluster candidates had
+slightly better separation scores, but failed the balance check because they
+created very small clusters. The selected 4-cluster model keeps the groups large
+enough for page-level interpretation.
+
+Final migration trend profiles:
+
+- Gradual post-incident migration gain counties
+- Spike-and-fade migration counties
+- Volatile migration counties
+- Strong post-incident migration gain counties
+
+### Current Cluster Quality
+
+For the selected `k=4` migration trend model:
+
+- mean assignment confidence: about `0.879`
+- median assignment confidence: about `0.950`
+- low-confidence rate under 0.60: about `8.1%`
+- silhouette score: about `0.046`
+- Davies-Bouldin index: about `7.811`
+- cluster sizes: `660`, `396`, `198`, `826`
+
+Interpretation:
+
+- Assignment confidence is reasonably strong, but the low silhouette score shows
+  that migration trend patterns are overlapping gradients rather than sharply
+  separated natural classes.
+- The clusters should be read as plain-language trend profiles: gradual gain,
+  spike-and-fade, volatility, and strong gain.
+- The selected model favors stable, interpretable group sizes over maximum
+  geometric separation.
+
+### Outputs
+
+The workflow writes:
+
+- `stormhouse_migration_trend_assignments.csv`
+- `stormhouse_migration_trend_risk_summary.csv`
+- `stormhouse_migration_trend_labels.csv`
+- `stormhouse_migration_trend_series.csv`
+- `stormhouse_migration_trend_scores.csv`
+- `stormhouse_migration_trend_model.joblib`
+
+Key fields:
+
+- `migration_trend_profile`: numeric cluster id
+- `migration_trend_profile_label`: plain label for the cluster
+- `assignment_confidence`: GMM posterior probability for the assigned profile
+- `assignment_margin`: difference between best and second-best profile
+- `second_best_profile`: next most likely profile
+- `second_best_profile_label`: plain label for the next most likely profile
+
+The Stormhouse Migration Trend section presents these clusters below the
+economic-profile and risk-rating migration plots. Each cluster card reports the
+county count, assignment confidence, before/after net migration level, overall
+change, dominant NRI mix, and a plain interpretation of the trend shape.
 
 ## NRI Risk Group Summaries
 
