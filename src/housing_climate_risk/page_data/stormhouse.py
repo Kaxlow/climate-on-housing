@@ -95,6 +95,16 @@ US_STATE_FIPS = {
 }
 
 
+def nri_counties_path() -> object:
+    path = CLIMATE_DIR / "NRI_Table_Counties.csv"
+    return path if path.exists() else DATA_DIR / "fema" / "NRI_Table_Counties.csv"
+
+
+def county_boundaries_path() -> object:
+    path = GEOGRAPHIC_DIR / "us_counties_boundaries_shapefile.json"
+    return path if path.exists() else DATA_DIR / "fipsgeo" / "us_counties_boundaries_shapefile.json"
+
+
 def _num(value: object, digits: int = 4) -> float | None:
     if pd.isna(value):
         return None
@@ -112,7 +122,7 @@ def _round_coords(coords: object, digits: int = 3) -> object:
 def build_county_risk_map() -> dict[str, object]:
     from shapely.geometry import mapping, shape
 
-    nri = pd.read_csv(CLIMATE_DIR / "NRI_Table_Counties.csv", usecols=["STCOFIPS", "RISK_RATNG"])
+    nri = pd.read_csv(nri_counties_path(), usecols=["STCOFIPS", "RISK_RATNG"])
     risk_by_fips = (
         nri.assign(
             fips=nri["STCOFIPS"].astype(str).str.zfill(5),
@@ -123,7 +133,7 @@ def build_county_risk_map() -> dict[str, object]:
         .to_dict()
     )
 
-    with (GEOGRAPHIC_DIR / "us_counties_boundaries_shapefile.json").open(encoding="utf-8") as file:
+    with county_boundaries_path().open(encoding="utf-8") as file:
         counties = json.load(file)
 
     features: list[dict[str, object]] = []
@@ -167,11 +177,62 @@ def build_county_risk_map() -> dict[str, object]:
     }
 
 
+def load_noaa_billion_dollar_storm_events() -> pd.DataFrame:
+    """Return individual NOAA storm events over $1B shaped like FEMA incident rows."""
+
+    columns = ["fips", "incidentType", "declarationTitle", "incidentBeginDate", "incidentEndDate"]
+    database_path = DATA_DIR / "quoll.duckdb"
+    if not database_path.exists():
+        return pd.DataFrame(columns=columns)
+
+    try:
+        import duckdb
+    except ImportError:
+        return pd.DataFrame(columns=columns)
+
+    query = """
+        SELECT
+            fips,
+            event_year,
+            event_type,
+            begin_timestamp AS incidentBeginDate,
+            coalesce(end_timestamp, begin_timestamp) AS incidentEndDate,
+            total_damage_amount AS total_damage
+        FROM mart.noaa_storm_events
+        WHERE fips IS NOT NULL
+          AND begin_timestamp IS NOT NULL
+          AND total_damage_amount > 1000000000
+        ORDER BY total_damage_amount DESC NULLS LAST
+    """
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as con:
+            events = con.execute(query).fetchdf()
+    except Exception:
+        return pd.DataFrame(columns=columns)
+
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+
+    events["fips"] = events["fips"].astype(str).str.zfill(5)
+    events["incidentBeginDate"] = pd.to_datetime(events["incidentBeginDate"], errors="coerce")
+    events["incidentEndDate"] = pd.to_datetime(events["incidentEndDate"], errors="coerce")
+    events["damage_billions"] = pd.to_numeric(events["total_damage"], errors="coerce") / 1_000_000_000
+    events["incidentType"] = "NOAA Billion-Dollar Storm"
+    events["declarationTitle"] = events.apply(
+        lambda row: (
+            f"NOAA storm event damage above $1B in {int(row.event_year)} "
+            f"({row.damage_billions:.1f}B; {row.event_type or 'storm event'})"
+        ),
+        axis=1,
+    )
+    return events[columns].dropna(subset=["fips", "incidentBeginDate"])
+
+
 def build_complete_windows() -> pd.DataFrame:
     disasters = prepare_natural_disasters_df()
     housing = prepare_housing_df(include_profiles=False).copy()
 
-    nri = pd.read_csv(CLIMATE_DIR / "NRI_Table_Counties.csv", usecols=["STCOFIPS", "RISK_RATNG"])
+    nri = pd.read_csv(nri_counties_path(), usecols=["STCOFIPS", "RISK_RATNG"])
     nri = (
         nri.assign(
             fips=nri["STCOFIPS"].astype(str).str.zfill(5),
@@ -198,6 +259,9 @@ def build_complete_windows() -> pd.DataFrame:
     ].copy()
 
     events = disasters.loc[~disasters["incidentType"].isin(EXCLUDED_INCIDENT_TYPES)].copy()
+    noaa_billion_dollar_events = load_noaa_billion_dollar_storm_events()
+    if not noaa_billion_dollar_events.empty:
+        events = pd.concat([events, noaa_billion_dollar_events], ignore_index=True, sort=False)
     events = events.dropna(subset=["fips", "incidentBeginDate"])
     duration = events["incidentEndDate"] - events["incidentBeginDate"]
     median_duration = duration[duration.notna()].median()
@@ -260,7 +324,7 @@ def build_complete_windows() -> pd.DataFrame:
 
 
 def build_nri_rating_lookup() -> pd.DataFrame:
-    nri = pd.read_csv(CLIMATE_DIR / "NRI_Table_Counties.csv", usecols=["STCOFIPS", "RISK_RATNG"])
+    nri = pd.read_csv(nri_counties_path(), usecols=["STCOFIPS", "RISK_RATNG"])
     return (
         nri.assign(
             fips=nri["STCOFIPS"].astype(str).str.zfill(5),
@@ -391,6 +455,101 @@ def build_economic_profile_commentary(summary: pd.DataFrame, lifts: pd.DataFrame
     return [
         "Lower-risk counties are more often smaller mixed-economy or average-economy counties, while higher-risk counties are more often large high-wage metro counties. The very-high-risk group is small, but it leans toward high-wage investment-income counties.",
     ]
+
+
+def build_income_distribution_payload() -> dict[str, object]:
+    """Summarize county income distributions by NRI risk group."""
+
+    source = {
+        "label": "U.S. Census Bureau, American Community Survey 5-year Data Profiles DP03",
+        "url": "https://www.census.gov/programs-surveys/acs/data/data-tables.html",
+        "localFile": "data/quoll.duckdb, mart.acs_county_economic_annual",
+    }
+    database_path = DATA_DIR / "quoll.duckdb"
+    if not database_path.exists():
+        return {"years": [], "source": source, "groups": []}
+
+    try:
+        import duckdb
+    except ImportError:
+        return {"years": [], "source": source, "groups": []}
+
+    query = """
+        SELECT
+            fips,
+            NAME AS county_name,
+            year,
+            try_cast(replace(dp03_income_and_benefits_per_capita_income_est, ',', '') AS DOUBLE) AS income
+        FROM mart.acs_county_economic_annual
+        WHERE fips IS NOT NULL
+          AND year IS NOT NULL
+          AND dp03_income_and_benefits_per_capita_income_est IS NOT NULL
+    """
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as con:
+            income = con.execute(query).fetchdf()
+    except Exception:
+        return {"years": [], "source": source, "groups": []}
+
+    income["year"] = pd.to_numeric(income["year"], errors="coerce")
+    income["income"] = pd.to_numeric(income["income"], errors="coerce")
+    income = income.dropna(subset=["fips", "year", "income"])
+    if income.empty:
+        return {"years": [], "source": source, "groups": []}
+
+    max_year = int(income["year"].max())
+    years = list(range(max_year - 9, max_year + 1))
+    income = income.loc[income["year"].isin(years)].copy()
+    county_average = (
+        income.groupby("fips", as_index=False)
+        .agg(
+            average_income=("income", "mean"),
+            year_count=("year", "nunique"),
+            county_name=("county_name", "last"),
+        )
+    )
+    county_average["fips"] = county_average["fips"].astype(str).str.zfill(5)
+    county_average = county_average.merge(build_nri_rating_lookup(), on="fips", how="left")
+    county_average = county_average.dropna(subset=["nri_risk_rating", "average_income"])
+
+    groups: list[dict[str, object]] = []
+    for rating in VALID_RISK_RATINGS:
+        rows = county_average.loc[county_average["nri_risk_rating"].eq(rating)].copy()
+        values = rows["average_income"].dropna().sort_values()
+        if values.empty:
+            continue
+        quantiles = values.quantile([0.1, 0.25, 0.5, 0.75, 0.9])
+        groups.append(
+            {
+                "rating": rating,
+                "countyCount": int(rows["fips"].nunique()),
+                "mean": _num(values.mean(), 0),
+                "q10": _num(quantiles.loc[0.1], 0),
+                "q25": _num(quantiles.loc[0.25], 0),
+                "median": _num(quantiles.loc[0.5], 0),
+                "q75": _num(quantiles.loc[0.75], 0),
+                "q90": _num(quantiles.loc[0.9], 0),
+                "min": _num(values.min(), 0),
+                "max": _num(values.max(), 0),
+                "values": [
+                    {
+                        "fips": str(row.fips).zfill(5),
+                        "countyName": row.county_name,
+                        "income": _num(row.average_income, 0),
+                        "yearCount": int(row.year_count),
+                    }
+                    for row in rows.sort_values("average_income").itertuples(index=False)
+                ],
+            }
+        )
+
+    return {
+        "years": years,
+        "metric": "Average annual ACS per-capita income",
+        "method": "For each county, ACS DP03 per-capita income is averaged across the latest 10 calendar years available in the ACS economic mart. County averages are then grouped by NRI risk rating.",
+        "source": source,
+        "groups": groups,
+    }
 
 
 def plain_economic_feature_label(label: str) -> str:
@@ -1661,6 +1820,7 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
 
     commentary = [build_risk_takeaway(group_summaries)]
     economic_profiles = build_economic_profile_payload()
+    income_distribution = build_income_distribution_payload()
     migration_trend = build_migration_trend_payload(county_windows, economic_profiles)
     migration_trend["trendProfiles"] = build_migration_trend_profile_payload(county_windows)
     insurance_profiles = build_insurance_profile_payload()
@@ -1693,6 +1853,7 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
         "countyRiskMap": county_risk_map,
         "migrationTrend": migration_trend,
         "economicProfiles": economic_profiles,
+        "incomeDistribution": income_distribution,
         "insuranceProfiles": insurance_profiles,
         "insuranceTrends": insurance_trends,
     }
@@ -1847,6 +2008,19 @@ HTML = r"""<!doctype html>
     .profile-response-panel h3 { font-size: 13px; margin-bottom: 6px; }
     .profile-response-chart { width: 100%; height: 250px; display: block; }
     .economic-response-chart { height: 520px; }
+    .income-infographic { margin-top: 16px; }
+    .income-chart { height: 520px; }
+    .income-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .income-card { border: 1px solid #ddd8cf; background: #fffaf3; border-radius: 8px; padding: 12px; min-height: 118px; }
+    .income-card h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 7px; }
+    .income-card .income-main { color: var(--ink); font-weight: 800; font-size: 21px; margin-bottom: 4px; }
+    .income-card .income-detail { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .income-dot { fill-opacity: 0.2; stroke: none; }
+    .income-iqr { fill-opacity: 0.22; stroke-opacity: 0.95; stroke-width: 1.5; }
+    .income-whisker { stroke-width: 2; stroke-linecap: round; }
+    .income-median { stroke: #172026; stroke-width: 3.2; stroke-linecap: round; }
+    .income-risk-label { fill: var(--ink); font-size: 13px; font-weight: 800; }
+    .income-count-label { fill: var(--muted); font-size: 11px; }
     .migration-paired-plots { display: grid; grid-template-columns: minmax(138px, 0.75fr) minmax(0, 2.2fr) minmax(0, 2.2fr) minmax(138px, 0.75fr); gap: 14px; align-items: start; margin-top: 12px; }
     .migration-paired-plots h3 { font-size: 13px; margin: 0 0 6px; color: #2f3941; }
     .migration-single-layout { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 3fr) minmax(170px, 0.9fr); gap: 14px; align-items: start; margin-top: 12px; }
@@ -1910,6 +2084,7 @@ HTML = r"""<!doctype html>
       .migration-single-layout { grid-template-columns: 1fr; }
       .migration-filter-row { grid-template-columns: 1fr; }
       .migration-filter-row > .control-button { width: 100%; }
+      .income-summary-grid { grid-template-columns: 1fr; }
       .profile-intro ul { grid-template-columns: 1fr; }
       .econ-commentary { grid-template-columns: 1fr; }
       .profile-response-grid { grid-template-columns: 1fr; }
@@ -1931,7 +2106,7 @@ HTML = r"""<!doctype html>
       <div class="section-head">
         <div>
           <h2>Housing Market Response by FEMA Risk Level</h2>
-          <div id="riskViewSubhead" class="sub">This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before an incident to two years after it ends.</div>
+          <div id="riskViewSubhead" class="sub">This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before a FEMA incident or NOAA billion-dollar storm event to two years after it ends.</div>
         </div>
       </div>
       <div class="control-row">
@@ -1947,7 +2122,7 @@ HTML = r"""<!doctype html>
         <div id="riskLegend" class="legend" aria-label="Select FEMA risk group"></div>
         <div>
           <div id="riskChartPanel" class="view-panel">
-            <svg id="riskChart" class="chart" role="img" aria-label="Housing market index around FEMA incidents grouped by NRI risk rating"></svg>
+            <svg id="riskChart" class="chart" role="img" aria-label="Housing market index around FEMA incidents and NOAA billion-dollar storm events grouped by NRI risk rating"></svg>
           </div>
           <div id="riskMapPanel" class="view-panel" hidden>
             <svg id="riskMap" class="map" role="img" aria-label="US county map colored by FEMA National Risk Index rating"></svg>
@@ -1966,53 +2141,18 @@ HTML = r"""<!doctype html>
     <div class="section-head">
       <div>
         <h2>Economic Profile</h2>
-        <div class="sub">Counties do not all have the same local economy. This section groups similar counties together, then compares how those county types respond after climate-related incidents.</div>
+        <div class="sub">This section compares the income distribution of counties in each NRI risk group. Each county contributes one value: its average annual per-person income over the latest 10 calendar years available in the ACS economic data mart.</div>
       </div>
     </div>
-    <div id="economicProfileIntro" class="profile-intro" aria-label="Economic profile section introduction"></div>
-    <div id="economicProfileSummaryCards" class="profile-grid" aria-label="Plain-language economic profile summaries"></div>
     <div id="riskUpJump" class="section-jump-row top-center edge-jump">
       <button id="riskDrillUp" type="button" class="icon-button" aria-label="Return to FEMA risk response">&uarr;</button>
     </div>
-    <div class="control-row">
-      <div></div>
-      <div id="economicFrameActions" class="button-row" aria-label="Economic profile animation actions">
-        <button id="economicProfilePlayToggle" type="button" class="control-button">Pause</button>
-      </div>
+    <div class="income-infographic">
+      <svg id="economicIncomeChart" class="chart income-chart" role="img" aria-label="County average annual per-capita income distribution by NRI risk group"></svg>
+      <div id="economicIncomeCards" class="income-summary-grid" aria-label="Income distribution summary by NRI risk group"></div>
     </div>
-    <div class="plot-with-legend plot-with-two-legends">
-      <div id="economicRiskLegend" class="legend" aria-label="Select FEMA risk group for economic profile response"></div>
-      <div aria-label="Selected risk group and economic profile housing response">
-        <h3 id="economicProfileResponseTitle">Economic profiles within selected risk group</h3>
-        <svg id="economicProfileResponseChart" class="chart economic-response-chart" role="img" aria-label="Housing response by economic profile within selected risk group"></svg>
-      </div>
-      <div id="economicProfileResponseLegend" class="legend" aria-label="Select economic profile frame"></div>
-    </div>
-    <div id="economicProfileResponseTakeaway" class="takeaway-banner" aria-label="Takeaway on economic profile housing response"></div>
-    <h3 class="section-subheading">Risk x Economic Profile Response</h3>
-    <div class="control-row">
-      <div class="sub">Cells compare the median housing market YOY index shift for each risk group and economic profile pair.</div>
-      <div id="economicMatrixMetricToggle" class="button-row" aria-label="Select economic response matrix metric">
-        <button type="button" class="control-button active" data-economic-matrix-metric="later">Later response</button>
-        <button type="button" class="control-button" data-economic-matrix-metric="early">Early response</button>
-        <button type="button" class="control-button" data-economic-matrix-metric="momentum">Momentum</button>
-      </div>
-    </div>
-    <div class="metric-explainer">
-      <p><strong>Later response:</strong> months 13-24 after the incident minus the 12 months before the incident.</p>
-      <p><strong>Early response:</strong> months 1-12 after the incident minus the 12 months before the incident.</p>
-      <p><strong>Momentum:</strong> months 13-24 after the incident minus months 1-12 after the incident.</p>
-    </div>
-    <div class="heatmap-wrap">
-      <div id="economicResponseMatrix" class="response-matrix" aria-label="Heatmap of housing response by NRI risk rating and economic profile"></div>
-    </div>
-    <div id="economicResponseMatrixTakeaway" class="takeaway-banner" aria-label="Takeaway on risk and economic profile housing response"></div>
-    <h3 class="section-subheading">Economic Profile Mix by Risk Group</h3>
-    <div class="heatmap-wrap">
-      <div id="economicProfileHeatmap" class="profile-heatmap" aria-label="Heatmap of economic profile shares by NRI risk rating"></div>
-    </div>
-    <div id="economicProfileCommentary" class="econ-commentary key-takeaway" aria-label="Commentary on economic profile differences"></div>
-    <p class="note">Economic profiles are derived through clustering of county income, wage, employment, income-source, population-size, and migration features. Assignment confidence is the model's probability that a county belongs to its assigned profile; higher confidence means the county is a clearer match.</p>
+    <p id="economicIncomeMethodNote" class="note"></p>
+    <p class="note">Source: <a href="https://www.census.gov/programs-surveys/acs/data/data-tables.html" target="_blank" rel="noopener">U.S. Census Bureau, American Community Survey 5-year Data Profiles DP03</a>; local mart: <code>data/quoll.duckdb</code>, <code>mart.acs_county_economic_annual</code>.</p>
     <div id="economicBottomJump" class="section-jump-row bottom-center edge-jump">
       <button id="economicDrillDown" type="button" class="icon-button" aria-label="Go to Migration Trend">&darr;</button>
     </div>
@@ -2232,6 +2372,11 @@ function escapeHtml(value) {
 function fmtPct(value) {
   if (value == null || Number.isNaN(value)) return "n/a";
   return `${Math.round(value * 100)}%`;
+}
+
+function formatIncome(value) {
+  if (value == null || Number.isNaN(Number(value))) return "n/a";
+  return `$${Math.round(Number(value)).toLocaleString()}`;
 }
 
 function fmtLift(value) {
@@ -2760,7 +2905,7 @@ function drawRiskChart(svgId = "riskChart", focusRating = activeRiskRating, comp
   const groups = riskLineGroups();
   const yValues = groups.flatMap(group => group.rows.flatMap(d => [d.q1, d.q3, d.median]));
   const xDomain = [Math.min(...offsets), Math.max(...offsets)];
-  const yDomain = focusedDomainFromValues(yValues, { symmetric: true, includeZero: true, quantile: 0.9 });
+  const yDomain = fullDomainFromValues(yValues, { symmetric: true, includeZero: true, padRatio: 0.14 });
   const x = makeScale(xDomain, [dims.left, dims.width - dims.right]);
   const y = makeScale(yDomain, [dims.height - dims.bottom, dims.top]);
   if (compact) {
@@ -4452,7 +4597,7 @@ function updateRiskView() {
   if (subhead) {
     subhead.textContent = mapMode
       ? "This map shows each county's FEMA National Risk Index rating. Green marks lower-risk counties, while orange and red mark higher-risk counties."
-      : "This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before an incident to two years after it ends.";
+      : "This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before a FEMA incident or NOAA billion-dollar storm event to two years after it ends.";
   }
   document.querySelectorAll("[data-risk-view]").forEach(button => {
     button.classList.toggle("active", button.getAttribute("data-risk-view") === riskViewMode);
@@ -4637,10 +4782,9 @@ function transitionToStoryPanel(panelId) {
       if (!riskChartPaused) startRiskChartTimer();
     }
     if (panelId === "economicProfileSection") {
-      drawEconomicRiskDrilldown();
-      updateEconomicProfileActions();
-      if (!economicProfilePaused) startEconomicProfileTimer();
-      window.requestAnimationFrame(drawEconomicRiskDrilldown);
+      stopEconomicProfileTimer();
+      drawEconomicProfileChart();
+      window.requestAnimationFrame(drawEconomicProfileChart);
     }
     if (panelId === "migrationTrendSection") {
       drawMigrationChart();
@@ -5094,16 +5238,92 @@ function drawEconomicRiskFeatureCards() {
 
 function drawEconomicProfileCommentary() {
   const container = document.getElementById("economicProfileCommentary");
+  if (!container) return;
   const notes = data.economicProfiles?.commentary || [];
   container.innerHTML = notes.map(text => `<p>${escapeHtml(text)}</p>`).join("");
 }
 
+function addSvgTitle(node, text) {
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+  title.textContent = text;
+  node.appendChild(title);
+}
+
+function drawEconomicIncomeInfographic() {
+  const svg = document.getElementById("economicIncomeChart");
+  if (!svg) return;
+  clear(svg);
+  const payload = data.incomeDistribution || {};
+  const groups = payload.groups || [];
+  const dims = chartDims(svg);
+  svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  if (!groups.length) {
+    add("text", svg, { x: dims.left, y: dims.top + 28, class: "axis-label" }).textContent = "No county income data available.";
+    return;
+  }
+
+  const allValues = groups.flatMap(group => (group.values || []).map(item => Number(item.income)).filter(value => !Number.isNaN(value)));
+  const xDomain = fullDomainFromValues(allValues, { includeZero: false, padRatio: 0.1 });
+  const plotLeft = dims.left + 94;
+  const plotRight = dims.width - dims.right - 18;
+  const x = makeScale(xDomain, [plotLeft, plotRight]);
+  const rowGap = (dims.height - dims.top - dims.bottom - 24) / Math.max(groups.length, 1);
+  const ticks = Array.from({ length: 5 }, (_, i) => xDomain[0] + (i / 4) * (xDomain[1] - xDomain[0]));
+
+  add("text", svg, { x: plotLeft, y: dims.top - 14, class: "chart-title" }).textContent = "Average annual ACS per-capita income across the latest 10 years";
+  ticks.forEach(tick => {
+    const px = x(tick);
+    add("line", svg, { x1: px, x2: px, y1: dims.top, y2: dims.height - dims.bottom - 16, class: "grid-line" });
+    add("text", svg, { x: px, y: dims.height - dims.bottom + 10, class: "tick-label", "text-anchor": "middle" }).textContent = formatIncome(tick);
+  });
+  add("text", svg, { x: (plotLeft + plotRight) / 2, y: dims.height - 8, class: "axis-label", "text-anchor": "middle" }).textContent = "County average annual ACS per-capita income";
+
+  groups.forEach((group, index) => {
+    const color = colors[group.rating] || "#5e6872";
+    const y = dims.top + 28 + rowGap * index + rowGap / 2;
+    add("text", svg, { x: dims.left, y: y - 4, class: "income-risk-label" }).textContent = group.rating;
+    add("text", svg, { x: dims.left, y: y + 13, class: "income-count-label" }).textContent = `${group.countyCount} counties`;
+
+    (group.values || []).forEach((item, valueIndex) => {
+      const income = Number(item.income);
+      if (Number.isNaN(income)) return;
+      const jitter = ((valueIndex * 37) % 27) - 13;
+      const dot = add("circle", svg, { cx: x(income), cy: y + jitter, r: 2.2, class: "income-dot", fill: color });
+      addSvgTitle(dot, `${item.countyName || item.fips}: ${formatIncome(income)} average annual ACS per-capita income (${group.rating} risk)`);
+    });
+
+    const whisker = add("line", svg, { x1: x(group.q10), x2: x(group.q90), y1: y, y2: y, class: "income-whisker", stroke: color });
+    addSvgTitle(whisker, `${group.rating}: most counties fall from ${formatIncome(group.q10)} to ${formatIncome(group.q90)}.`);
+    const boxX = x(group.q25);
+    const boxWidth = Math.max(2, x(group.q75) - boxX);
+    const box = add("rect", svg, { x: boxX, y: y - 18, width: boxWidth, height: 36, rx: 4, class: "income-iqr", fill: color, stroke: color });
+    addSvgTitle(box, `${group.rating}: middle half ranges from ${formatIncome(group.q25)} to ${formatIncome(group.q75)}.`);
+    const median = add("line", svg, { x1: x(group.median), x2: x(group.median), y1: y - 24, y2: y + 24, class: "income-median" });
+    addSvgTitle(median, `${group.rating}: median county average income is ${formatIncome(group.median)}.`);
+  });
+
+  const cards = document.getElementById("economicIncomeCards");
+  if (cards) {
+    cards.innerHTML = groups.map(group => {
+      const color = colors[group.rating] || "#5e6872";
+      return `<article class="income-card">` +
+        `<h3><span class="swatch" style="background:${color};"></span>${escapeHtml(group.rating)} risk</h3>` +
+        `<div class="income-main">${formatIncome(group.median)}</div>` +
+        `<div class="income-detail">Median county average income. The middle half runs from ${formatIncome(group.q25)} to ${formatIncome(group.q75)}, with a wider 10th-90th percentile spread from ${formatIncome(group.q10)} to ${formatIncome(group.q90)}.</div>` +
+        `</article>`;
+    }).join("");
+  }
+
+  const note = document.getElementById("economicIncomeMethodNote");
+  if (note) {
+    const years = payload.years || [];
+    const yearText = years.length ? ` Years used: ${years[0]}-${years[years.length - 1]}.` : "";
+    note.innerHTML = `<strong>Method:</strong> ${escapeHtml(payload.method || "")}${yearText} Income is ACS per-capita income in current dollars.`;
+  }
+}
+
 function drawEconomicProfileIntro() {
-  const container = document.getElementById("economicProfileIntro");
-  if (!container) return;
-  container.innerHTML = `<p>The objective is to separate the broad effect of NRI risk rating from the added effect of local economic structure. Counties are assigned to economic profiles, then each profile is compared within the same risk rating to show whether housing market response differs after accounting for risk level.</p>` +
-    `<p>The economic profiles below summarize the county types used for the drilldowns.</p>`;
-  drawEconomicProfileSummaryCards();
+  drawEconomicIncomeInfographic();
 }
 
 function drawEconomicProfileSummaryCards() {
@@ -5434,9 +5654,7 @@ function drawEconomicResponseMatrixModule() {
 }
 
 function drawEconomicProfileChart() {
-  drawProfileHeatmap(data.economicProfiles, "economicProfileHeatmap");
-  drawEconomicRiskDrilldown();
-  drawEconomicResponseMatrixModule();
+  drawEconomicIncomeInfographic();
 }
 
 function drawEconomicProfileMap() {
