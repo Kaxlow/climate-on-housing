@@ -1,5 +1,6 @@
 # Data analysis and visualization
 geopandas
+duckdb
 matplotlib
 numpy
 pandas

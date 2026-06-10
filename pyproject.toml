@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 dependencies = [
+    "duckdb",
     "geopandas",
     "matplotlib",
     "numpy",
@@ -27,6 +28,12 @@ dependencies = [
 build-page = "housing_climate_risk.cli.build_page:main"
 run-county-clustering = "housing_climate_risk.cli.run_county_clustering:main"
 run-broad-county-profiles = "housing_climate_risk.cli.run_broad_county_profiles:main"
+download-affordability-data = "housing_climate_risk.cli.download_affordability_data:main"
+build-database = "housing_climate_risk.cli.build_database:main"
+download-acs-data = "housing_climate_risk.cli.download_acs_data:main"
+summarize-acs-housing-table-coverage = "housing_climate_risk.cli.summarize_acs_housing_table_coverage:main"
+download-climatecentral-bdd-risk-data = "housing_climate_risk.cli.download_climatecentral_bdd_risk_data:main"
+download-climate-damage-data = "housing_climate_risk.cli.download_climate_damage_data:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

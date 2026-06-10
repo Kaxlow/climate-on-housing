@@ -1,9 +1,9 @@
 .jupyter_config/
 data/
-src/eda*
 src/__pycache__/
 output/visualizations/incident_housing_yoy_after.csv
 *.egg-info/
 __pycache__/
 .playwright-mcp/
 output/county_clustering/
+scripts/

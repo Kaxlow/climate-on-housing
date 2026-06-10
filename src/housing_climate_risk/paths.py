@@ -16,11 +16,14 @@ SRC_DIR = ROOT / "src"
 DATA_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "output" / "visualizations"
 CACHE_DIR = DATA_DIR / "cache"
+ACS_DIR = DATA_DIR / "acs"
+CLIMATE_DAMAGE_DIR = DATA_DIR / "climate_damage"
 CLIMATE_DIR = DATA_DIR / "climate"
 ECONOMIC_DIR = DATA_DIR / "economic"
+FEMA_DIR = DATA_DIR / "fema"
 GEOGRAPHIC_DIR = DATA_DIR / "geographic"
+FIPSGEO_DIR = DATA_DIR / "fipsgeo"
 HOUSING_DIR = DATA_DIR / "housing"
 POPULATION_DIR = DATA_DIR / "population"
 
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
