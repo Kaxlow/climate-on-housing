@@ -465,57 +465,176 @@ def build_income_distribution_payload() -> dict[str, object]:
         "url": "https://www.census.gov/programs-surveys/acs/data/data-tables.html",
         "localFile": "data/quoll.duckdb, mart.acs_county_economic_annual",
     }
+    empty_payload = {
+        "years": [],
+        "periodLabel": "",
+        "source": source,
+        "defaultMetric": "householdMedian",
+        "metrics": {
+            "householdMedian": {"groups": []},
+        },
+        "ppsf": {"groups": []},
+    }
     database_path = DATA_DIR / "quoll.duckdb"
     if not database_path.exists():
-        return {"years": [], "source": source, "groups": []}
+        return empty_payload
 
     try:
         import duckdb
     except ImportError:
-        return {"years": [], "source": source, "groups": []}
+        return empty_payload
 
     query = """
         SELECT
             fips,
             NAME AS county_name,
             year,
-            try_cast(replace(dp03_income_and_benefits_per_capita_income_est, ',', '') AS DOUBLE) AS income
+            try_cast(replace(dp03_income_and_benefits_total_households_median_household_income_est, ',', '') AS DOUBLE) AS median_household_income
         FROM mart.acs_county_economic_annual
         WHERE fips IS NOT NULL
           AND year IS NOT NULL
-          AND dp03_income_and_benefits_per_capita_income_est IS NOT NULL
+          AND dp03_income_and_benefits_total_households_median_household_income_est IS NOT NULL
     """
     try:
         with duckdb.connect(str(database_path), read_only=True) as con:
             income = con.execute(query).fetchdf()
     except Exception:
-        return {"years": [], "source": source, "groups": []}
+        return empty_payload
 
     income["year"] = pd.to_numeric(income["year"], errors="coerce")
-    income["income"] = pd.to_numeric(income["income"], errors="coerce")
-    income = income.dropna(subset=["fips", "year", "income"])
+    income["median_household_income"] = pd.to_numeric(income["median_household_income"], errors="coerce")
+    income = income.dropna(subset=["fips", "year", "median_household_income"])
     if income.empty:
-        return {"years": [], "source": source, "groups": []}
+        return empty_payload
 
-    max_year = int(income["year"].max())
-    years = list(range(max_year - 9, max_year + 1))
-    income = income.loc[income["year"].isin(years)].copy()
-    county_average = (
-        income.groupby("fips", as_index=False)
-        .agg(
-            average_income=("income", "mean"),
-            year_count=("year", "nunique"),
-            county_name=("county_name", "last"),
-        )
+    income = income.loc[income["median_household_income"] > 0].copy()
+    income["fips"] = income["fips"].astype(str).str.zfill(5)
+    county_latest = income.sort_values(["fips", "year"]).groupby("fips", as_index=False).tail(1).copy()
+    county_latest = county_latest.merge(build_nri_rating_lookup(), on="fips", how="left")
+    county_latest = county_latest.dropna(subset=["nri_risk_rating"])
+    years = sorted(county_latest["year"].dropna().astype(int).unique().tolist())
+    period_label = (
+        f"Latest available county-year in the ACS economic mart ({years[0]}-{years[-1]})."
+        if years
+        else "Latest available county-year in the ACS economic mart."
     )
-    county_average["fips"] = county_average["fips"].astype(str).str.zfill(5)
-    county_average = county_average.merge(build_nri_rating_lookup(), on="fips", how="left")
-    county_average = county_average.dropna(subset=["nri_risk_rating", "average_income"])
 
+    def serialize_income_groups(value_col: str) -> list[dict[str, object]]:
+        groups: list[dict[str, object]] = []
+        for rating in VALID_RISK_RATINGS:
+            rows = county_latest.loc[county_latest["nri_risk_rating"].eq(rating)].dropna(subset=[value_col]).copy()
+            values = rows[value_col].sort_values()
+            if values.empty:
+                continue
+            quantiles = values.quantile([0.1, 0.25, 0.5, 0.75, 0.9])
+            groups.append(
+                {
+                    "rating": rating,
+                    "countyCount": int(rows["fips"].nunique()),
+                    "mean": _num(values.mean(), 0),
+                    "q10": _num(quantiles.loc[0.1], 0),
+                    "q25": _num(quantiles.loc[0.25], 0),
+                    "median": _num(quantiles.loc[0.5], 0),
+                    "q75": _num(quantiles.loc[0.75], 0),
+                    "q90": _num(quantiles.loc[0.9], 0),
+                    "min": _num(values.min(), 0),
+                    "max": _num(values.max(), 0),
+                    "values": [
+                        {
+                            "fips": str(row.fips).zfill(5),
+                            "countyName": row.county_name,
+                            "income": _num(getattr(row, value_col), 0),
+                            "year": int(row.year),
+                        }
+                        for row in rows.sort_values(value_col).itertuples(index=False)
+                    ],
+                }
+            )
+        return groups
+
+    return {
+        "years": years,
+        "periodLabel": period_label,
+        "source": source,
+        "defaultMetric": "householdMedian",
+        "metrics": {
+            "householdMedian": {
+                "key": "householdMedian",
+                "label": "County median household income",
+                "title": "Latest annual ACS median household income",
+                "axisLabel": "Latest annual ACS median household income",
+                "valueLabel": "latest ACS median household income",
+                "cardLabel": "Median county household income",
+                "method": "For each county, the latest valid ACS DP03 median household income value is used, then counties are grouped by NRI risk rating.",
+                "note": "Income is ACS median household income in current dollars.",
+                "periodLabel": period_label,
+                "groups": serialize_income_groups("median_household_income"),
+            },
+        },
+        "ppsf": build_redfin_ppsf_distribution_payload(),
+    }
+
+
+def build_redfin_ppsf_distribution_payload() -> dict[str, object]:
+    """Summarize December 2025 Redfin county median PPSF by NRI risk group."""
+
+    source = {
+        "label": "Redfin Data Center county market data",
+        "url": "https://www.redfin.com/news/data-center/",
+        "localFile": "data/quoll.duckdb, mart.redfin_county_monthly",
+    }
+    empty_payload = {
+        "periodLabel": "December 2025.",
+        "source": source,
+        "key": "dec2025Ppsf",
+        "label": "December 2025 median PPSF",
+        "title": "December 2025 Redfin median price per square foot",
+        "axisLabel": "County median price per square foot",
+        "valueLabel": "median price per square foot",
+        "cardLabel": "Median county PPSF",
+        "format": "currency",
+        "minDomain": 0,
+        "method": "For each county, the December 2025 Redfin All Residential median price per square foot is used, then counties are grouped by NRI risk rating.",
+        "note": "PPSF is Redfin county-level median sale price per square foot for All Residential properties.",
+        "groups": [],
+    }
+    database_path = DATA_DIR / "quoll.duckdb"
+    if not database_path.exists():
+        return empty_payload
+    try:
+        import duckdb
+    except ImportError:
+        return empty_payload
+
+    query = """
+        SELECT
+            fips,
+            REGION AS county_name,
+            period_begin,
+            try_cast(replace(MEDIAN_PPSF, ',', '') AS DOUBLE) AS median_ppsf
+        FROM mart.redfin_county_monthly
+        WHERE fips IS NOT NULL
+          AND period_begin >= DATE '2025-12-01'
+          AND period_begin < DATE '2026-01-01'
+          AND property_type = 'All Residential'
+          AND MEDIAN_PPSF IS NOT NULL
+    """
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as con:
+            ppsf = con.execute(query).fetchdf()
+    except Exception:
+        return empty_payload
+    if ppsf.empty:
+        return empty_payload
+    ppsf["median_ppsf"] = pd.to_numeric(ppsf["median_ppsf"], errors="coerce")
+    ppsf = ppsf.dropna(subset=["fips", "median_ppsf"])
+    ppsf = ppsf.loc[ppsf["median_ppsf"] > 0].copy()
+    ppsf["fips"] = ppsf["fips"].astype(str).str.zfill(5)
+    ppsf = ppsf.merge(build_nri_rating_lookup(), on="fips", how="left").dropna(subset=["nri_risk_rating"])
     groups: list[dict[str, object]] = []
     for rating in VALID_RISK_RATINGS:
-        rows = county_average.loc[county_average["nri_risk_rating"].eq(rating)].copy()
-        values = rows["average_income"].dropna().sort_values()
+        rows = ppsf.loc[ppsf["nri_risk_rating"].eq(rating)].dropna(subset=["median_ppsf"]).copy()
+        values = rows["median_ppsf"].sort_values()
         if values.empty:
             continue
         quantiles = values.quantile([0.1, 0.25, 0.5, 0.75, 0.9])
@@ -535,21 +654,334 @@ def build_income_distribution_payload() -> dict[str, object]:
                     {
                         "fips": str(row.fips).zfill(5),
                         "countyName": row.county_name,
-                        "income": _num(row.average_income, 0),
-                        "yearCount": int(row.year_count),
+                        "value": _num(row.median_ppsf, 2),
                     }
-                    for row in rows.sort_values("average_income").itertuples(index=False)
+                    for row in rows.sort_values("median_ppsf").itertuples(index=False)
                 ],
             }
         )
+    return {**empty_payload, "groups": groups}
+
+
+def build_home_ownership_cost_payload() -> dict[str, object]:
+    """Summarize ACS home ownership cost distributions by NRI risk group."""
+
+    source = {
+        "label": "U.S. Census Bureau, American Community Survey housing affordability tables",
+        "url": "https://www.census.gov/programs-surveys/acs/data/data-tables.html",
+        "localFile": "data/quoll.duckdb, mart.acs_county_affordability_annual",
+    }
+    empty_payload = {
+        "years": [],
+        "periodLabel": "",
+        "source": source,
+        "metrics": {
+            "annualCost": {"groups": []},
+            "incomeShare": {"groups": []},
+        },
+    }
+    database_path = DATA_DIR / "quoll.duckdb"
+    if not database_path.exists():
+        return empty_payload
+
+    try:
+        import duckdb
+    except ImportError:
+        return empty_payload
+
+    query = """
+        SELECT
+            fips,
+            NAME AS county_name,
+            year,
+            try_cast(replace(median_owner_costs_mortgage, ',', '') AS DOUBLE) AS monthly_owner_cost_mortgage,
+            try_cast(replace(median_household_income, ',', '') AS DOUBLE) AS median_household_income
+        FROM mart.acs_county_affordability_annual
+        WHERE fips IS NOT NULL
+          AND year IS NOT NULL
+          AND median_owner_costs_mortgage IS NOT NULL
+          AND median_household_income IS NOT NULL
+    """
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as con:
+            costs = con.execute(query).fetchdf()
+    except Exception:
+        return empty_payload
+
+    costs["year"] = pd.to_numeric(costs["year"], errors="coerce")
+    costs["monthly_owner_cost_mortgage"] = pd.to_numeric(costs["monthly_owner_cost_mortgage"], errors="coerce")
+    costs["median_household_income"] = pd.to_numeric(costs["median_household_income"], errors="coerce")
+    costs = costs.dropna(subset=["fips", "year", "monthly_owner_cost_mortgage", "median_household_income"])
+    costs = costs.loc[(costs["median_household_income"] > 0) & (costs["monthly_owner_cost_mortgage"] >= 0)].copy()
+    if costs.empty:
+        return empty_payload
+
+    costs["fips"] = costs["fips"].astype(str).str.zfill(5)
+    costs["annual_owner_cost"] = costs["monthly_owner_cost_mortgage"] * 12
+    costs["income_share"] = costs["annual_owner_cost"] / costs["median_household_income"]
+    latest_year = int(costs["year"].max())
+    county_latest = costs.loc[costs["year"].eq(latest_year)].copy()
+    county_latest = county_latest.merge(build_nri_rating_lookup(), on="fips", how="left")
+    county_latest = county_latest.dropna(subset=["nri_risk_rating"])
+    years = [latest_year]
+    period_label = f"Latest ACS year with both cost and income values ({latest_year})."
+
+    def serialize_groups(value_col: str, digits: int) -> list[dict[str, object]]:
+        groups: list[dict[str, object]] = []
+        for rating in VALID_RISK_RATINGS:
+            rows = county_latest.loc[county_latest["nri_risk_rating"].eq(rating)].dropna(subset=[value_col]).copy()
+            values = rows[value_col].sort_values()
+            if values.empty:
+                continue
+            quantiles = values.quantile([0.1, 0.25, 0.5, 0.75, 0.9])
+            groups.append(
+                {
+                    "rating": rating,
+                    "countyCount": int(rows["fips"].nunique()),
+                    "mean": _num(values.mean(), digits),
+                    "q10": _num(quantiles.loc[0.1], digits),
+                    "q25": _num(quantiles.loc[0.25], digits),
+                    "median": _num(quantiles.loc[0.5], digits),
+                    "q75": _num(quantiles.loc[0.75], digits),
+                    "q90": _num(quantiles.loc[0.9], digits),
+                    "min": _num(values.min(), digits),
+                    "max": _num(values.max(), digits),
+                    "values": [
+                        {
+                            "fips": str(row.fips).zfill(5),
+                            "countyName": row.county_name,
+                            "value": _num(getattr(row, value_col), digits),
+                            "year": int(row.year),
+                        }
+                        for row in rows.sort_values(value_col).itertuples(index=False)
+                    ],
+                }
+            )
+        return groups
 
     return {
         "years": years,
-        "metric": "Average annual ACS per-capita income",
-        "method": "For each county, ACS DP03 per-capita income is averaged across the latest 10 calendar years available in the ACS economic mart. County averages are then grouped by NRI risk rating.",
+        "periodLabel": period_label,
         "source": source,
-        "groups": groups,
+        "metrics": {
+            "annualCost": {
+                "key": "annualCost",
+                "label": "Latest annual home ownership costs",
+                "title": "Latest annual county home ownership costs",
+                "axisLabel": "Latest annual selected monthly owner costs with mortgage",
+                "valueLabel": "latest annual home ownership costs",
+                "cardLabel": "Median county annual ownership cost",
+                "format": "currency",
+                "method": "For each county, ACS median selected monthly owner cost with a mortgage from the latest common ACS year is multiplied by 12. Counties are then grouped by NRI risk rating.",
+                "note": "Costs are ACS selected monthly owner costs with a mortgage, annualized in current dollars.",
+                "periodLabel": period_label,
+                "groups": serialize_groups("annual_owner_cost", 0),
+            },
+            "incomeShare": {
+                "key": "incomeShare",
+                "label": "Ownership costs as share of household income",
+                "title": "Latest annual ownership costs as a share of household income",
+                "axisLabel": "Latest annual ownership costs / median household income",
+                "valueLabel": "latest annual ownership costs as a share of household income",
+                "cardLabel": "Median county ownership cost share",
+                "format": "percent",
+                "method": "For each county, the latest common ACS year with both selected monthly owner costs and median household income is used. Annualized owner costs are divided by household income from that same year.",
+                "note": "Shares compare annualized owner costs with mortgage to median household income in the same county-year.",
+                "periodLabel": period_label,
+                "groups": serialize_groups("income_share", 4),
+            },
+        },
     }
+
+
+def build_home_cost_breakdown_payload() -> dict[str, object]:
+    """Estimate cost-component stacks and time series from ACS affordability buckets."""
+
+    source = {
+        "label": "U.S. Census Bureau, American Community Survey housing affordability tables",
+        "url": "https://www.census.gov/programs-surveys/acs/data/data-tables.html",
+        "localFile": "data/quoll.duckdb, mart.acs_county_affordability_annual",
+        "methodNote": "For cost items grouped into buckets, cost is estimated by multiplying the midpoint value of each bucket by the count in that bucket, then summing across buckets and dividing by the counted units. Open-ended top buckets use conservative upper-tail midpoints.",
+    }
+    components = [
+        {"key": "utilities", "label": "Utilities", "color": "#0F766E"},
+        {"key": "insurance", "label": "Home insurance", "color": "#2563EB"},
+        {"key": "propertyTaxes", "label": "Property taxes", "color": "#D97706"},
+        {"key": "mortgage", "label": "Mortgage", "color": "#7C3AED"},
+    ]
+    empty = {"years": [], "periodLabel": "", "source": source, "components": components, "stacked": []}
+    database_path = DATA_DIR / "quoll.duckdb"
+    if not database_path.exists():
+        return empty
+    try:
+        import duckdb
+    except ImportError:
+        return empty
+
+    bucket_specs = {
+        "electricity": (
+            12,
+            ["b25132_monthly_electricity_costs_total_not_charged_not_used_or_payment_included_in_other_fees_est"],
+            [
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_less_than_dollars_50_est", 25),
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_dollars_50_to_dollars_99_est", 75),
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_dollars_100_to_dollars_149_est", 125),
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_dollars_150_to_dollars_199_est", 175),
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_dollars_200_to_dollars_249_est", 225),
+                ("b25132_monthly_electricity_costs_total_charged_for_electricity_dollars_250_or_more_est", 275),
+            ],
+        ),
+        "gas": (
+            12,
+            ["b25133_monthly_gas_costs_total_not_charged_not_used_or_payment_included_in_other_fees_est"],
+            [
+                ("b25133_monthly_gas_costs_total_charged_for_gas_less_than_dollars_25_est", 12.5),
+                ("b25133_monthly_gas_costs_total_charged_for_gas_dollars_25_to_dollars_49_est", 37.5),
+                ("b25133_monthly_gas_costs_total_charged_for_gas_dollars_50_to_dollars_74_est", 62.5),
+                ("b25133_monthly_gas_costs_total_charged_for_gas_dollars_75_to_dollars_99_est", 87.5),
+                ("b25133_monthly_gas_costs_total_charged_for_gas_dollars_100_to_dollars_149_est", 125),
+                ("b25133_monthly_gas_costs_total_charged_for_gas_dollars_150_or_more_est", 175),
+            ],
+        ),
+        "water": (
+            1,
+            ["b25134_annual_water_and_sewer_costs_total_not_charged_or_payment_included_in_other_fees_est"],
+            [
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_less_than_dollars_125_est", 62.5),
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_dollars_125_to_dollars_249_est", 187.5),
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_dollars_250_to_dollars_499_est", 375),
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_dollars_500_to_dollars_749_est", 625),
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_dollars_750_to_dollars_999_est", 875),
+                ("b25134_annual_water_and_sewer_costs_total_charged_for_water_and_sewer_dollars_1_000_or_more_est", 1125),
+            ],
+        ),
+        "otherFuel": (
+            1,
+            ["b25135_annual_other_fuel_costs_total_not_charged_not_used_or_payment_included_in_other_fees_est"],
+            [
+                ("b25135_annual_other_fuel_costs_total_charged_for_other_fuels_less_than_dollars_250_est", 125),
+                ("b25135_annual_other_fuel_costs_total_charged_for_other_fuels_dollars_250_to_dollars_749_est", 500),
+                ("b25135_annual_other_fuel_costs_total_charged_for_other_fuels_dollars_750_or_more_est", 875),
+            ],
+        ),
+    }
+    insurance_buckets = [
+        (f"b25141_homeowners_insurance_costs_by_mortgage_status_total_{status}_{suffix}_est", midpoint)
+        for status in ["mortgage", "not_mortgaged"]
+        for suffix, midpoint in [
+            ("less_than_dollars_100", 50),
+            ("dollars_100_to_dollars_299", 200),
+            ("dollars_300_to_dollars_499", 400),
+            ("dollars_500_to_dollars_799", 650),
+            ("dollars_800_to_dollars_999", 900),
+            ("dollars_1000_to_dollars_1499", 1250),
+            ("dollars_1500_to_dollars_1999", 1750),
+            ("dollars_2000_to_dollars_2499", 2250),
+            ("dollars_2500_to_dollars_2999", 2750),
+            ("dollars_3000_to_dollars_3499", 3250),
+            ("dollars_3500_to_dollars_3999", 3750),
+            ("dollars_4000_or_more", 4250),
+        ]
+    ]
+    tax_zero = [
+        "s2506_owner_occupied_units_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
+        "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
+    ]
+    tax_buckets = [
+        (f"{prefix}_real_estate_taxes_{suffix}_est", midpoint)
+        for prefix in ["s2506_owner_occupied_units_mortgage", "s2507_owner_occupied_units_no_mortgage"]
+        for suffix, midpoint in [
+            ("less_than_dollars_800", 400),
+            ("dollars_800_to_dollars_1_499", 1150),
+            ("dollars_1_500_or_more", 2000),
+        ]
+    ]
+    all_bucket_cols = {
+        col
+        for _, zero_cols, buckets in bucket_specs.values()
+        for col in [*zero_cols, *(bucket_col for bucket_col, _ in buckets)]
+    } | {col for col, _ in insurance_buckets} | set(tax_zero) | {col for col, _ in tax_buckets}
+    value_columns = ["fips", "NAME", "year", "median_household_income", "median_owner_costs_mortgage", *sorted(all_bucket_cols)]
+    select_columns = ",\n                    ".join(f'"{column}"' for column in value_columns)
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as con:
+            df = con.execute(
+                f"""
+                SELECT {select_columns}
+                FROM mart.acs_county_affordability_annual
+                WHERE fips IS NOT NULL
+                  AND year IS NOT NULL
+                """
+            ).fetchdf()
+    except Exception:
+        return empty
+    if df.empty:
+        return empty
+
+    for column in value_columns:
+        if column not in {"fips", "NAME"}:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+    agg_map = {column: "max" for column in value_columns if column not in {"fips", "NAME", "year"}}
+    agg_map["NAME"] = "last"
+    df = df.groupby(["fips", "year"], as_index=False).agg(agg_map)
+
+    def estimate_from_buckets(frame: pd.DataFrame, zero_cols: list[str], buckets: list[tuple[str, float]], multiplier: float = 1.0) -> pd.Series:
+        numerator = pd.Series(0.0, index=frame.index)
+        denominator = pd.Series(0.0, index=frame.index)
+        for col in zero_cols:
+            denominator = denominator + pd.to_numeric(frame.get(col), errors="coerce").fillna(0)
+        for col, midpoint in buckets:
+            values = pd.to_numeric(frame.get(col), errors="coerce").fillna(0)
+            numerator = numerator + values * midpoint
+            denominator = denominator + values
+        return (numerator / denominator.replace({0: np.nan})) * multiplier
+
+    utility_parts = []
+    for multiplier, zero_cols, buckets in bucket_specs.values():
+        utility_parts.append(estimate_from_buckets(df, zero_cols, buckets, multiplier))
+    df["utilities"] = pd.concat(utility_parts, axis=1).sum(axis=1, min_count=1)
+    df["insurance"] = estimate_from_buckets(df, [], insurance_buckets)
+    df["propertyTaxes"] = estimate_from_buckets(df, tax_zero, tax_buckets)
+    df["totalOwnerCosts"] = df["median_owner_costs_mortgage"] * 12
+    df["mortgage"] = (df["totalOwnerCosts"] - df[["utilities", "insurance", "propertyTaxes"]].sum(axis=1, min_count=1)).clip(lower=0)
+    df = df.loc[
+        (df["median_household_income"] > 0)
+        & (df["totalOwnerCosts"] >= 0)
+        & df[[component["key"] for component in components]].notna().any(axis=1)
+    ].copy()
+    if df.empty:
+        return empty
+    df["fips"] = df["fips"].astype(str).str.zfill(5)
+    latest_year = int(df["year"].max())
+    df = df.loc[df["year"].eq(latest_year)].copy()
+    df = df.merge(build_nri_rating_lookup(), on="fips", how="left").dropna(subset=["nri_risk_rating"])
+    df = df.rename(columns={"nri_risk_rating": "riskRating", "NAME": "countyName"})
+    df["median_household_income"] = pd.to_numeric(df["median_household_income"], errors="coerce")
+    for component in components:
+        df[f"{component['key']}Share"] = df[component["key"]] / df["median_household_income"]
+    years = [latest_year]
+    period_label = f"Latest ACS year with cost components and income values ({latest_year})."
+
+    stacked = []
+    for rating in VALID_RISK_RATINGS:
+        rows = df.loc[df["riskRating"].eq(rating)]
+        if rows.empty:
+            continue
+        stacked.append(
+            {
+                "rating": rating,
+                "countyCount": int(rows["fips"].nunique()),
+                "levelComponents": [
+                    {"key": component["key"], "label": component["label"], "value": _num(rows[component["key"]].median(), 0)}
+                    for component in components
+                ],
+                "shareComponents": [
+                    {"key": component["key"], "label": component["label"], "value": _num(rows[f"{component['key']}Share"].median(), 4)}
+                    for component in components
+                ],
+            }
+        )
+    return {"years": years, "periodLabel": period_label, "source": source, "components": components, "stacked": stacked}
 
 
 def plain_economic_feature_label(label: str) -> str:
@@ -1821,6 +2253,8 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
     commentary = [build_risk_takeaway(group_summaries)]
     economic_profiles = build_economic_profile_payload()
     income_distribution = build_income_distribution_payload()
+    home_ownership_costs = build_home_ownership_cost_payload()
+    home_cost_breakdown = build_home_cost_breakdown_payload()
     migration_trend = build_migration_trend_payload(county_windows, economic_profiles)
     migration_trend["trendProfiles"] = build_migration_trend_profile_payload(county_windows)
     insurance_profiles = build_insurance_profile_payload()
@@ -1854,6 +2288,8 @@ def build_payload(windows: pd.DataFrame) -> dict[str, object]:
         "migrationTrend": migration_trend,
         "economicProfiles": economic_profiles,
         "incomeDistribution": income_distribution,
+        "homeOwnershipCosts": home_ownership_costs,
+        "homeCostBreakdown": home_cost_breakdown,
         "insuranceProfiles": insurance_profiles,
         "insuranceTrends": insurance_trends,
     }
@@ -2021,6 +2457,9 @@ HTML = r"""<!doctype html>
     .income-median { stroke: #172026; stroke-width: 3.2; stroke-linecap: round; }
     .income-risk-label { fill: var(--ink); font-size: 13px; font-weight: 800; }
     .income-count-label { fill: var(--muted); font-size: 11px; }
+    .cost-stack-chart { height: 390px; }
+    .stack-label { fill: var(--ink); font-size: 12px; font-weight: 800; }
+    .stack-value { fill: var(--ink); font-size: 11px; font-weight: 700; }
     .migration-paired-plots { display: grid; grid-template-columns: minmax(138px, 0.75fr) minmax(0, 2.2fr) minmax(0, 2.2fr) minmax(138px, 0.75fr); gap: 14px; align-items: start; margin-top: 12px; }
     .migration-paired-plots h3 { font-size: 13px; margin: 0 0 6px; color: #2f3941; }
     .migration-single-layout { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 3fr) minmax(170px, 0.9fr); gap: 14px; align-items: start; margin-top: 12px; }
@@ -2140,151 +2579,73 @@ HTML = r"""<!doctype html>
   <section id="economicProfileSection" class="story-panel" hidden>
     <div class="section-head">
       <div>
-        <h2>Economic Profile</h2>
-        <div class="sub">This section compares the income distribution of counties in each NRI risk group. Each county contributes one value: its average annual per-person income over the latest 10 calendar years available in the ACS economic data mart.</div>
+        <h2>County Income</h2>
+        <div class="sub">This section compares county household income and home price levels by NRI risk group. Each county contributes its latest available ACS median household income and its December 2025 Redfin median price per square foot.</div>
       </div>
     </div>
     <div id="riskUpJump" class="section-jump-row top-center edge-jump">
       <button id="riskDrillUp" type="button" class="icon-button" aria-label="Return to FEMA risk response">&uarr;</button>
     </div>
     <div class="income-infographic">
-      <svg id="economicIncomeChart" class="chart income-chart" role="img" aria-label="County average annual per-capita income distribution by NRI risk group"></svg>
+      <svg id="economicIncomeChart" class="chart income-chart" role="img" aria-label="Latest annual county median household income distribution by NRI risk group"></svg>
       <div id="economicIncomeCards" class="income-summary-grid" aria-label="Income distribution summary by NRI risk group"></div>
     </div>
     <p id="economicIncomeMethodNote" class="note"></p>
+    <div class="income-infographic">
+      <h3 class="section-subheading">December 2025 Median Price Per Square Foot</h3>
+      <svg id="economicPpsfChart" class="chart income-chart" role="img" aria-label="December 2025 Redfin median price per square foot distribution by NRI risk group"></svg>
+      <div id="economicPpsfCards" class="income-summary-grid" aria-label="PPSF distribution summary by NRI risk group"></div>
+      <p id="economicPpsfMethodNote" class="note"></p>
+    </div>
     <p class="note">Source: <a href="https://www.census.gov/programs-surveys/acs/data/data-tables.html" target="_blank" rel="noopener">U.S. Census Bureau, American Community Survey 5-year Data Profiles DP03</a>; local mart: <code>data/quoll.duckdb</code>, <code>mart.acs_county_economic_annual</code>.</p>
+    <p class="note">Price per square foot source: <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>; local mart: <code>data/quoll.duckdb</code>, <code>mart.redfin_county_monthly</code>.</p>
     <div id="economicBottomJump" class="section-jump-row bottom-center edge-jump">
-      <button id="economicDrillDown" type="button" class="icon-button" aria-label="Go to Migration Trend">&darr;</button>
+      <button id="economicDrillDown" type="button" class="icon-button" aria-label="Go to Home Ownership Costs">&darr;</button>
     </div>
   </section>
   <section id="migrationTrendSection" class="story-panel" hidden>
     <div class="section-head">
       <div>
-        <h2>Migration Trend</h2>
-        <div class="sub">Annual county net migration is converted to net migrants per 1,000 residents for the two years before through two years after incident occurrence. Extreme rates are capped for plotting so the middle pattern remains readable. Use the NRI Risk Rating and Economic Profile toggles to drill into either grouping, both groupings together, or neither.</div>
+        <h2>Home Ownership Costs</h2>
+        <div class="sub">This section compares county home ownership cost distributions by NRI risk rating. Each county contributes its latest available ACS county-year where annualized owner costs and household income are both present.</div>
       </div>
     </div>
     <div id="migrationUpJump" class="section-jump-row top-center edge-jump">
       <button id="migrationDrillUp" type="button" class="icon-button" aria-label="Return to Economic Profile">&uarr;</button>
     </div>
-    <div id="migrationFilterToggles" class="migration-filter-panel" aria-label="Migration trend drilldown filters">
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-migration-filter-toggle="risk">NRI Risk Rating</button>
-        <div id="migrationRiskFilterLegend" class="legend horizontal" aria-label="Select NRI risk rating for migration trend" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-migration-filter-toggle="profile">Economic Profile</button>
-        <div id="migrationProfileFilterLegend" class="legend horizontal" aria-label="Select economic profile for migration trend" hidden></div>
-      </div>
+    <div class="income-infographic">
+      <h3 class="section-subheading">Latest Annual Home Ownership Costs</h3>
+      <svg id="homeOwnershipCostChart" class="chart income-chart" role="img" aria-label="Distribution of counties' latest annual home ownership costs by NRI risk rating"></svg>
+      <div id="homeOwnershipCostCards" class="income-summary-grid" aria-label="Home ownership cost summary by NRI risk group"></div>
+      <p id="homeOwnershipCostNote" class="note"></p>
     </div>
-    <div class="migration-chart-only">
-      <div>
-        <h3 id="migrationChartTitle">Net migration per capita around incidents</h3>
-        <svg id="migrationChart" class="chart migration-small-chart" role="img" aria-label="County net migration per 1,000 residents around FEMA incidents"></svg>
-      </div>
+    <div class="income-infographic">
+      <h3 class="section-subheading">Home Ownership Costs as Share of Household Income</h3>
+      <svg id="homeOwnershipIncomeShareChart" class="chart income-chart" role="img" aria-label="Distribution of counties' home ownership costs as a share of household income by NRI risk rating"></svg>
+      <div id="homeOwnershipIncomeShareCards" class="income-summary-grid" aria-label="Home ownership cost share summary by NRI risk group"></div>
+      <p id="homeOwnershipIncomeShareNote" class="note"></p>
     </div>
-    <div id="migrationOverallTakeaway" class="takeaway-banner" aria-label="Overall takeaway on migration trend"></div>
-    <p class="note">Net migration combines domestic and international migration from annual county population estimates. The rate is shown per 1,000 residents and capped at the 1st and 99th percentiles for the plot.</p>
-    <h3 class="section-subheading">Migration Trend Clusters</h3>
-    <div id="migrationClusterSummary" class="takeaway-banner" aria-label="Summary of migration trend clusters"></div>
-    <div id="migrationClusterLegend" class="legend horizontal" aria-label="Select migration trend cluster"></div>
-    <div class="migration-chart-only">
-      <h3 id="migrationClusterChartTitle">Net migration per capita by migration trend cluster</h3>
-      <svg id="migrationClusterChart" class="chart migration-small-chart" role="img" aria-label="County net migration per 1,000 residents around FEMA incidents by migration trend cluster"></svg>
-    </div>
-    <div id="migrationClusterCards" class="migration-cluster-grid" aria-label="Migration trend cluster interpretations"></div>
-    <h3 class="section-subheading">Migration and Housing Market Relationship</h3>
-    <div id="migrationRelationshipRiskLegend" class="legend horizontal" aria-label="Select NRI risk rating for migration and housing relationship"></div>
-    <div class="migration-relationship-wrap">
-      <svg id="migrationHousingScatter" class="chart" role="img" aria-label="County-level relationship between net migration change and housing market YOY index change"></svg>
-    </div>
-    <h3 class="section-subheading">Housing Market Movement by Migration Trend</h3>
-    <div id="migrationHousingFilterToggles" class="migration-filter-panel" aria-label="Housing response drilldown filters">
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-housing-filter-toggle="risk">NRI Risk Rating</button>
-        <div id="migrationHousingRiskLegend" class="legend horizontal" aria-label="Select NRI risk rating for housing response" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-housing-filter-toggle="economic">Economic Profile</button>
-        <div id="migrationHousingEconomicLegend" class="legend horizontal" aria-label="Select economic profile for housing response" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-housing-filter-toggle="migration">Migration Trend Group</button>
-        <div id="migrationHousingClusterLegend" class="legend horizontal" aria-label="Select migration trend group for housing response" hidden></div>
-      </div>
-    </div>
-    <div class="migration-chart-only">
-      <h3 id="migrationHousingTitle">Housing market YOY index around incidents</h3>
-      <svg id="migrationHousingTrendChart" class="chart migration-small-chart" role="img" aria-label="Housing market YOY index around FEMA incidents by selected migration drilldowns"></svg>
-    </div>
-    <div id="migrationHousingTakeaway" class="takeaway-banner" aria-label="Takeaway on housing movement by migration trend"></div>
+    <p class="note">Source: <a href="https://www.census.gov/programs-surveys/acs/data/data-tables.html" target="_blank" rel="noopener">U.S. Census Bureau, American Community Survey housing affordability tables</a>; local mart: <code>data/quoll.duckdb</code>, <code>mart.acs_county_affordability_annual</code>.</p>
     <div id="migrationBottomJump" class="section-jump-row bottom-center edge-jump">
-      <button id="migrationDrillDown" type="button" class="icon-button" aria-label="Go to Insurance Profile">&darr;</button>
+      <button id="migrationDrillDown" type="button" class="icon-button" aria-label="Go to Housing Insurance Trend">&darr;</button>
     </div>
   </section>
   <section id="insuranceProfileSection" class="story-panel" hidden>
     <div class="section-head">
       <div>
-        <h2>Housing Insurance Trend</h2>
-        <div class="sub">This section compares insurance conditions around incident timing, then connects insurance movement with housing-market response and migration. Use the metric buttons to switch the insurance y-axis between premium levels, premium growth, and non-renewal rates.</div>
+        <h2>Breakdown of Home Ownership Costs</h2>
+        <div class="sub">This section estimates the composition of annual home ownership costs from ACS affordability tables, grouped by NRI risk rating.</div>
       </div>
     </div>
     <div id="insuranceUpJump" class="section-jump-row top-center edge-jump">
-      <button id="insuranceDrillUp" type="button" class="icon-button" aria-label="Return to Migration Trend">&uarr;</button>
+      <button id="insuranceDrillUp" type="button" class="icon-button" aria-label="Return to Home Ownership Costs">&uarr;</button>
     </div>
-    <div id="insuranceMetricLegend" class="legend horizontal" aria-label="Select insurance trend metric"></div>
-    <div id="insuranceTrendFilterToggles" class="migration-filter-panel" aria-label="Insurance trend drilldown filters">
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-trend-filter-toggle="risk">NRI Risk Rating</button>
-        <div id="insuranceTrendRiskLegend" class="legend horizontal" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-trend-filter-toggle="economic">Economic Profile</button>
-        <div id="insuranceTrendEconomicLegend" class="legend horizontal" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-trend-filter-toggle="migration">Migration Trend Group</button>
-        <div id="insuranceTrendMigrationLegend" class="legend horizontal" hidden></div>
-      </div>
-    </div>
-    <div class="migration-chart-only">
-      <h3 id="insuranceMetricTitle">Insurance trend around incidents</h3>
-      <svg id="insuranceTrendChart" class="chart migration-small-chart" role="img" aria-label="County insurance trend around FEMA incidents"></svg>
-    </div>
-    <div id="insuranceTrendTakeaway" class="takeaway-banner" aria-label="Takeaway on selected insurance trend"></div>
-    <h3 class="section-subheading">Insurance Profile Clusters</h3>
-    <div id="insuranceClusterSummary" class="takeaway-banner" aria-label="Insurance profile cluster summary"></div>
-    <div id="insuranceClusterCards" class="migration-cluster-grid" aria-label="Insurance profile cluster interpretations"></div>
-    <h3 class="section-subheading">Housing Market Movement by Insurance Profile</h3>
-    <div id="insuranceHousingFilterToggles" class="migration-filter-panel" aria-label="Insurance housing response drilldown filters">
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-housing-filter-toggle="risk">NRI Risk Rating</button>
-        <div id="insuranceHousingRiskLegend" class="legend horizontal" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-housing-filter-toggle="economic">Economic Profile</button>
-        <div id="insuranceHousingEconomicLegend" class="legend horizontal" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-housing-filter-toggle="migration">Migration Trend Group</button>
-        <div id="insuranceHousingMigrationLegend" class="legend horizontal" hidden></div>
-      </div>
-      <div class="migration-filter-row">
-        <button type="button" class="control-button" data-insurance-housing-filter-toggle="insurance">Insurance Profile Type</button>
-        <div id="insuranceHousingProfileLegend" class="legend horizontal" hidden></div>
-      </div>
-    </div>
-    <div class="migration-chart-only">
-      <h3 id="insuranceHousingTitle">Housing market YOY index around incidents</h3>
-      <svg id="insuranceHousingTrendChart" class="chart migration-small-chart" role="img" aria-label="Housing market YOY index around incidents by selected insurance drilldowns"></svg>
-    </div>
-    <h3 class="section-subheading">Insurance, Housing, and Migration Relationship</h3>
-    <div id="insuranceRelationshipMetricLegend" class="legend horizontal" aria-label="Select variables for relationship plot"></div>
-    <div id="insuranceRelationshipRiskLegend" class="legend horizontal" aria-label="NRI risk rating colors for relationship plot"></div>
-    <p class="note">Each point is a county. Point colors show the county's NRI risk rating.</p>
-    <div class="migration-relationship-wrap">
-      <svg id="insuranceRelationshipScatter" class="chart" role="img" aria-label="Relationship between selected insurance, housing, and migration changes"></svg>
-    </div>
+    <h3 class="section-subheading">Latest Annual County Cost Stack</h3>
+    <svg id="costBreakdownStackChart" class="chart cost-stack-chart" role="img" aria-label="Stacked home ownership cost components by NRI risk rating"></svg>
+    <h3 class="section-subheading">Cost Stack as Share of Annual Household Income</h3>
+    <svg id="costBreakdownShareChart" class="chart cost-stack-chart" role="img" aria-label="Stacked home ownership cost components as percentage of household income by NRI risk rating"></svg>
+    <p id="costBreakdownMethodNote" class="note"></p>
+    <p class="note">Source: <a href="https://www.census.gov/programs-surveys/acs/data/data-tables.html" target="_blank" rel="noopener">U.S. Census Bureau, American Community Survey housing affordability tables</a>; local mart: <code>data/quoll.duckdb</code>, <code>mart.acs_county_affordability_annual</code>.</p>
   </section>
   <div id="riskTooltip" class="tooltip" role="status" aria-live="polite"></div>
   <div id="mapTooltip" class="tooltip" role="status" aria-live="polite"></div>
@@ -2297,6 +2658,7 @@ let usCountyFeatures = null;
 let activeRiskRating = data.meta.riskRatings[0];
 let activeEconomicProfile = data.economicProfiles?.profiles?.[0]?.profile ?? null;
 let activeEconomicMatrixMetric = "later";
+let activeIncomeMetric = data.incomeDistribution?.defaultMetric || "householdMedian";
 let activeMigrationRating = data.meta.riskRatings[0];
 let activeMigrationEconomicProfile = data.migrationTrend?.economicProfiles?.[0]?.profile ?? null;
 let migrationRiskFilterEnabled = false;
@@ -4783,18 +5145,18 @@ function transitionToStoryPanel(panelId) {
     }
     if (panelId === "economicProfileSection") {
       stopEconomicProfileTimer();
-      drawEconomicProfileChart();
-      window.requestAnimationFrame(drawEconomicProfileChart);
+      drawEconomicProfileIntro();
+      window.requestAnimationFrame(drawEconomicProfileIntro);
     }
     if (panelId === "migrationTrendSection") {
-      drawMigrationChart();
-      updateMigrationLegendButtons();
-      updateMigrationActions();
-      window.requestAnimationFrame(drawMigrationChart);
+      drawHomeOwnershipCosts();
+      window.requestAnimationFrame(drawHomeOwnershipCosts);
     }
     if (panelId === "insuranceProfileSection") {
-      drawInsuranceTrendModule();
-      updateInsuranceTrendActions();
+      stopInsuranceTrendTimer();
+      stopInsuranceRiskTrendTimer();
+      drawHomeCostBreakdown();
+      window.requestAnimationFrame(drawHomeCostBreakdown);
     }
   }, 220);
 }
@@ -5249,11 +5611,183 @@ function addSvgTitle(node, text) {
   node.appendChild(title);
 }
 
+function activeIncomeMetricPayload() {
+  const root = data.incomeDistribution || {};
+  const metrics = root.metrics || {};
+  return metrics[activeIncomeMetric] || metrics[root.defaultMetric] || { groups: [] };
+}
+
+function formatOwnershipMetric(metric, value) {
+  if (metric?.format === "percent") {
+    if (value == null || Number.isNaN(Number(value))) return "n/a";
+    return `${(Number(value) * 100).toFixed(1)}%`;
+  }
+  return formatIncome(value);
+}
+
+function drawRiskDistributionInfographic({ svgId, cardsId, noteId, metric, rootPayload }) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  clear(svg);
+  const groups = metric?.groups || [];
+  const dims = chartDims(svg);
+  svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  if (!groups.length) {
+    add("text", svg, { x: dims.left, y: dims.top + 28, class: "axis-label" }).textContent = "No county data available.";
+    return;
+  }
+
+  const allValues = groups.flatMap(group => (group.values || []).map(item => Number(item.value)).filter(value => !Number.isNaN(value)));
+  const domainValues = metric?.scaleDomain === "middleSpread"
+    ? groups.flatMap(group => [Number(group.q10), Number(group.q90)]).filter(value => !Number.isNaN(value))
+    : allValues;
+  const xDomain = fullDomainFromValues(domainValues, { includeZero: false, padRatio: metric?.padRatio ?? 0.1 });
+  if (metric?.minDomain != null && !Number.isNaN(Number(metric.minDomain))) {
+    xDomain[0] = Math.max(Number(metric.minDomain), xDomain[0]);
+  }
+  const widePlot = Boolean(metric?.widePlot);
+  const plotLeft = dims.left + (widePlot ? 68 : 94);
+  const plotRight = dims.width - dims.right - (widePlot ? 0 : 18);
+  const x = makeScale(xDomain, [plotLeft, plotRight]);
+  const rowGap = (dims.height - dims.top - dims.bottom - 24) / Math.max(groups.length, 1);
+  const ticks = Array.from({ length: 5 }, (_, i) => xDomain[0] + (i / 4) * (xDomain[1] - xDomain[0]));
+  const formatValue = value => formatOwnershipMetric(metric, value);
+
+  add("text", svg, { x: plotLeft, y: dims.top - 14, class: "chart-title" }).textContent = metric?.title || "County distribution";
+  ticks.forEach(tick => {
+    const px = x(tick);
+    add("line", svg, { x1: px, x2: px, y1: dims.top, y2: dims.height - dims.bottom - 16, class: "grid-line" });
+    add("text", svg, { x: px, y: dims.height - dims.bottom + 10, class: "tick-label", "text-anchor": "middle" }).textContent = formatValue(tick);
+  });
+  add("text", svg, { x: (plotLeft + plotRight) / 2, y: dims.height - 8, class: "axis-label", "text-anchor": "middle" }).textContent = metric?.axisLabel || "";
+
+  groups.forEach((group, index) => {
+    const color = colors[group.rating] || "#5e6872";
+    const y = dims.top + 28 + rowGap * index + rowGap / 2;
+    add("text", svg, { x: dims.left, y: y - 4, class: "income-risk-label" }).textContent = group.rating;
+    add("text", svg, { x: dims.left, y: y + 13, class: "income-count-label" }).textContent = `${group.countyCount} counties`;
+
+    if (metric?.showDots !== false) {
+      (group.values || []).forEach((item, valueIndex) => {
+        const value = Number(item.value);
+        if (Number.isNaN(value)) return;
+        const jitter = ((valueIndex * 37) % 27) - 13;
+        const plottedValue = Math.min(xDomain[1], Math.max(xDomain[0], value));
+        const dot = add("circle", svg, { cx: x(plottedValue), cy: y + jitter, r: 2.2, class: "income-dot", fill: color });
+        addSvgTitle(dot, `${item.countyName || item.fips}: ${formatValue(value)} ${metric?.valueLabel || "value"} (${group.rating} risk)`);
+      });
+    }
+
+    const whiskerLowSource = metric?.whiskerDomain === "minMax" ? group.min : group.q10;
+    const whiskerHighSource = metric?.whiskerDomain === "minMax" ? group.max : group.q90;
+    const q10 = Math.min(xDomain[1], Math.max(xDomain[0], Number(whiskerLowSource)));
+    const q25 = Math.min(xDomain[1], Math.max(xDomain[0], Number(group.q25)));
+    const q75 = Math.min(xDomain[1], Math.max(xDomain[0], Number(group.q75)));
+    const q90 = Math.min(xDomain[1], Math.max(xDomain[0], Number(whiskerHighSource)));
+    const medianValue = Math.min(xDomain[1], Math.max(xDomain[0], Number(group.median)));
+    const whisker = add("line", svg, { x1: x(q10), x2: x(q90), y1: y, y2: y, class: "income-whisker", stroke: color });
+    const whiskerLabel = metric?.whiskerDomain === "minMax" ? "observed range" : "most counties";
+    addSvgTitle(whisker, `${group.rating}: ${whiskerLabel} runs from ${formatValue(whiskerLowSource)} to ${formatValue(whiskerHighSource)}.`);
+    const boxX = x(q25);
+    const boxWidth = Math.max(2, x(q75) - boxX);
+    const box = add("rect", svg, { x: boxX, y: y - 18, width: boxWidth, height: 36, rx: 4, class: "income-iqr", fill: color, stroke: color });
+    addSvgTitle(box, `${group.rating}: middle half ranges from ${formatValue(group.q25)} to ${formatValue(group.q75)}.`);
+    const median = add("line", svg, { x1: x(medianValue), x2: x(medianValue), y1: y - 24, y2: y + 24, class: "income-median" });
+    addSvgTitle(median, `${group.rating}: ${metric?.cardLabel || "median county value"} is ${formatValue(group.median)}.`);
+  });
+
+  const cards = document.getElementById(cardsId);
+  if (cards) {
+    cards.innerHTML = groups.map(group => {
+      const color = colors[group.rating] || "#5e6872";
+      return `<article class="income-card">` +
+        `<h3><span class="swatch" style="background:${color};"></span>${escapeHtml(group.rating)} risk</h3>` +
+        `<div class="income-main">${formatValue(group.median)}</div>` +
+        `<div class="income-detail">${escapeHtml(metric?.cardLabel || "Median county value")}. The middle half runs from ${formatValue(group.q25)} to ${formatValue(group.q75)}, with a wider 10th-90th percentile spread from ${formatValue(group.q10)} to ${formatValue(group.q90)}.</div>` +
+        `</article>`;
+    }).join("");
+  }
+
+  const note = document.getElementById(noteId);
+  if (note) {
+    const years = rootPayload?.years || [];
+    const fallbackPeriod = years.length ? `Years used: ${years[0]}-${years[years.length - 1]}.` : "";
+    const periodText = metric?.periodLabel || rootPayload?.periodLabel || fallbackPeriod;
+    note.innerHTML = `<strong>Method:</strong> ${escapeHtml(metric?.method || "")} ${escapeHtml(periodText)} ${escapeHtml(metric?.note || "")}`;
+  }
+}
+
+function formatCostShare(value) {
+  if (value == null || Number.isNaN(Number(value))) return "n/a";
+  return `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function drawCostStackChart(svgId, mode = "level") {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  clear(svg);
+  const payload = data.homeCostBreakdown || {};
+  const components = payload.components || [];
+  const rows = payload.stacked || [];
+  const dims = chartDims(svg);
+  svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  if (!rows.length) return;
+  const key = mode === "share" ? "shareComponents" : "levelComponents";
+  const formatValue = mode === "share" ? formatCostShare : formatIncome;
+  const totals = rows.map(row => (row[key] || []).reduce((sum, item) => sum + (Number(item.value) || 0), 0));
+  const maxTotal = Math.max(...totals.filter(value => value != null && !Number.isNaN(value)), 0);
+  const xDomain = [0, maxTotal > 0 ? maxTotal * 1.08 : 1];
+  const x = makeScale(xDomain, [dims.left + 92, dims.width - dims.right - 26]);
+  const rowGap = (dims.height - dims.top - dims.bottom - 20) / Math.max(rows.length, 1);
+  const ticks = Array.from({ length: 5 }, (_, i) => xDomain[0] + (i / 4) * (xDomain[1] - xDomain[0]));
+  ticks.forEach(tick => {
+    const px = x(tick);
+    add("line", svg, { x1: px, x2: px, y1: dims.top, y2: dims.height - dims.bottom - 14, class: "grid-line" });
+    add("text", svg, { x: px, y: dims.height - dims.bottom + 10, class: "tick-label", "text-anchor": "middle" }).textContent = formatValue(tick);
+  });
+  rows.forEach((row, index) => {
+    const y = dims.top + 28 + rowGap * index;
+    add("text", svg, { x: dims.left, y: y + 15, class: "stack-label" }).textContent = row.rating;
+    add("text", svg, { x: dims.left, y: y + 31, class: "income-count-label" }).textContent = `${row.countyCount} counties`;
+    let start = 0;
+    (row[key] || []).forEach(item => {
+      const component = components.find(component => component.key === item.key) || item;
+      const value = Number(item.value) || 0;
+      const x0 = x(start);
+      const x1 = x(start + value);
+      const rect = add("rect", svg, { x: x0, y, width: Math.max(0, x1 - x0), height: 28, rx: 3, fill: component.color || "#64748B" });
+      addSvgTitle(rect, `${row.rating}: ${item.label} ${formatValue(value)}`);
+      start += value;
+    });
+    add("text", svg, { x: x(start) + 6, y: y + 19, class: "stack-value" }).textContent = formatValue(start);
+  });
+  let legendX = dims.left + 92;
+  components.forEach(component => {
+    add("rect", svg, { x: legendX, y: dims.top - 18, width: 10, height: 10, fill: component.color });
+    add("text", svg, { x: legendX + 14, y: dims.top - 9, class: "tick-label" }).textContent = component.label;
+    legendX += 118;
+  });
+}
+
+function drawHomeCostBreakdown() {
+  drawCostStackChart("costBreakdownStackChart", "level");
+  drawCostStackChart("costBreakdownShareChart", "share");
+  const note = document.getElementById("costBreakdownMethodNote");
+  if (note) {
+    const payload = data.homeCostBreakdown || {};
+    const years = payload.years || [];
+    const fallbackPeriod = years.length ? `Years used: ${years[0]}-${years[years.length - 1]}.` : "";
+    const periodText = payload.periodLabel || fallbackPeriod;
+    note.innerHTML = `<strong>Method:</strong> ${escapeHtml(payload.source?.methodNote || "")} ${escapeHtml(periodText)} Mortgage is estimated as annual selected monthly owner costs with a mortgage minus estimated utilities, insurance, and property taxes, floored at zero.`;
+  }
+}
+
 function drawEconomicIncomeInfographic() {
   const svg = document.getElementById("economicIncomeChart");
   if (!svg) return;
   clear(svg);
-  const payload = data.incomeDistribution || {};
+  const rootPayload = data.incomeDistribution || {};
+  const payload = activeIncomeMetricPayload();
   const groups = payload.groups || [];
   const dims = chartDims(svg);
   svg.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
@@ -5270,13 +5804,14 @@ function drawEconomicIncomeInfographic() {
   const rowGap = (dims.height - dims.top - dims.bottom - 24) / Math.max(groups.length, 1);
   const ticks = Array.from({ length: 5 }, (_, i) => xDomain[0] + (i / 4) * (xDomain[1] - xDomain[0]));
 
-  add("text", svg, { x: plotLeft, y: dims.top - 14, class: "chart-title" }).textContent = "Average annual ACS per-capita income across the latest 10 years";
+  const formatValue = formatIncome;
+  add("text", svg, { x: plotLeft, y: dims.top - 14, class: "chart-title" }).textContent = payload.title || "Average annual county income";
   ticks.forEach(tick => {
     const px = x(tick);
     add("line", svg, { x1: px, x2: px, y1: dims.top, y2: dims.height - dims.bottom - 16, class: "grid-line" });
-    add("text", svg, { x: px, y: dims.height - dims.bottom + 10, class: "tick-label", "text-anchor": "middle" }).textContent = formatIncome(tick);
+    add("text", svg, { x: px, y: dims.height - dims.bottom + 10, class: "tick-label", "text-anchor": "middle" }).textContent = formatValue(tick);
   });
-  add("text", svg, { x: (plotLeft + plotRight) / 2, y: dims.height - 8, class: "axis-label", "text-anchor": "middle" }).textContent = "County average annual ACS per-capita income";
+  add("text", svg, { x: (plotLeft + plotRight) / 2, y: dims.height - 8, class: "axis-label", "text-anchor": "middle" }).textContent = payload.axisLabel || "Latest annual county income";
 
   groups.forEach((group, index) => {
     const color = colors[group.rating] || "#5e6872";
@@ -5289,17 +5824,17 @@ function drawEconomicIncomeInfographic() {
       if (Number.isNaN(income)) return;
       const jitter = ((valueIndex * 37) % 27) - 13;
       const dot = add("circle", svg, { cx: x(income), cy: y + jitter, r: 2.2, class: "income-dot", fill: color });
-      addSvgTitle(dot, `${item.countyName || item.fips}: ${formatIncome(income)} average annual ACS per-capita income (${group.rating} risk)`);
+      addSvgTitle(dot, `${item.countyName || item.fips}: ${formatIncome(income)} ${payload.valueLabel || "latest annual income"} (${group.rating} risk)`);
     });
 
     const whisker = add("line", svg, { x1: x(group.q10), x2: x(group.q90), y1: y, y2: y, class: "income-whisker", stroke: color });
-    addSvgTitle(whisker, `${group.rating}: most counties fall from ${formatIncome(group.q10)} to ${formatIncome(group.q90)}.`);
+    addSvgTitle(whisker, `${group.rating}: most counties fall from ${formatValue(group.q10)} to ${formatValue(group.q90)}.`);
     const boxX = x(group.q25);
     const boxWidth = Math.max(2, x(group.q75) - boxX);
     const box = add("rect", svg, { x: boxX, y: y - 18, width: boxWidth, height: 36, rx: 4, class: "income-iqr", fill: color, stroke: color });
-    addSvgTitle(box, `${group.rating}: middle half ranges from ${formatIncome(group.q25)} to ${formatIncome(group.q75)}.`);
+    addSvgTitle(box, `${group.rating}: middle half ranges from ${formatValue(group.q25)} to ${formatValue(group.q75)}.`);
     const median = add("line", svg, { x1: x(group.median), x2: x(group.median), y1: y - 24, y2: y + 24, class: "income-median" });
-    addSvgTitle(median, `${group.rating}: median county average income is ${formatIncome(group.median)}.`);
+    addSvgTitle(median, `${group.rating}: ${payload.cardLabel || "median county income"} is ${formatValue(group.median)}.`);
   });
 
   const cards = document.getElementById("economicIncomeCards");
@@ -5308,22 +5843,49 @@ function drawEconomicIncomeInfographic() {
       const color = colors[group.rating] || "#5e6872";
       return `<article class="income-card">` +
         `<h3><span class="swatch" style="background:${color};"></span>${escapeHtml(group.rating)} risk</h3>` +
-        `<div class="income-main">${formatIncome(group.median)}</div>` +
-        `<div class="income-detail">Median county average income. The middle half runs from ${formatIncome(group.q25)} to ${formatIncome(group.q75)}, with a wider 10th-90th percentile spread from ${formatIncome(group.q10)} to ${formatIncome(group.q90)}.</div>` +
+        `<div class="income-main">${formatValue(group.median)}</div>` +
+        `<div class="income-detail">${escapeHtml(payload.cardLabel || "Median county income")}. The middle half runs from ${formatValue(group.q25)} to ${formatValue(group.q75)}, with a wider 10th-90th percentile spread from ${formatValue(group.q10)} to ${formatValue(group.q90)}.</div>` +
         `</article>`;
     }).join("");
   }
 
   const note = document.getElementById("economicIncomeMethodNote");
   if (note) {
-    const years = payload.years || [];
-    const yearText = years.length ? ` Years used: ${years[0]}-${years[years.length - 1]}.` : "";
-    note.innerHTML = `<strong>Method:</strong> ${escapeHtml(payload.method || "")}${yearText} Income is ACS per-capita income in current dollars.`;
+    const years = payload.years || rootPayload.years || [];
+    const fallbackPeriod = years.length ? `Years used: ${years[0]}-${years[years.length - 1]}.` : "";
+    const periodText = payload.periodLabel || rootPayload.periodLabel || fallbackPeriod;
+    note.innerHTML = `<strong>Method:</strong> ${escapeHtml(payload.method || "")} ${escapeHtml(periodText)} ${escapeHtml(payload.note || "")}`;
   }
 }
 
 function drawEconomicProfileIntro() {
   drawEconomicIncomeInfographic();
+  drawRiskDistributionInfographic({
+    svgId: "economicPpsfChart",
+    cardsId: "economicPpsfCards",
+    noteId: "economicPpsfMethodNote",
+    metric: data.incomeDistribution?.ppsf,
+    rootPayload: data.incomeDistribution?.ppsf
+  });
+}
+
+function drawHomeOwnershipCosts() {
+  const payload = data.homeOwnershipCosts || {};
+  const metrics = payload.metrics || {};
+  drawRiskDistributionInfographic({
+    svgId: "homeOwnershipCostChart",
+    cardsId: "homeOwnershipCostCards",
+    noteId: "homeOwnershipCostNote",
+    metric: metrics.annualCost,
+    rootPayload: payload
+  });
+  drawRiskDistributionInfographic({
+    svgId: "homeOwnershipIncomeShareChart",
+    cardsId: "homeOwnershipIncomeShareCards",
+    noteId: "homeOwnershipIncomeShareNote",
+    metric: metrics.incomeShare,
+    rootPayload: payload
+  });
 }
 
 function drawEconomicProfileSummaryCards() {
@@ -5852,14 +6414,21 @@ function drawProfileContrastTable(payload, bodyId) {
 }
 
 function redraw() {
-  drawRiskChart();
-  updateRiskView();
-  updateRiskCommentary();
-  if (riskViewMode === "map") drawCountyRiskMap();
-  drawEconomicProfileChart();
-  drawEconomicProfileMap();
-  drawMigrationChart();
-  drawInsuranceTrendModule();
+  if (activeStoryPanel === "riskResponseSection") {
+    drawRiskChart();
+    updateRiskView();
+    updateRiskCommentary();
+    if (riskViewMode === "map") drawCountyRiskMap();
+  }
+  if (activeStoryPanel === "economicProfileSection") {
+    drawEconomicProfileIntro();
+  }
+  if (activeStoryPanel === "migrationTrendSection") {
+    drawHomeOwnershipCosts();
+  }
+  if (activeStoryPanel === "insuranceProfileSection") {
+    drawHomeCostBreakdown();
+  }
 }
 
 window.addEventListener("resize", redraw);
@@ -5871,7 +6440,6 @@ updateMigrationActions();
 updateInsuranceTrendActions();
 updateInsuranceRiskTrendActions();
 updateRiskView();
-drawEconomicProfileIntro();
 drawEconomicProfileCommentary();
 redraw();
 startRiskChartTimer();
