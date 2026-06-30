@@ -2536,7 +2536,7 @@ HTML = r"""<!doctype html>
   <header>
     <div>
       <h1>Climate Risk to Housing Markets</h1>
-      <p class="dek">Housing markets across the US are affected by extreme climate events. The impact is uneven across different regions of the country. What climate risk does your home face?</p>
+      <p class="dek">Across the United States, climate change means that different regions face varying frequencies of extreme weather events. How do housing markets in different counties respond to such incidents?</p>
     </div>
   </header>
 
@@ -2545,7 +2545,7 @@ HTML = r"""<!doctype html>
       <div class="section-head">
         <div>
           <h2>Housing Market Response by FEMA Risk Level</h2>
-          <div id="riskViewSubhead" class="sub">This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before a FEMA incident or NOAA billion-dollar storm event to two years after it ends.</div>
+          <div id="riskViewSubhead" class="sub" data-chart-text="This chart compares counties by climate risk levels as assigned by FEMA. Risk ratings are relative among counties.<br>Each line shows the typical housing market movement for counties in that risk group, from one year before an extreme climate event to two years after it ends.">This chart compares counties by climate risk levels as assigned by FEMA. Risk ratings are relative among counties.<br>Each line shows the typical housing market movement for counties in that risk group, from one year before an extreme climate event to two years after it ends.</div>
         </div>
       </div>
       <div class="control-row">
@@ -2569,6 +2569,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div id="riskCommentary" class="takeaway-banner" aria-label="Takeaway on NRI risk group responses"></div>
+      <p id="climateEventNote" class="note">Extreme climate events: incidents are taken from FEMA-declared disasters and NOAA billion-dollar storm events.</p>
       <p id="riskIndexNote" class="note">Housing market index: this score combines prices, sale-to-list ratios, homes sold, and inventory into one number. The inputs use year-over-year changes so normal seasonal swings, like busier spring markets, have less influence.</p>
       <p id="riskWeightNote" class="note">Incident weighting: when a county was hit by multiple incidents, its values are averaged by month, with more recent incidents counted more heavily.</p>
       <div id="riskBottomJump" class="section-jump-row bottom-center edge-jump">
@@ -4957,9 +4958,10 @@ function updateRiskView() {
   if (indexNote) indexNote.hidden = mapMode;
   if (weightNote) weightNote.hidden = mapMode;
   if (subhead) {
-    subhead.textContent = mapMode
+    if (!subhead.dataset.chartText) subhead.dataset.chartText = subhead.innerHTML;
+    subhead.innerHTML = mapMode
       ? "This map shows each county's FEMA National Risk Index rating. Green marks lower-risk counties, while orange and red mark higher-risk counties."
-      : "This chart compares counties by FEMA risk level. Each line shows the typical housing market path for counties in that risk group, from one year before a FEMA incident or NOAA billion-dollar storm event to two years after it ends.";
+      : subhead.dataset.chartText;
   }
   document.querySelectorAll("[data-risk-view]").forEach(button => {
     button.classList.toggle("active", button.getAttribute("data-risk-view") === riskViewMode);

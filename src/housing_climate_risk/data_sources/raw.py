@@ -11,7 +11,16 @@ from housing_climate_risk.data_sources.cached_io import (
     read_redfin_county_cached,
 )
 from housing_climate_risk.modeling.county_profiles import BEA_LINECODES
-from housing_climate_risk.paths import CACHE_DIR, CLIMATE_DIR, ECONOMIC_DIR, GEOGRAPHIC_DIR, HOUSING_DIR, POPULATION_DIR
+from housing_climate_risk.paths import (
+    CACHE_DIR,
+    CLIMATE_DIR,
+    ECONOMIC_DIR,
+    FEMA_DIR,
+    FIPSGEO_DIR,
+    GEOGRAPHIC_DIR,
+    HOUSING_DIR,
+    POPULATION_DIR,
+)
 
 
 _CACHE: dict[str, object] = {}
@@ -49,11 +58,17 @@ def dedupe_by_key(df: pd.DataFrame, key_cols: list[str], strategy: str = "first"
 
 
 def load_fema_disasters() -> pd.DataFrame:
-    return read_fema_disasters_cached(CLIMATE_DIR / "FEMA_Disaster_Declarations.csv", cache_dir=CACHE_DIR)
+    path = CLIMATE_DIR / "FEMA_Disaster_Declarations.csv"
+    if not path.exists():
+        path = FEMA_DIR / "FEMA_Disaster_Declarations.csv"
+    return read_fema_disasters_cached(path, cache_dir=CACHE_DIR)
 
 
 def load_nri_counties() -> pd.DataFrame:
-    return pd.read_csv(CLIMATE_DIR / "NRI_Table_Counties.csv")
+    path = CLIMATE_DIR / "NRI_Table_Counties.csv"
+    if not path.exists():
+        path = FEMA_DIR / "NRI_Table_Counties.csv"
+    return pd.read_csv(path)
 
 
 def load_redfin_county() -> pd.DataFrame:
@@ -61,7 +76,10 @@ def load_redfin_county() -> pd.DataFrame:
 
 
 def load_fips_master() -> pd.DataFrame:
-    return pd.read_csv(GEOGRAPHIC_DIR / "fips_master_v2.csv")
+    path = GEOGRAPHIC_DIR / "fips_master_v2.csv"
+    if not path.exists():
+        path = FIPSGEO_DIR / "fips_master_v2.csv"
+    return pd.read_csv(path)
 
 
 def load_personal_income(usecols: list[str] | None = None) -> pd.DataFrame:

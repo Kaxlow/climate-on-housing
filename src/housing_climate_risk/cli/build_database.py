@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from housing_climate_risk.paths import ACS_DIR, CLIMATE_DAMAGE_DIR, DATA_DIR, FEMA_DIR, FIPSGEO_DIR, HOUSING_DIR
+from housing_climate_risk.paths import ACS_DIR, CLIMATE_DAMAGE_DIR, CLIMATE_DIR, DATA_DIR, FEMA_DIR, FIPSGEO_DIR, HOUSING_DIR
 
 
 DATABASE_PATH = DATA_DIR / "quoll.duckdb"
@@ -20,7 +20,13 @@ RAW_FILES = {
     "redfin_housing_market_by_county": HOUSING_DIR / "Redfin-Housing-Market-By-County.csv",
     "nri_table_counties": FEMA_DIR / "NRI_Table_Counties.csv",
     "fema_disaster_declarations": FEMA_DIR / "FEMA_Disaster_Declarations.csv",
+    "fema_web_disaster_summaries": CLIMATE_DAMAGE_DIR
+    / "raw"
+    / "fema_web_disaster_summaries"
+    / "FemaWebDisasterSummaries.csv",
     "noaa_storm_events_county_damage": CLIMATE_DAMAGE_DIR / "noaa_storm_events_county_damage.csv",
+    "noaa_storm_events_zone_county_mapping": CLIMATE_DAMAGE_DIR / "noaa_storm_events_zone_county_mapping.csv",
+    "ncei_climate_at_a_glance_county_monthly": CLIMATE_DIR / "ncei_climate_at_a_glance_county_monthly.csv",
 }
 
 
@@ -33,6 +39,7 @@ ACS_DATA_PATTERNS = {
 
 ACS_KEY_COLUMNS = {"year", "state", "county"}
 ACS_VARIABLE_RE = re.compile(r"^[A-Z]+\d+(?:_C\d+)?_\d+(?:E|M|PE|PM)$")
+ACS_SPECIAL_NUMERIC_VALUES = {-222222222, -333333333, -555555555, -666666666, -888888888, -999999999}
 
 
 def _load_duckdb():
@@ -44,6 +51,11 @@ def _load_duckdb():
             "or `pip install duckdb`, then rerun `build-database`."
         ) from exc
     return duckdb
+
+
+def _configure_connection(con) -> None:
+    con.execute("SET preserve_insertion_order = false")
+    con.execute("SET threads = 2")
 
 
 def _quote_ident(value: str) -> str:
@@ -492,17 +504,70 @@ def _create_core_marts(con) -> None:
     con.execute(
         """
         CREATE TABLE mart.fema_disaster_declarations AS
+        WITH parsed_fema AS (
+            SELECT
+                try_cast(incidentBeginDate AS TIMESTAMP) AS parsed_incident_begin_date,
+                try_cast(incidentEndDate AS TIMESTAMP) AS parsed_incident_end_date,
+                raw_fema.*
+            FROM raw.fema_disaster_declarations AS raw_fema
+        ),
+        incident_type_duration AS (
+            SELECT
+                incidentType,
+                avg(date_diff('day', parsed_incident_begin_date, parsed_incident_end_date)) AS average_duration_days
+            FROM parsed_fema
+            WHERE parsed_incident_begin_date IS NOT NULL
+              AND parsed_incident_end_date IS NOT NULL
+              AND parsed_incident_end_date >= parsed_incident_begin_date
+              AND incidentType IS NOT NULL
+            GROUP BY incidentType
+        )
         SELECT
             lpad(fipsStateCode, 2, '0') || lpad(fipsCountyCode, 3, '0') AS fips,
             lpad(fipsStateCode, 2, '0') AS state_fips,
             try_cast(fyDeclared AS INTEGER) AS declared_year,
             try_cast(declarationDate AS TIMESTAMP) AS declaration_date,
-            try_cast(incidentBeginDate AS TIMESTAMP) AS incident_begin_date,
-            try_cast(incidentEndDate AS TIMESTAMP) AS incident_end_date,
-            raw_fema.*
-        FROM raw.fema_disaster_declarations AS raw_fema
+            parsed_incident_begin_date AS incident_begin_date,
+            coalesce(
+                parsed_incident_end_date,
+                parsed_incident_begin_date
+                    + CAST(round(duration.average_duration_days) AS BIGINT) * INTERVAL 1 DAY
+            ) AS incident_end_date,
+            parsed_fema.* EXCLUDE (parsed_incident_begin_date, parsed_incident_end_date)
+        FROM parsed_fema
+        LEFT JOIN incident_type_duration AS duration
+            ON parsed_fema.incidentType = duration.incidentType
         WHERE fipsStateCode IS NOT NULL
           AND fipsCountyCode IS NOT NULL
+        """
+    )
+
+    con.execute("DROP TABLE IF EXISTS mart.fema_disaster_financial_assistance")
+    con.execute(
+        """
+        CREATE TABLE mart.fema_disaster_financial_assistance AS
+        SELECT
+            try_cast(summary.disasterNumber AS INTEGER) AS disaster_number,
+            try_cast(summary.totalNumberIaApproved AS INTEGER) AS ia_approved_application_count,
+            try_cast(summary.totalAmountIhpApproved AS DOUBLE) AS ihp_approved_amount,
+            try_cast(summary.totalAmountHaApproved AS DOUBLE) AS housing_assistance_approved_amount,
+            try_cast(summary.totalAmountOnaApproved AS DOUBLE) AS other_needs_assistance_approved_amount,
+            try_cast(summary.totalObligatedAmountPa AS DOUBLE) AS public_assistance_obligated_amount,
+            try_cast(summary.totalObligatedAmountCatAb AS DOUBLE) AS public_assistance_categories_ab_obligated_amount,
+            try_cast(summary.totalObligatedAmountCatC2g AS DOUBLE) AS public_assistance_categories_c_to_g_obligated_amount,
+            try_cast(summary.totalObligatedAmountHmgp AS DOUBLE) AS hazard_mitigation_grant_obligated_amount,
+            coalesce(try_cast(summary.totalAmountIhpApproved AS DOUBLE), 0)
+                + coalesce(try_cast(summary.totalObligatedAmountPa AS DOUBLE), 0)
+                + coalesce(try_cast(summary.totalObligatedAmountHmgp AS DOUBLE), 0)
+                AS total_fema_financial_assistance_amount,
+            try_cast(summary.paLoadDate AS TIMESTAMP) AS public_assistance_load_timestamp,
+            try_cast(summary.iaLoadDate AS TIMESTAMP) AS individual_assistance_load_timestamp,
+            try_cast(summary.lastRefresh AS TIMESTAMP) AS source_last_refresh_timestamp,
+            summary.hash AS source_hash,
+            summary.id AS source_record_id,
+            summary.*
+        FROM raw.fema_web_disaster_summaries AS summary
+        WHERE summary.disasterNumber IS NOT NULL
         """
     )
 
@@ -510,8 +575,73 @@ def _create_core_marts(con) -> None:
     con.execute(
         """
         CREATE TABLE mart.noaa_storm_events AS
+        WITH ref_county_names AS (
+            SELECT
+                state_fips,
+                _normalize_place_name(county_name) AS county_name_norm,
+                min(fips) AS fips,
+                count(*) AS match_count
+            FROM ref.counties
+            GROUP BY state_fips, _normalize_place_name(county_name)
+        ),
+        zone_county_mapping AS (
+            SELECT
+                lpad(mapped_fips, 5, '0') AS mapped_fips,
+                mapped_county_name,
+                state_fips,
+                cz_fips,
+                cz_name,
+                mapping_method,
+                mapping_confidence,
+                mapping_note
+            FROM raw.noaa_storm_events_zone_county_mapping
+            WHERE mapped_fips IS NOT NULL
+              AND trim(mapped_fips) <> ''
+        ),
+        noaa_resolved AS (
+            SELECT
+                coalesce(valid_county.fips, name_county.fips, lpad(raw_noaa.county_fips, 5, '0')) AS resolved_fips,
+                lpad(raw_noaa.county_fips, 5, '0') AS noaa_county_fips,
+                NULL AS zone_mapped_fips,
+                NULL AS zone_mapped_county_name,
+                NULL AS zone_mapping_method,
+                NULL AS zone_mapping_confidence,
+                NULL AS zone_mapping_note,
+                CASE
+                    WHEN valid_county.fips IS NOT NULL THEN 'county_fips'
+                    WHEN name_county.fips IS NOT NULL THEN 'county_name'
+                    ELSE 'unmatched'
+                END AS fips_resolution_method,
+                raw_noaa.*
+            FROM raw.noaa_storm_events_county_damage AS raw_noaa
+            LEFT JOIN ref.counties AS valid_county
+                ON lpad(raw_noaa.county_fips, 5, '0') = valid_county.fips
+            LEFT JOIN ref_county_names AS name_county
+                ON lpad(raw_noaa.state_fips, 2, '0') = name_county.state_fips
+               AND _normalize_place_name(raw_noaa.cz_name) = name_county.county_name_norm
+               AND name_county.match_count = 1
+            WHERE raw_noaa.county_fips IS NOT NULL
+              AND raw_noaa.cz_type = 'C'
+            UNION ALL
+            SELECT
+                zone_mapping.mapped_fips AS resolved_fips,
+                NULL AS noaa_county_fips,
+                zone_mapping.mapped_fips AS zone_mapped_fips,
+                zone_mapping.mapped_county_name AS zone_mapped_county_name,
+                zone_mapping.mapping_method AS zone_mapping_method,
+                zone_mapping.mapping_confidence AS zone_mapping_confidence,
+                zone_mapping.mapping_note AS zone_mapping_note,
+                'zone_' || zone_mapping.mapping_method AS fips_resolution_method,
+                raw_noaa.*
+            FROM raw.noaa_storm_events_county_damage AS raw_noaa
+            INNER JOIN zone_county_mapping AS zone_mapping
+                ON lpad(raw_noaa.state_fips, 2, '0') = zone_mapping.state_fips
+               AND raw_noaa.cz_fips = zone_mapping.cz_fips
+               AND raw_noaa.cz_name = zone_mapping.cz_name
+            WHERE raw_noaa.cz_type = 'Z'
+        )
         SELECT
-            lpad(county_fips, 5, '0') AS fips,
+            resolved_fips AS fips,
             lpad(state_fips, 2, '0') AS state_fips_padded,
             try_cast(year AS INTEGER) AS event_year,
             try_cast(substr(begin_yearmonth, 5, 2) AS INTEGER) AS event_month,
@@ -522,9 +652,84 @@ def _create_core_marts(con) -> None:
             try_cast(property_damage AS DOUBLE) AS property_damage_amount,
             try_cast(crop_damage AS DOUBLE) AS crop_damage_amount,
             try_cast(total_damage AS DOUBLE) AS total_damage_amount,
-            raw_noaa.*
-        FROM raw.noaa_storm_events_county_damage AS raw_noaa
-        WHERE county_fips IS NOT NULL
+            noaa_county_fips,
+            fips_resolution_method,
+            zone_mapped_fips,
+            zone_mapped_county_name,
+            zone_mapping_method,
+            zone_mapping_confidence,
+            zone_mapping_note,
+            noaa_resolved.* EXCLUDE (
+                resolved_fips,
+                noaa_county_fips,
+                fips_resolution_method,
+                zone_mapped_fips,
+                zone_mapped_county_name,
+                zone_mapping_method,
+                zone_mapping_confidence,
+                zone_mapping_note
+            )
+        FROM noaa_resolved
+        """
+    )
+
+    con.execute("DROP TABLE IF EXISTS mart.ncei_county_weather_monthly")
+    con.execute(
+        """
+        CREATE TABLE mart.ncei_county_weather_monthly AS
+        WITH typed_weather AS (
+            SELECT
+                lpad(fips, 5, '0') AS fips,
+                try_cast(date AS DATE) AS weather_month,
+                try_cast(year AS INTEGER) AS year,
+                try_cast(month AS INTEGER) AS month,
+                parameter,
+                try_cast(value AS DOUBLE) AS value,
+                try_cast(anomaly AS DOUBLE) AS anomaly,
+                try_cast(rank AS DOUBLE) AS rank,
+                source_url,
+                try_cast(fetched_at AS TIMESTAMP) AS fetched_at
+            FROM raw.ncei_climate_at_a_glance_county_monthly
+            WHERE fips IS NOT NULL
+              AND parameter IN ('tavg', 'tmin', 'tmax', 'pcp')
+        )
+        SELECT
+            weather.fips,
+            counties.state_fips,
+            counties.state,
+            counties.state_long,
+            counties.county_name,
+            weather.weather_month,
+            weather.year,
+            weather.month,
+            max(value) FILTER (WHERE parameter = 'tavg') AS avg_temperature_f,
+            max(value) FILTER (WHERE parameter = 'tmin') AS min_temperature_f,
+            max(value) FILTER (WHERE parameter = 'tmax') AS max_temperature_f,
+            max(value) FILTER (WHERE parameter = 'pcp') AS precipitation_inches,
+            max(anomaly) FILTER (WHERE parameter = 'tavg') AS avg_temperature_anomaly_f,
+            max(anomaly) FILTER (WHERE parameter = 'tmin') AS min_temperature_anomaly_f,
+            max(anomaly) FILTER (WHERE parameter = 'tmax') AS max_temperature_anomaly_f,
+            max(anomaly) FILTER (WHERE parameter = 'pcp') AS precipitation_anomaly_inches,
+            max(rank) FILTER (WHERE parameter = 'tavg') AS avg_temperature_rank,
+            max(rank) FILTER (WHERE parameter = 'tmin') AS min_temperature_rank,
+            max(rank) FILTER (WHERE parameter = 'tmax') AS max_temperature_rank,
+            max(rank) FILTER (WHERE parameter = 'pcp') AS precipitation_rank,
+            max(fetched_at) AS latest_fetched_at,
+            count(DISTINCT parameter) AS observed_parameter_count,
+            string_agg(DISTINCT source_url, '; ' ORDER BY source_url) AS source_urls
+        FROM typed_weather AS weather
+        LEFT JOIN ref.counties AS counties
+            ON weather.fips = counties.fips
+        WHERE weather.weather_month IS NOT NULL
+        GROUP BY
+            weather.fips,
+            counties.state_fips,
+            counties.state,
+            counties.state_long,
+            counties.county_name,
+            weather.weather_month,
+            weather.year,
+            weather.month
         """
     )
 
@@ -573,18 +778,31 @@ def _acs_category(table_name: str) -> str | None:
     return None
 
 
-def _acs_select_sql(con, table_name: str, variable_lookup: dict[str, dict[str, str]]) -> str:
+def _acs_feature_aliases(con, table_name: str, variable_lookup: dict[str, dict[str, str]]) -> list[tuple[str, str]]:
     raw_columns = [
         column
         for column in _column_names(con, "raw", table_name)
         if column.lower() not in ACS_KEY_COLUMNS
     ]
-    select_columns = []
+    aliases = []
     used_aliases: set[str] = set()
+    used_alias_keys: set[str] = set()
     for column in raw_columns:
         alias = variable_lookup.get(column, {}).get("feature_name", column)
         alias = _dedupe_feature_alias(alias, column, used_aliases)
+        while alias.lower() in used_alias_keys:
+            digest = hashlib.sha1(f"{table_name}:{column}".encode("utf-8")).hexdigest()[:8]
+            suffix = f"_v{digest}"
+            alias = f"{alias[: 140 - len(suffix)]}{suffix}"
         used_aliases.add(alias)
+        used_alias_keys.add(alias.lower())
+        aliases.append((column, alias))
+    return aliases
+
+
+def _acs_select_sql(con, table_name: str, variable_lookup: dict[str, dict[str, str]]) -> str:
+    select_columns = []
+    for column, alias in _acs_feature_aliases(con, table_name, variable_lookup):
         select_columns.append(f"acs_source.{_quote_ident(column)} AS {_quote_ident(alias)}")
     columns = ",\n        ".join(select_columns)
     return f"""
@@ -601,13 +819,39 @@ def _acs_select_sql(con, table_name: str, variable_lookup: dict[str, dict[str, s
     """
 
 
+def _null_acs_special_values_in_mart(con, mart_name: str, columns: list[str]) -> None:
+    special_values = ", ".join(_quote_literal(str(value)) for value in sorted(ACS_SPECIAL_NUMERIC_VALUES))
+    for column in columns:
+        con.execute(
+            f"""
+            UPDATE {_table('mart', mart_name)}
+            SET {_quote_ident(column)} = NULL
+            WHERE replace(CAST({_quote_ident(column)} AS VARCHAR), ',', '') IN ({special_values})
+            """
+        )
+
+
 def _create_acs_mart(con, *, mart_name: str, table_names: list[str], variable_lookup: dict[str, dict[str, str]]) -> None:
     con.execute(f"DROP TABLE IF EXISTS {_table('mart', mart_name)}")
-    if not table_names:
-        con.execute(f"CREATE TABLE {_table('mart', mart_name)} (fips VARCHAR, state_fips VARCHAR, year INTEGER, source_table VARCHAR)")
-        return
-    union_sql = "\nUNION ALL BY NAME\n".join(_acs_select_sql(con, table_name, variable_lookup) for table_name in table_names)
-    con.execute(f"CREATE TABLE {_table('mart', mart_name)} AS {union_sql}")
+    columns: dict[str, str] = {
+        "fips": "VARCHAR",
+        "state_fips": "VARCHAR",
+        "year": "INTEGER",
+        "source_table": "VARCHAR",
+    }
+    column_keys = {column.lower() for column in columns}
+    for table_name in table_names:
+        for _, alias in _acs_feature_aliases(con, table_name, variable_lookup):
+            alias_key = alias.lower()
+            if alias_key not in column_keys:
+                columns[alias] = "VARCHAR"
+                column_keys.add(alias_key)
+
+    column_defs = ",\n        ".join(f"{_quote_ident(column)} {column_type}" for column, column_type in columns.items())
+    con.execute(f"CREATE TABLE {_table('mart', mart_name)} (\n        {column_defs}\n    )")
+    for table_name in table_names:
+        con.execute(f"INSERT INTO {_table('mart', mart_name)} BY NAME {_acs_select_sql(con, table_name, variable_lookup)}")
+    _null_acs_special_values_in_mart(con, mart_name, [column for column in columns if column not in {"fips", "state_fips", "year", "source_table"}])
 
 
 def _create_acs_marts(con, acs_table_names: list[str], variable_lookup: dict[str, dict[str, str]]) -> None:
@@ -643,7 +887,9 @@ def _create_indexes(con) -> None:
         ("idx_redfin_fips_period", "mart.redfin_county_monthly", "fips, period_begin"),
         ("idx_nri_fips", "mart.nri_county_risk", "fips"),
         ("idx_fema_fips_year", "mart.fema_disaster_declarations", "fips, declared_year"),
+        ("idx_fema_financial_assistance_disaster_number", "mart.fema_disaster_financial_assistance", "disaster_number"),
         ("idx_noaa_fips_year", "mart.noaa_storm_events", "fips, event_year"),
+        ("idx_ncei_weather_fips_month", "mart.ncei_county_weather_monthly", "fips, weather_month"),
         ("idx_acs_econ_fips_year", "mart.acs_county_economic_annual", "fips, year"),
         ("idx_acs_demo_fips_year", "mart.acs_county_demographic_annual", "fips, year"),
         ("idx_acs_afford_fips_year", "mart.acs_county_affordability_annual", "fips, year"),
@@ -657,6 +903,7 @@ def build_database(database_path: Path = DATABASE_PATH, *, skip_indexes: bool = 
     database_path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(database_path))
     try:
+        _configure_connection(con)
         con.execute("CREATE SCHEMA IF NOT EXISTS raw")
         if marts_only:
             loaded = {"acs": _existing_acs_raw_tables(con)}
@@ -668,6 +915,9 @@ def build_database(database_path: Path = DATABASE_PATH, *, skip_indexes: bool = 
         _create_acs_variable_features(con, loaded["acs"], variable_lookup)
         _create_ref_tables(con)
         _create_core_marts(con)
+        con.close()
+        con = duckdb.connect(str(database_path))
+        _configure_connection(con)
         _create_acs_marts(con, loaded["acs"], variable_lookup)
         if not skip_indexes:
             _create_indexes(con)
