@@ -486,9 +486,13 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         .merge(weather, on="fips", how="left")
     )
     features["no_broadband_pct"] = 100 - features["dp02_computers_and_internet_use_total_households_with_a_broadband_internet_subscription_pct"]
+    features["home_ownership_burden_pct"] = (
+        features["median_owner_costs_mortgage"] * 12 / features["median_household_income"].where(features["median_household_income"] > 0) * 100
+    )
     feature_defs = [
         ("Economic", "Income", "dp03_income_and_benefits_total_households_median_household_income_est", "currency", "mart.acs_county_economic_annual"),
         ("Economic", "Home ownership costs", "median_owner_costs_mortgage", "currency", "mart.acs_county_affordability_annual"),
+        ("Economic", "Home ownership burden", "home_ownership_burden_pct", "percent", "mart.acs_county_affordability_annual"),
         ("Economic", "Home insurance", "estimated_annual_home_insurance", "currency", "mart.acs_county_affordability_annual"),
         ("Economic", "Utilities", "estimated_annual_utilities", "currency", "mart.acs_county_affordability_annual"),
         ("Economic", "Property tax", "estimated_annual_property_tax", "currency", "mart.acs_county_affordability_annual"),
