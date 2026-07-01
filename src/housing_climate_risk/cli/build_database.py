@@ -40,6 +40,63 @@ ACS_DATA_PATTERNS = {
 ACS_KEY_COLUMNS = {"year", "state", "county"}
 ACS_VARIABLE_RE = re.compile(r"^[A-Z]+\d+(?:_C\d+)?_\d+(?:E|M|PE|PM)$")
 ACS_SPECIAL_NUMERIC_VALUES = {-222222222, -333333333, -555555555, -666666666, -888888888, -999999999}
+NEGATIVE_ALLOWED_COLUMN_TOKENS = (
+    "anomaly",
+    "change",
+    "delta",
+    "diff",
+    "growth",
+    "latitude",
+    "longitude",
+    "lat",
+    "lon",
+    "mom",
+    "pct_change",
+    "percent_change",
+    "temp",
+    "temperature",
+    "yoy",
+)
+NONNEGATIVE_COLUMN_TOKENS = (
+    "amount",
+    "application",
+    "area",
+    "assistance",
+    "claim",
+    "count",
+    "damage",
+    "death",
+    "dollar",
+    "eal",
+    "estimate",
+    "expense",
+    "grant",
+    "home",
+    "household",
+    "housing",
+    "income",
+    "injur",
+    "inventory",
+    "loss",
+    "market_value",
+    "moe",
+    "number",
+    "obligated",
+    "pct",
+    "percent",
+    "population",
+    "price",
+    "rank",
+    "rate",
+    "ratio",
+    "risk_score",
+    "sale",
+    "score",
+    "sqft",
+    "total",
+    "unit",
+    "value",
+)
 
 
 def _load_duckdb():
@@ -95,6 +152,94 @@ def _column_names(con, schema: str, table_name: str) -> list[str]:
     ]
 
 
+def _read_csv_column_names(con, source_path: Path) -> list[str]:
+    return [
+        row[0]
+        for row in con.execute(
+            f"""
+            DESCRIBE SELECT *
+            FROM read_csv_auto(
+                {_quote_literal(source_path)},
+                header = true,
+                all_varchar = true,
+                ignore_errors = true,
+                union_by_name = true
+            )
+            """
+        ).fetchall()
+    ]
+
+
+def _normalized_column_key(column: str) -> str:
+    return re.sub(r"[^0-9a-z]+", "_", str(column).lower()).strip("_")
+
+
+def _is_acs_measure_column(column: str) -> bool:
+    return ACS_VARIABLE_RE.match(str(column)) is not None
+
+
+def _allows_negative_values(table_name: str, column: str) -> bool:
+    column_key = _normalized_column_key(column)
+    if table_name == "ncei_climate_at_a_glance_county_monthly" and column_key in {"value", "anomaly"}:
+        return True
+    column_parts = set(column_key.split("_"))
+    short_token_match = any(token in column_parts for token in NEGATIVE_ALLOWED_COLUMN_TOKENS if len(token) <= 3)
+    long_token_match = any(
+        token in column_key
+        for token in NEGATIVE_ALLOWED_COLUMN_TOKENS
+        if len(token) > 3
+    )
+    return short_token_match or long_token_match
+
+
+def _should_null_negative_values(table_name: str, column: str) -> bool:
+    column_key = _normalized_column_key(column)
+    if not column_key:
+        return False
+    if _allows_negative_values(table_name, column):
+        return False
+    if _is_acs_measure_column(column):
+        return True
+    if column_key in {
+        "fips",
+        "state",
+        "county",
+        "year",
+        "month",
+        "date",
+        "period_begin",
+        "period_end",
+        "begin_yearmonth",
+        "end_yearmonth",
+    }:
+        return False
+    return any(token in column_key for token in NONNEGATIVE_COLUMN_TOKENS)
+
+
+def _clean_negative_values_select_sql(*, table_name: str, columns: list[str], source_alias: str = "source") -> str:
+    select_columns = []
+    for column in columns:
+        qualified_column = f"{_quote_ident(source_alias)}.{_quote_ident(column)}"
+        if _should_null_negative_values(table_name, column):
+            numeric_expr = f"try_cast(replace(trim({qualified_column}), ',', '') AS DOUBLE)"
+            select_columns.append(
+                f"CASE WHEN {numeric_expr} < 0 THEN NULL ELSE {qualified_column} END AS {_quote_ident(column)}"
+            )
+        else:
+            select_columns.append(f"{qualified_column} AS {_quote_ident(column)}")
+    return ",\n            ".join(select_columns)
+
+
+def _null_negative_values_in_frame(df: pd.DataFrame, *, table_name: str) -> pd.DataFrame:
+    out = df.copy()
+    for column in out.columns:
+        if not _should_null_negative_values(table_name, str(column)):
+            continue
+        numeric_values = pd.to_numeric(out[column], errors="coerce")
+        out.loc[numeric_values < 0, column] = pd.NA
+    return out
+
+
 def _register_file_metadata(con, *, table_schema: str, table_name: str, source_path: Path) -> None:
     columns = _column_names(con, table_schema, table_name)
     row_count = con.execute(f"SELECT count(*) FROM {_table(table_schema, table_name)}").fetchone()[0]
@@ -134,18 +279,21 @@ def _register_file_metadata(con, *, table_schema: str, table_name: str, source_p
 def _load_csv_raw(con, *, table_name: str, source_path: Path) -> None:
     if not source_path.exists():
         raise FileNotFoundError(source_path)
+    columns = _read_csv_column_names(con, source_path)
+    cleaned_select = _clean_negative_values_select_sql(table_name=table_name, columns=columns)
     con.execute(f"DROP TABLE IF EXISTS {_table('raw', table_name)}")
     con.execute(
         f"""
         CREATE TABLE {_table('raw', table_name)} AS
-        SELECT *
+        SELECT
+            {cleaned_select}
         FROM read_csv_auto(
             {_quote_literal(source_path)},
             header = true,
             all_varchar = true,
             ignore_errors = true,
             union_by_name = true
-        )
+        ) AS source
         """
     )
     _register_file_metadata(con, table_schema="raw", table_name=table_name, source_path=source_path)
@@ -155,6 +303,7 @@ def _load_feather_raw(con, *, table_name: str, source_path: Path) -> None:
     if not source_path.exists():
         return
     df = pd.read_feather(source_path)
+    df = _null_negative_values_in_frame(df, table_name=table_name)
     for column in df.columns:
         df[column] = df[column].map(_json_or_scalar).astype("string")
     con.register("_county_processed_df", df)
