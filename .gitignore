@@ -11,4 +11,5 @@ output/visualizations/stormhouse_migration_trends/
 output/visualizations/climatecentral_bdd/
 output/visualizations/server-*.err
 output/visualizations/server-*.log
+output/eda/
 test-results/
