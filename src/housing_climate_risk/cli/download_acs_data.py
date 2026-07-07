@@ -117,6 +117,119 @@ def _rate(numerator: str, denominator: str) -> str:
     return "" if num is None or den in (None, 0) else f"{num / den:.8f}"
 
 
+def _fix_malformed_percentages(df: pd.DataFrame, variables: list[str], year: int, variable_metadata: list[dict[str, str]] | None = None) -> pd.DataFrame:
+    """
+    Fix Census API bug where PE (percent estimate) columns contain raw counts instead of percentages.
+
+    This primarily affects DP (profile) tables in years 2015-2018 where the API returns estimate
+    counts in PE columns instead of the calculated percentages.
+
+    Detection: PE value > 100 or PE value equals its corresponding E value
+    Fix: When PE == E, the value is a raw count. We cannot reliably infer the denominator from
+         variable numbering (Census renumbered variables between years), so we leave these values
+         as-is and rely on downstream processing to handle them (e.g., database negative value cleaning).
+
+    Actually, a simpler fix: if PE > 100, it's definitely wrong. We can try common patterns:
+    - Look for a "Total" variable in the same group by searching backwards for lower-numbered variables
+    - If that fails, mark the value as null
+    """
+    pe_columns = [v for v in variables if v.endswith("PE")]
+    if not pe_columns:
+        return df
+
+    # Build a lookup of variable labels if provided
+    label_lookup = {}
+    if variable_metadata:
+        label_lookup = {row["variable"]: row.get("label", "") for row in variable_metadata}
+
+    fixes_applied = 0
+    nulled = 0
+
+    for pe_col in pe_columns:
+        base = pe_col[:-2]  # Remove 'PE' suffix
+        e_col = f"{base}E"
+
+        if e_col not in df.columns:
+            continue
+
+        # Detect malformed percentages: PE > 100 or PE == E (indicating raw count, not percentage)
+        pe_numeric = pd.to_numeric(df[pe_col], errors='coerce')
+        e_numeric = pd.to_numeric(df[e_col], errors='coerce')
+
+        # Find rows where PE looks like a raw count instead of a percentage
+        malformed_mask = (pe_numeric > 100) | (pe_numeric == e_numeric)
+        malformed_count = malformed_mask.sum()
+
+        if malformed_count == 0:
+            continue
+
+        # Try to find the parent/total column by looking for "Total" in labels
+        # Parse variable number
+        variable_parts = base.split('_')
+        parent_found = False
+
+        if len(variable_parts) >= 2:
+            prefix = variable_parts[0]
+            try:
+                var_num = int(variable_parts[1])
+
+                # Search backwards for a "Total" variable in same group (within 10 variables)
+                for offset in range(1, min(var_num, 11)):
+                    parent_e_col = f"{prefix}_{var_num-offset:04d}E"
+                    if parent_e_col not in df.columns:
+                        continue
+
+                    # Check if this looks like a total (from label) AND parent value >= child value
+                    parent_label = label_lookup.get(parent_e_col, "").lower()
+                    is_total = "total" in parent_label
+
+                    # Parent value must be >= child value (totals should be larger)
+                    # Only check rows where both parent and child are non-null
+                    parent_numeric = pd.to_numeric(df[parent_e_col], errors='coerce')
+                    valid_comparison_mask = parent_numeric.notna() & e_numeric.notna()
+                    is_plausible_parent = valid_comparison_mask.any() and (parent_numeric[valid_comparison_mask] >= e_numeric[valid_comparison_mask]).all()
+
+                    # Both conditions must be true: label suggests it's a total AND values make sense
+                    if is_total and is_plausible_parent:
+                        # Calculate correct percentage: (E / parent_E) * 100
+                        calculated_pct = (e_numeric / parent_numeric * 100).where(
+                            (parent_numeric > 0) & malformed_mask
+                        )
+
+                        # Only apply fix where we detected malformed data and calculation succeeded
+                        # and percentage is reasonable (0-100%)
+                        fix_mask = malformed_mask & calculated_pct.notna() & (calculated_pct <= 100)
+                        df.loc[fix_mask, pe_col] = calculated_pct[fix_mask].round(1).astype(str)
+                        fixes_applied += fix_mask.sum()
+                        parent_found = True
+                        break
+
+            except (ValueError, IndexError):
+                pass
+
+        # If no parent found, null out the malformed values
+        if not parent_found and malformed_count > 0:
+            df.loc[malformed_mask, pe_col] = None
+            nulled += malformed_count
+
+    # Final pass: null out any remaining PE values > 100 (these are definitively wrong)
+    for pe_col in pe_columns:
+        if pe_col not in df.columns:
+            continue
+        pe_numeric = pd.to_numeric(df[pe_col], errors='coerce')
+        still_malformed = pe_numeric > 100
+        if still_malformed.sum() > 0:
+            df.loc[still_malformed, pe_col] = None
+            nulled += still_malformed.sum()
+
+    if fixes_applied > 0:
+        print(f"  Fixed {fixes_applied} malformed percentage values in year {year}", flush=True)
+    if nulled > 0:
+        print(f"  Nulled {nulled} malformed percentage values (no parent found or still > 100%) in year {year}", flush=True)
+
+    return df
+
+
 def _chunks(values: list[str], size: int) -> Iterable[list[str]]:
     for start in range(0, len(values), size):
         yield values[start : start + size]
@@ -172,7 +285,8 @@ def _table_variables(year: int, table_id: str, api_key: str) -> tuple[list[str],
     for variable, info in sorted(variables.items()):
         if not variable.startswith(f"{table_id}_"):
             continue
-        if not (variable.endswith("E") or variable.endswith("M")):
+        # Include E (estimate), M (margin of error), PE (percent estimate), PM (percent margin of error)
+        if not (variable.endswith("E") or variable.endswith("M") or variable.endswith("PE") or variable.endswith("PM")):
             continue
         if variable.endswith("EA") or variable.endswith("MA"):
             continue
@@ -243,6 +357,10 @@ def download_table(
         merged["county_fips"] = merged["state"] + merged["county"]
         for col in variables:
             merged[col] = merged[col].map(_clean)
+
+        # Fix malformed percentage columns (Census API bug in years 2015-2018 for DP tables)
+        merged = _fix_malformed_percentages(merged, variables, year, year_variable_rows)
+
         frames.append(merged[["year", "county_fips", "state", "county", "NAME", *variables]])
         variable_rows.extend({"year": str(year), **row} for row in year_variable_rows)
 

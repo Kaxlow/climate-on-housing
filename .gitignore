@@ -5,7 +5,7 @@ output/visualizations/incident_housing_yoy_after.csv
 *.egg-info/
 __pycache__/
 .playwright-mcp/
-output/county_clustering/
+output/models/county_clustering/
 scripts/
 output/visualizations/stormhouse_migration_trends/
 output/visualizations/climatecentral_bdd/
@@ -13,3 +13,4 @@ output/visualizations/server-*.err
 output/visualizations/server-*.log
 output/eda/
 test-results/
+CLAUDE.md

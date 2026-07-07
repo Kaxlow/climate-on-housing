@@ -2,8 +2,8 @@
 
 This project aims to show the impact of climate on the housing market across counties. There are multiple views that examine how different housing market metrics are affected by different types of extreme climate events across the months before and after the event’s occurrence, and how housing market movements vary by county attributes. The underlying pipeline for querying, processing, and transforming raw data runs on Python. The pages are rendered with HTML, CSS, and JavaScript code.
 
-## Which Way the Wind Blows: How Extreme Climate Events Affect Local Housing Markets
-https://kaxlow.github.io/climate-on-housing/output/visualizations/stormhouse.html
+## Which Way the Wind Blows: How Extreme Climate Events Matter To Housing Markets
+https://kaxlow.github.io/climate-on-housing/output/visualizations/stormhouse-2.html
 
 ## Additional Visualizations
 Visualizations of the impact of climate on the housing market: https://kaxlow.github.io/climate-on-housing/output/visualizations/index.html

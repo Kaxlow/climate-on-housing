@@ -882,6 +882,120 @@ def _create_core_marts(con) -> None:
         """
     )
 
+    # Load insurance premiums from county_processed_data feather file
+    # The JSON in DuckDB has numpy arrays stored as strings, so we parse in Python
+    con.execute("DROP TABLE IF EXISTS mart.insurance_premiums_annual")
+    county_processed_path = DATA_DIR / "county_processed_data.feather"
+    if county_processed_path.exists():
+        import pandas as pd
+        county_df = pd.read_feather(county_processed_path)
+
+        premium_rows = []
+        for _, row in county_df.iterrows():
+            if pd.isna(row.get('insurance_premiums_14_to_24')):
+                continue
+
+            fips = str(row['fips']).zfill(5)
+            premiums = row['insurance_premiums_14_to_24']
+
+            if not isinstance(premiums, dict) or 'historical' not in premiums:
+                continue
+
+            hist = premiums['historical']
+            years = hist.get('years', [])
+            means = hist.get('mean', [])
+            medians = hist.get('median', [])
+
+            avg_data = premiums.get('averages', {})
+            latest_data = premiums.get('latest', {})
+            growth_data = premiums.get('growth_rates', {})
+
+            for i, year in enumerate(years):
+                if i < len(means) and i < len(medians):
+                    premium_rows.append({
+                        'fips': fips,
+                        'year': int(year),
+                        'mean_premium': float(means[i]),
+                        'median_premium': float(medians[i]),
+                        'avg_mean_premium': avg_data.get('mean'),
+                        'avg_median_premium': avg_data.get('median'),
+                        'latest_year': latest_data.get('year'),
+                        'latest_mean_premium': latest_data.get('mean'),
+                        'latest_median_premium': latest_data.get('median'),
+                        'mean_cagr': growth_data.get('mean_cagr'),
+                        'median_cagr': growth_data.get('median_cagr'),
+                        'historical_start_year': avg_data.get('start_year'),
+                        'historical_end_year': avg_data.get('end_year'),
+                    })
+
+        if premium_rows:
+            premium_df = pd.DataFrame(premium_rows)
+            con.register('_insurance_premiums_df', premium_df)
+            con.execute("CREATE TABLE mart.insurance_premiums_annual AS SELECT * FROM _insurance_premiums_df")
+            con.unregister('_insurance_premiums_df')
+        else:
+            con.execute("CREATE TABLE mart.insurance_premiums_annual (fips VARCHAR, year INTEGER, mean_premium DOUBLE, median_premium DOUBLE)")
+    else:
+        con.execute("CREATE TABLE mart.insurance_premiums_annual (fips VARCHAR, year INTEGER, mean_premium DOUBLE, median_premium DOUBLE)")
+
+    # Load insurance non-renewal rates from county_processed_data feather file
+    con.execute("DROP TABLE IF EXISTS mart.insurance_non_renewal_annual")
+    if county_processed_path.exists():
+        non_renewal_rows = []
+        for _, row in county_df.iterrows():
+            if pd.isna(row.get('insurance_non_renewal_rates')):
+                continue
+
+            fips = str(row['fips']).zfill(5)
+            non_renewal = row['insurance_non_renewal_rates']
+
+            if not isinstance(non_renewal, dict) or 'historical' not in non_renewal:
+                continue
+
+            hist = non_renewal['historical']
+            years = hist.get('years', [])
+            rates = hist.get('non_renewal_rate', [])
+            total_policies = hist.get('num_policies_total', [])
+            renewed = hist.get('num_policies_renewed', [])
+            non_renewed = hist.get('num_policies_non_renewed', [])
+
+            avg_data = non_renewal.get('averages', {})
+            latest_data = non_renewal.get('latest', {})
+            growth_data = non_renewal.get('growth_rates', {})
+
+            for i, year in enumerate(years):
+                if i < len(rates):
+                    non_renewal_rows.append({
+                        'fips': fips,
+                        'year': int(year),
+                        'non_renewal_rate': float(rates[i]) if i < len(rates) else None,
+                        'total_policies': float(total_policies[i]) if i < len(total_policies) else None,
+                        'renewed_policies': float(renewed[i]) if i < len(renewed) else None,
+                        'non_renewed_policies': float(non_renewed[i]) if i < len(non_renewed) else None,
+                        'avg_non_renewal_rate': avg_data.get('non_renewal_rate'),
+                        'avg_total_policies': avg_data.get('num_policies_total'),
+                        'avg_renewed_policies': avg_data.get('num_policies_renewed'),
+                        'avg_non_renewed_policies': avg_data.get('num_policies_non_renewed'),
+                        'latest_year': latest_data.get('year'),
+                        'latest_non_renewal_rate': latest_data.get('non_renewal_rate'),
+                        'latest_total_policies': latest_data.get('num_policies_total'),
+                        'non_renewal_rate_cagr': growth_data.get('non_renewal_rate_cagr'),
+                        'total_policies_cagr': growth_data.get('num_policies_total_cagr'),
+                        'years_of_data': non_renewal.get('years_of_data'),
+                        'historical_start_year': avg_data.get('start_year'),
+                        'historical_end_year': avg_data.get('end_year'),
+                    })
+
+        if non_renewal_rows:
+            non_renewal_df = pd.DataFrame(non_renewal_rows)
+            con.register('_insurance_non_renewal_df', non_renewal_df)
+            con.execute("CREATE TABLE mart.insurance_non_renewal_annual AS SELECT * FROM _insurance_non_renewal_df")
+            con.unregister('_insurance_non_renewal_df')
+        else:
+            con.execute("CREATE TABLE mart.insurance_non_renewal_annual (fips VARCHAR, year INTEGER, non_renewal_rate DOUBLE)")
+    else:
+        con.execute("CREATE TABLE mart.insurance_non_renewal_annual (fips VARCHAR, year INTEGER, non_renewal_rate DOUBLE)")
+
     con.execute("DROP TABLE IF EXISTS mart.county_snapshot")
     con.execute(
         """
@@ -1042,6 +1156,8 @@ def _create_indexes(con) -> None:
         ("idx_acs_econ_fips_year", "mart.acs_county_economic_annual", "fips, year"),
         ("idx_acs_demo_fips_year", "mart.acs_county_demographic_annual", "fips, year"),
         ("idx_acs_afford_fips_year", "mart.acs_county_affordability_annual", "fips, year"),
+        ("idx_insurance_premiums_fips_year", "mart.insurance_premiums_annual", "fips, year"),
+        ("idx_insurance_non_renewal_fips_year", "mart.insurance_non_renewal_annual", "fips, year"),
     ]
     for index_name, table_name, columns in index_specs:
         con.execute(f"CREATE INDEX IF NOT EXISTS {_quote_ident(index_name)} ON {table_name} ({columns})")

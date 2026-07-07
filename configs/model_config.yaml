@@ -1,0 +1,107 @@
+# Climate Risk Prediction Model Configuration
+#
+# This configuration file makes it easy to add new models or adjust hyperparameters
+# without modifying the core modeling code.
+
+# Data configuration
+data:
+  min_year: 2021
+  max_year: 2023
+  test_size: 0.2
+  random_state: 42
+
+# Feature engineering
+features:
+  income_brackets:
+    bins: [0, 40000, 60000, 80000, .inf]
+    labels: ['low', 'medium', 'high', 'very_high']
+
+  burden_brackets:
+    bins: [0, 20, 35, 50, 100]
+    labels: ['minimal', 'moderate', 'high', 'severe']
+
+  base_features:
+    - median_household_income
+    - housing_burden_30pct
+    - insurance_premium
+    - property_taxes_utilities
+    - net_migration_rate
+    - homes_sold_yoy
+    - median_dom_yoy
+
+  derived_features:
+    - insurance_burden  # insurance premium / income ratio
+    - housing_cost_burden  # housing costs / income ratio
+    - market_cooling  # DOM YoY - Sales YoY
+
+# Model configurations
+models:
+  logistic_regression:
+    enabled: true
+    default_params:
+      max_iter: 1000
+      random_state: 42
+      class_weight: balanced
+    param_grid:
+      C: [0.001, 0.01, 0.1, 1.0, 10.0]
+      penalty: ['l2']
+      solver: ['lbfgs', 'saga']
+    tune_hyperparams: false
+
+  random_forest:
+    enabled: true
+    default_params:
+      n_estimators: 100
+      random_state: 42
+      class_weight: balanced
+      n_jobs: -1
+    param_grid:
+      n_estimators: [100, 200, 300]
+      max_depth: [10, 20, 30, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+    tune_hyperparams: false
+
+  gradient_boosting:
+    enabled: true
+    default_params:
+      n_estimators: 100
+      random_state: 42
+      learning_rate: 0.1
+    param_grid:
+      n_estimators: [100, 200, 300]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      max_depth: [3, 5, 7]
+      subsample: [0.8, 0.9, 1.0]
+    tune_hyperparams: false
+
+  neural_network:
+    enabled: true
+    default_params:
+      hidden_layer_sizes: [100, 50]
+      random_state: 42
+      max_iter: 500
+      early_stopping: true
+    param_grid:
+      hidden_layer_sizes: [[50], [100], [100, 50], [100, 50, 25]]
+      activation: ['relu', 'tanh']
+      alpha: [0.0001, 0.001, 0.01]
+      learning_rate: ['constant', 'adaptive']
+    tune_hyperparams: false
+
+# Evaluation metrics
+evaluation:
+  cv_folds: 5
+  scoring_metric: f1_weighted
+  report_metrics:
+    - accuracy
+    - f1_weighted
+    - precision_weighted
+    - recall_weighted
+
+# Output configuration
+output:
+  save_models: true
+  save_predictions: true
+  save_feature_importance: true
+  generate_plots: true
