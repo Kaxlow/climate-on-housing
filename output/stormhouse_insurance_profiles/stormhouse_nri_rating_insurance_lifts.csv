@@ -1,0 +1,61 @@
+nri_risk_rating,direction,feature,feature_label,standardized_lift,group_median,national_median
+Very Low,higher,ins_insurance_premium_growth_percentiles_mean_cagr_nationally,home-insurance premium growth percentile mean growth national percentile,0.2872900669745472,0.585,0.502
+Very Low,higher,ins_insurance_premium_growth_percentiles_median_cagr_nationally,home-insurance premium growth percentile median growth national percentile,0.18163393120771126,0.553,0.5005
+Very Low,higher,ins_insurance_premium_growth_mean_cagr,home-insurance premium growth mean growth,0.1701816138790129,0.055014,0.0516315
+Very Low,higher,ins_insurance_premium_growth_median_cagr,home-insurance premium growth median growth,0.11163118329468247,0.057868,0.055538000000000004
+Very Low,higher,ins_insurance_premium_historical_median_slope,home-insurance premium historical median slope,0.07764464865619422,75.7727272727273,72.91818181818181
+Very Low,higher,ins_insurance_premium_historical_median_volatility,home-insurance premium historical median volatility,0.06148560394588978,280.10234257151365,272.3231547020817
+Very Low,lower,ins_insurance_premium_historical_mean_mean_last_12,home-insurance premium historical mean mean last 12,-0.04329061058009046,1707.909090909091,1727.2727272727273
+Very Low,lower,ins_insurance_premium_average_mean,home-insurance premium average mean,-0.04328248235637061,1707.91,1727.27
+Very Low,lower,ins_insurance_premium_latest_percentiles_mean_within_state,home-insurance premium latest percentile mean state percentile,-0.01903625627896037,0.505,0.5105
+Very Low,lower,ins_insurance_premium_latest_percentiles_mean_nationally,home-insurance premium latest percentile mean national percentile,-0.006922445220479859,0.497,0.499
+Very Low,lower,ins_insurance_premium_latest_mean,home-insurance premium latest mean,-0.0042804597695632295,2439.0,2442.0
+Very Low,lower,ins_insurance_premium_historical_mean_latest,home-insurance premium historical mean latest,-0.0042804597695632295,2439.0,2442.0
+Low,higher,ins_insurance_premium_growth_percentiles_mean_cagr_within_state,home-insurance premium growth percentile mean growth state percentile,0.04845382417647005,0.524,0.51
+Low,higher,ins_insurance_nonrenewal_growth_percentiles_non_renewal_rate_cagr_within_state,home-insurance nonrenewal growth percentile nonrenewal rate growth state percentile,0.0,0.481,0.481
+Low,higher,ins_insurance_nonrenewal_growth_non_renewal_rate_cagr,home-insurance nonrenewal growth nonrenewal rate growth,0.0,0.0,0.0
+Low,higher,ins_insurance_nonrenewal_historical_non_renewal_rate_slope,home-insurance nonrenewal historical nonrenewal rate slope,0.0,0.0002857142857142845,0.0002857142857142845
+Low,higher,ins_insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,home-insurance nonrenewal historical nonrenewal rate mean last 12,0.0,0.008333333333333333,0.008333333333333333
+Low,higher,ins_insurance_nonrenewal_historical_non_renewal_rate_latest,home-insurance nonrenewal historical nonrenewal rate latest,0.0,0.01,0.01
+Low,lower,ins_insurance_premium_latest_percentiles_mean_within_state,home-insurance premium latest percentile mean state percentile,-0.176518012768543,0.4595,0.5105
+Low,lower,ins_insurance_nonrenewal_historical_non_renewal_rate_volatility,home-insurance nonrenewal historical nonrenewal rate volatility,-0.15881580723278127,0.0037267799624996494,0.004714045207910317
+Low,lower,ins_insurance_premium_latest_percentiles_mean_nationally,home-insurance premium latest percentile mean national percentile,-0.11768156874815743,0.465,0.499
+Low,lower,ins_insurance_premium_latest_percentiles_median_within_state,home-insurance premium latest percentile median state percentile,-0.11075604327532669,0.4765,0.5085
+Low,lower,ins_insurance_premium_growth_percentiles_median_cagr_nationally,home-insurance premium growth percentile median growth national percentile,-0.09341173604967978,0.4735,0.5005
+Low,lower,ins_insurance_premium_latest_percentiles_median_nationally,home-insurance premium latest percentile median national percentile,-0.07613823281233313,0.476,0.498
+Moderate,higher,ins_insurance_premium_historical_mean_mean_last_12,home-insurance premium historical mean mean last 12,0.18352779978320122,1809.3636363636363,1727.2727272727273
+Moderate,higher,ins_insurance_premium_average_mean,home-insurance premium average mean,0.18352577358649164,1809.36,1727.27
+Moderate,higher,ins_insurance_premium_latest_percentiles_mean_within_state,home-insurance premium latest percentile mean state percentile,0.15748175648958304,0.556,0.5105
+Moderate,higher,ins_insurance_premium_growth_percentiles_median_cagr_within_state,home-insurance premium growth percentile median growth state percentile,0.10556039412867119,0.541,0.5105
+Moderate,higher,ins_insurance_premium_latest_percentiles_mean_nationally,home-insurance premium latest percentile mean national percentile,0.1038366783071979,0.529,0.499
+Moderate,higher,ins_insurance_premium_average_median,home-insurance premium average median,0.0805507652651141,1508.64,1476.4099999999999
+Moderate,lower,ins_insurance_premium_growth_percentiles_mean_cagr_nationally,home-insurance premium growth percentile mean growth national percentile,-0.18691160983886207,0.448,0.502
+Moderate,lower,ins_insurance_nonrenewal_historical_non_renewal_rate_volatility,home-insurance nonrenewal historical nonrenewal rate volatility,-0.15881580723278127,0.0037267799624996494,0.004714045207910317
+Moderate,lower,ins_insurance_premium_growth_mean_cagr,home-insurance premium growth mean growth,-0.1147876872328063,0.04935,0.0516315
+Moderate,lower,ins_insurance_premium_historical_mean_slope,home-insurance premium historical mean slope,-0.04361810910302773,79.18181818181822,80.98181818181814
+Moderate,lower,ins_insurance_premium_growth_percentiles_median_cagr_nationally,home-insurance premium growth percentile median growth national percentile,-0.04324617409707387,0.488,0.5005
+Moderate,lower,ins_insurance_premium_growth_percentiles_mean_cagr_within_state,home-insurance premium growth percentile mean growth state percentile,-0.03460987441176432,0.5,0.51
+High,higher,ins_insurance_premium_latest_percentiles_mean_nationally,home-insurance premium latest percentile mean national percentile,0.8756893203907015,0.752,0.499
+High,higher,ins_insurance_premium_latest_percentiles_mean_within_state,home-insurance premium latest percentile mean state percentile,0.8150978824900381,0.746,0.5105
+High,higher,ins_insurance_premium_average_mean,home-insurance premium average mean,0.689613352667673,2035.73,1727.27
+High,higher,ins_insurance_premium_historical_mean_mean_last_12,home-insurance premium historical mean mean last 12,0.6896011347335576,2035.7272727272727,1727.2727272727273
+High,higher,ins_insurance_premium_latest_percentiles_median_nationally,home-insurance premium latest percentile median national percentile,0.6333316638480433,0.681,0.498
+High,higher,ins_insurance_premium_latest_mean,home-insurance premium latest mean,0.5907034481997256,2856.0,2442.0
+High,lower,ins_insurance_premium_growth_percentiles_mean_cagr_within_state,home-insurance premium growth percentile mean growth state percentile,-0.297644919941173,0.424,0.51
+High,lower,ins_insurance_premium_growth_percentiles_median_cagr_within_state,home-insurance premium growth percentile median growth state percentile,-0.26130523792507043,0.435,0.5105
+High,lower,ins_insurance_premium_growth_percentiles_mean_cagr_nationally,home-insurance premium growth percentile mean growth national percentile,-0.2561381320014037,0.428,0.502
+High,lower,ins_insurance_premium_growth_percentiles_median_cagr_nationally,home-insurance premium growth percentile median growth national percentile,-0.15395637978558327,0.456,0.5005
+High,lower,ins_insurance_premium_growth_mean_cagr,home-insurance premium growth mean growth,-0.1475410444050863,0.048699,0.0516315
+High,lower,ins_insurance_premium_growth_median_cagr,home-insurance premium growth median growth,-0.09155673445327839,0.053627,0.055538000000000004
+Very High,higher,ins_insurance_premium_latest_percentiles_mean_within_state,home-insurance premium latest percentile mean state percentile,0.5209011945424661,0.661,0.5105
+Very High,higher,ins_insurance_premium_average_mean,home-insurance premium average mean,0.4172645923033603,1913.91,1727.27
+Very High,higher,ins_insurance_premium_historical_mean_mean_last_12,home-insurance premium historical mean mean last 12,0.41725644845505283,1913.909090909091,1727.2727272727273
+Very High,higher,ins_insurance_premium_latest_percentiles_median_within_state,home-insurance premium latest percentile median state percentile,0.36514883017334315,0.614,0.5085
+Very High,higher,ins_insurance_nonrenewal_historical_non_renewal_rate_slope,home-insurance nonrenewal historical nonrenewal rate slope,0.1266883098349415,0.0008571428571428566,0.0002857142857142845
+Very High,higher,ins_insurance_nonrenewal_historical_non_renewal_rate_mean_last_12,home-insurance nonrenewal historical nonrenewal rate mean last 12,0.11951674587926939,0.01,0.008333333333333333
+Very High,lower,ins_insurance_premium_growth_percentiles_mean_cagr_within_state,home-insurance premium growth percentile mean growth state percentile,-0.854863897970578,0.263,0.51
+Very High,lower,ins_insurance_premium_growth_percentiles_mean_cagr_nationally,home-insurance premium growth percentile mean growth national percentile,-0.7130331782741777,0.296,0.502
+Very High,lower,ins_insurance_premium_latest_percentiles_median_nationally,home-insurance premium latest percentile median national percentile,-0.6783224377826036,0.302,0.498
+Very High,lower,ins_insurance_premium_growth_percentiles_median_cagr_nationally,home-insurance premium growth percentile median growth national percentile,-0.5518211814786642,0.341,0.5005
+Very High,lower,ins_insurance_premium_growth_percentiles_median_cagr_within_state,home-insurance premium growth percentile median growth state percentile,-0.5312629671721633,0.357,0.5105
+Very High,lower,ins_insurance_premium_latest_median,home-insurance premium latest median,-0.42382432930851094,1824.0,2091.0

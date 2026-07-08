@@ -4,8 +4,15 @@ Climate Risk Level Prediction Model
 This module provides a machine learning pipeline to predict county-level climate risk
 ratings based on economic, housing, and demographic features.
 
-Target Variable: FEMA NRI Risk Rating (Very Low, Relatively Low, Relatively Moderate,
-                 Relatively High, Very High)
+Target Variables:
+- Overall FEMA NRI Risk Rating (Very Low, Relatively Low, Relatively Moderate,
+  Relatively High, Very High)
+- Hazard-specific risk ratings for 5 common hazards (aligned with stormhouse-2.html):
+  * ERQK (Earthquake)
+  * IFLD (Riverine Flooding)
+  * WFIR (Wildfire)
+  * TRND (Tornado)
+  * HAIL (Hail)
 
 Features:
 1. Income - Median household income
@@ -39,6 +46,16 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.neural_network import MLPClassifier
 
 from housing_climate_risk.paths import DATA_DIR, OUTPUT_DIR
+
+
+# Top 5 hazards used in stormhouse-2.html "Are climate risks priced into housing markets?" section
+HAZARD_TYPES = {
+    'ERQK': 'Earthquake',
+    'IFLD': 'Riverine Flooding',
+    'WFIR': 'Wildfire',
+    'TRND': 'Tornado',
+    'HAIL': 'Hail'
+}
 
 
 class ClimateRiskPredictor:
@@ -109,16 +126,27 @@ class ClimateRiskPredictor:
         }
     }
 
-    def __init__(self, db_path: Optional[Path] = None, output_dir: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, output_dir: Optional[Path] = None,
+                 hazard_type: Optional[str] = None):
         """
         Initialize the climate risk predictor.
 
         Args:
             db_path: Path to DuckDB database (defaults to data/quoll.duckdb)
             output_dir: Path to output directory for models and results
+            hazard_type: Specific hazard type code (e.g., 'LNDS', 'LTNG') or None for overall risk
         """
         self.db_path = db_path or DATA_DIR / 'quoll.duckdb'
-        self.output_dir = output_dir or OUTPUT_DIR / 'models' / 'climate_risk_prediction'
+        self.hazard_type = hazard_type
+
+        # Set output directory based on hazard type
+        if hazard_type:
+            if hazard_type not in HAZARD_TYPES:
+                raise ValueError(f"Unknown hazard type: {hazard_type}. Must be one of {list(HAZARD_TYPES.keys())}")
+            self.output_dir = output_dir or OUTPUT_DIR / 'models' / 'climate_risk_prediction' / hazard_type.lower()
+        else:
+            self.output_dir = output_dir or OUTPUT_DIR / 'models' / 'climate_risk_prediction' / 'overall'
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.scaler = StandardScaler()
@@ -140,6 +168,16 @@ class ClimateRiskPredictor:
         """
         conn = duckdb.connect(str(self.db_path), read_only=True)
 
+        # Determine which risk column to use
+        if self.hazard_type:
+            risk_col = f"{self.hazard_type}_RISKR"
+            risk_score_col = f"{self.hazard_type}_RISKS"
+            target_name = f"{HAZARD_TYPES[self.hazard_type]} Risk"
+        else:
+            risk_col = "risk_rating"
+            risk_score_col = "risk_score"
+            target_name = "Overall Risk"
+
         query = f"""
         WITH recent_housing AS (
             SELECT
@@ -152,13 +190,20 @@ class ClimateRiskPredictor:
                 AND property_type = 'All Residential'
             GROUP BY fips
         ),
-        recent_acs AS (
+        recent_acs_affordability AS (
             SELECT
                 fips,
-                AVG(CAST(median_household_income AS DOUBLE)) as median_household_income,
                 AVG(CAST(owner_mortgage_cost_burden_30pct_plus AS DOUBLE)) as housing_burden_30pct,
                 AVG(CAST(median_owner_costs_mortgage AS DOUBLE)) as property_taxes_utilities
             FROM mart.acs_county_affordability_annual
+            WHERE year BETWEEN {min_year} AND {max_year}
+            GROUP BY fips
+        ),
+        recent_acs_economic AS (
+            SELECT
+                fips,
+                AVG(CAST(dp03_income_and_benefits_total_households_median_household_income_est AS DOUBLE)) as median_household_income
+            FROM mart.acs_county_economic_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
         ),
@@ -180,9 +225,9 @@ class ClimateRiskPredictor:
         )
         SELECT
             n.fips,
-            n.risk_rating,
-            n.risk_score,
-            a.median_household_income,
+            n.{risk_col} as risk_rating,
+            CAST(n.{risk_score_col} AS DOUBLE) as risk_score,
+            e.median_household_income,
             a.housing_burden_30pct,
             i.insurance_premium,
             a.property_taxes_utilities,
@@ -190,12 +235,14 @@ class ClimateRiskPredictor:
             h.homes_sold_yoy,
             h.median_dom_yoy
         FROM mart.nri_county_risk n
-        LEFT JOIN recent_acs a ON n.fips = a.fips
+        LEFT JOIN recent_acs_affordability a ON n.fips = a.fips
+        LEFT JOIN recent_acs_economic e ON n.fips = e.fips
         LEFT JOIN recent_insurance i ON n.fips = i.fips
         LEFT JOIN net_migration m ON n.fips = m.fips
         LEFT JOIN recent_housing h ON n.fips = h.fips
-        WHERE n.risk_rating IS NOT NULL
-            AND n.risk_rating != 'Insufficient Data'
+        WHERE n.{risk_col} IS NOT NULL
+            AND n.{risk_col} != ''
+            AND n.{risk_col} NOT IN ('Insufficient Data', 'Not Applicable', 'No Rating')
         """
 
         df = conn.execute(query).fetchdf()
@@ -203,7 +250,7 @@ class ClimateRiskPredictor:
         conn.close()
 
         print(f"Loaded {len(df)} counties with complete data")
-        print(f"\nRisk rating distribution:\n{df['risk_rating'].value_counts()}")
+        print(f"\n{target_name} rating distribution:\n{df['risk_rating'].value_counts()}")
 
         return df
 
@@ -501,28 +548,40 @@ class ClimateRiskPredictor:
         """Save all trained models and artifacts."""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
+        # Determine prefix based on hazard type
+        prefix = f"{self.hazard_type.lower()}_" if self.hazard_type else "overall_"
+
         # Save models
         for model_name, model in self.models.items():
-            model_path = self.output_dir / f'{model_name}_{timestamp}.joblib'
+            model_path = self.output_dir / f'{prefix}{model_name}_{timestamp}.joblib'
             joblib.dump(model, model_path)
             print(f"Saved model: {model_path}")
 
         # Save scaler and label encoder
-        scaler_path = self.output_dir / f'scaler_{timestamp}.joblib'
-        encoder_path = self.output_dir / f'label_encoder_{timestamp}.joblib'
+        scaler_path = self.output_dir / f'{prefix}scaler_{timestamp}.joblib'
+        encoder_path = self.output_dir / f'{prefix}label_encoder_{timestamp}.joblib'
         joblib.dump(self.scaler, scaler_path)
         joblib.dump(self.label_encoder, encoder_path)
 
-        # Save results
-        results_path = self.output_dir / f'results_{timestamp}.json'
+        # Save results with metadata
+        results_with_meta = {
+            'hazard_type': self.hazard_type,
+            'hazard_name': HAZARD_TYPES.get(self.hazard_type) if self.hazard_type else 'Overall',
+            'timestamp': timestamp,
+            **self.results
+        }
+
+        results_path = self.output_dir / f'{prefix}results_{timestamp}.json'
         with open(results_path, 'w') as f:
-            json.dump(self.results, f, indent=2, default=str)
+            json.dump(results_with_meta, f, indent=2, default=str)
         print(f"Saved results: {results_path}")
 
         # Save feature names
-        features_path = self.output_dir / f'feature_names_{timestamp}.json'
+        features_path = self.output_dir / f'{prefix}feature_names_{timestamp}.json'
         with open(features_path, 'w') as f:
             json.dump({
+                'hazard_type': self.hazard_type,
+                'hazard_name': HAZARD_TYPES.get(self.hazard_type) if self.hazard_type else 'Overall',
                 'feature_names': self.feature_names,
                 'label_classes': self.label_encoder.classes_.tolist()
             }, f, indent=2)
@@ -547,10 +606,70 @@ class ClimateRiskPredictor:
         return best_model_name, self.models[best_model_name], best_f1
 
 
+def train_all_hazards(tune_hyperparams: bool = False, min_year: int = 2021, max_year: int = 2023):
+    """
+    Train models for overall risk and all hazard types.
+
+    Args:
+        tune_hyperparams: Whether to tune hyperparameters
+        min_year: Minimum year for data
+        max_year: Maximum year for data
+
+    Returns:
+        Dictionary of {hazard_type: (predictor, results)} for all hazards plus overall
+    """
+    all_results = {}
+
+    # Train overall risk model
+    print("\n" + "=" * 70)
+    print("Training Overall Climate Risk Model")
+    print("=" * 70)
+
+    overall_predictor = ClimateRiskPredictor(hazard_type=None)
+    df_overall = overall_predictor.load_data(min_year=min_year, max_year=max_year)
+    results_overall = overall_predictor.train_all_models(df_overall, tune_hyperparams=tune_hyperparams)
+    overall_predictor.save_models()
+
+    best_name, _, best_f1 = overall_predictor.get_best_model()
+    print(f"\nBest Overall Model: {best_name} (F1: {best_f1:.4f})")
+
+    all_results['overall'] = (overall_predictor, results_overall)
+
+    # Train hazard-specific models
+    for hazard_code, hazard_name in HAZARD_TYPES.items():
+        print("\n" + "=" * 70)
+        print(f"Training {hazard_name} ({hazard_code}) Risk Model")
+        print("=" * 70)
+
+        try:
+            predictor = ClimateRiskPredictor(hazard_type=hazard_code)
+            df = predictor.load_data(min_year=min_year, max_year=max_year)
+
+            if len(df) < 100:
+                print(f"Warning: Only {len(df)} counties with data. Skipping...")
+                continue
+
+            results = predictor.train_all_models(df, tune_hyperparams=tune_hyperparams)
+            predictor.save_models()
+
+            best_name, _, best_f1 = predictor.get_best_model()
+            print(f"\nBest {hazard_name} Model: {best_name} (F1: {best_f1:.4f})")
+
+            all_results[hazard_code] = (predictor, results)
+
+        except Exception as e:
+            print(f"Error training {hazard_name} model: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+
+    return all_results
+
+
 def main():
     """Run the full modeling pipeline."""
     print("Climate Risk Prediction Model Training")
-    print("=" * 60)
+    print("=" * 70)
 
     predictor = ClimateRiskPredictor()
 

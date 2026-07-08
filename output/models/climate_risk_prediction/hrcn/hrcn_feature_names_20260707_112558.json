@@ -1,0 +1,29 @@
+{
+  "hazard_type": "HRCN",
+  "hazard_name": "Hurricane",
+  "feature_names": [
+    "median_household_income",
+    "housing_burden_30pct",
+    "insurance_premium",
+    "property_taxes_utilities",
+    "net_migration_rate",
+    "homes_sold_yoy",
+    "median_dom_yoy",
+    "insurance_burden",
+    "housing_cost_burden",
+    "market_cooling",
+    "income_medium",
+    "income_high",
+    "income_very_high",
+    "burden_moderate",
+    "burden_high",
+    "burden_severe"
+  ],
+  "label_classes": [
+    "Relatively High",
+    "Relatively Low",
+    "Relatively Moderate",
+    "Very High",
+    "Very Low"
+  ]
+}

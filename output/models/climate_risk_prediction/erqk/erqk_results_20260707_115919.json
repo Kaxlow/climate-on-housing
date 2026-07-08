@@ -1,0 +1,501 @@
+{
+  "hazard_type": "ERQK",
+  "hazard_name": "Earthquake",
+  "timestamp": "20260707_115919",
+  "feature_names": [
+    "median_household_income",
+    "housing_burden_30pct",
+    "insurance_premium",
+    "property_taxes_utilities",
+    "net_migration_rate",
+    "homes_sold_yoy",
+    "median_dom_yoy",
+    "insurance_burden",
+    "housing_cost_burden",
+    "market_cooling",
+    "income_medium",
+    "income_high",
+    "income_very_high",
+    "burden_moderate",
+    "burden_high",
+    "burden_severe"
+  ],
+  "label_classes": [
+    "Relatively High",
+    "Relatively Low",
+    "Relatively Moderate",
+    "Very High",
+    "Very Low"
+  ],
+  "models": {
+    "logistic_regression": {
+      "model_name": "logistic_regression",
+      "params": {
+        "max_iter": 1000,
+        "random_state": 42,
+        "class_weight": "balanced"
+      },
+      "cv_mean": 0.5884128117465421,
+      "cv_std": 0.0075509134857664455,
+      "trained_at": "2026-07-07T11:59:04.440766",
+      "accuracy": 0.5493630573248408,
+      "f1_weighted": 0.5648058177765859,
+      "classification_report": {
+        "0": {
+          "precision": 0.13043478260869565,
+          "recall": 0.5454545454545454,
+          "f1-score": 0.21052631578947367,
+          "support": 11.0
+        },
+        "1": {
+          "precision": 0.39893617021276595,
+          "recall": 0.390625,
+          "f1-score": 0.39473684210526316,
+          "support": 192.0
+        },
+        "2": {
+          "precision": 0.0784313725490196,
+          "recall": 0.08,
+          "f1-score": 0.07920792079207921,
+          "support": 50.0
+        },
+        "3": {
+          "precision": 0.16666666666666666,
+          "recall": 0.5,
+          "f1-score": 0.25,
+          "support": 2.0
+        },
+        "4": {
+          "precision": 0.7685459940652819,
+          "recall": 0.6943699731903485,
+          "f1-score": 0.7295774647887324,
+          "support": 373.0
+        },
+        "accuracy": 0.5493630573248408,
+        "macro avg": {
+          "precision": 0.30860299722048595,
+          "recall": 0.4420899037289788,
+          "f1-score": 0.3328097086951097,
+          "support": 628.0
+        },
+        "weighted avg": {
+          "precision": 0.5875049124787917,
+          "recall": 0.5493630573248408,
+          "f1-score": 0.5648058177765859,
+          "support": 628.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          6,
+          0,
+          3,
+          2,
+          0
+        ],
+        [
+          19,
+          75,
+          27,
+          1,
+          70
+        ],
+        [
+          14,
+          22,
+          4,
+          2,
+          8
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          6,
+          91,
+          17,
+          0,
+          259
+        ]
+      ]
+    },
+    "random_forest": {
+      "model_name": "random_forest",
+      "params": {
+        "n_estimators": 100,
+        "random_state": 42,
+        "class_weight": "balanced",
+        "n_jobs": -1
+      },
+      "cv_mean": 0.6550497481728738,
+      "cv_std": 0.019268894537661466,
+      "trained_at": "2026-07-07T11:59:05.460144",
+      "accuracy": 0.6942675159235668,
+      "f1_weighted": 0.6774457198640278,
+      "classification_report": {
+        "0": {
+          "precision": 0.6666666666666666,
+          "recall": 0.36363636363636365,
+          "f1-score": 0.47058823529411764,
+          "support": 11.0
+        },
+        "1": {
+          "precision": 0.5654761904761905,
+          "recall": 0.4947916666666667,
+          "f1-score": 0.5277777777777778,
+          "support": 192.0
+        },
+        "2": {
+          "precision": 0.5,
+          "recall": 0.24,
+          "f1-score": 0.32432432432432434,
+          "support": 50.0
+        },
+        "3": {
+          "precision": 1.0,
+          "recall": 0.5,
+          "f1-score": 0.6666666666666666,
+          "support": 2.0
+        },
+        "4": {
+          "precision": 0.7552447552447552,
+          "recall": 0.868632707774799,
+          "f1-score": 0.8079800498753117,
+          "support": 373.0
+        },
+        "accuracy": 0.6942675159235668,
+        "macro avg": {
+          "precision": 0.6974775224775225,
+          "recall": 0.49341214761556584,
+          "f1-score": 0.5594674107876396,
+          "support": 628.0
+        },
+        "weighted avg": {
+          "precision": 0.6761322541577318,
+          "recall": 0.6942675159235668,
+          "f1-score": 0.6774457198640278,
+          "support": 628.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          4,
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          0,
+          95,
+          7,
+          0,
+          90
+        ],
+        [
+          1,
+          22,
+          12,
+          0,
+          15
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          48,
+          1,
+          0,
+          324
+        ]
+      ],
+      "top_features": [
+        {
+          "feature": "housing_burden_30pct",
+          "importance": 0.23481140270820033
+        },
+        {
+          "feature": "property_taxes_utilities",
+          "importance": 0.13104557246903795
+        },
+        {
+          "feature": "median_household_income",
+          "importance": 0.08620632801875922
+        },
+        {
+          "feature": "insurance_burden",
+          "importance": 0.085430136687869
+        },
+        {
+          "feature": "homes_sold_yoy",
+          "importance": 0.07989023973263433
+        },
+        {
+          "feature": "housing_cost_burden",
+          "importance": 0.07972273231279424
+        },
+        {
+          "feature": "insurance_premium",
+          "importance": 0.0739126618538486
+        },
+        {
+          "feature": "median_dom_yoy",
+          "importance": 0.07152722059543228
+        },
+        {
+          "feature": "net_migration_rate",
+          "importance": 0.07142304202687527
+        },
+        {
+          "feature": "market_cooling",
+          "importance": 0.06494393114842148
+        }
+      ]
+    },
+    "gradient_boosting": {
+      "model_name": "gradient_boosting",
+      "params": {
+        "n_estimators": 100,
+        "random_state": 42,
+        "learning_rate": 0.1
+      },
+      "cv_mean": 0.6553520528045841,
+      "cv_std": 0.008327640796155219,
+      "trained_at": "2026-07-07T11:59:17.079895",
+      "accuracy": 0.6990445859872612,
+      "f1_weighted": 0.6841038563874603,
+      "classification_report": {
+        "0": {
+          "precision": 0.7142857142857143,
+          "recall": 0.45454545454545453,
+          "f1-score": 0.5555555555555556,
+          "support": 11.0
+        },
+        "1": {
+          "precision": 0.5568181818181818,
+          "recall": 0.5104166666666666,
+          "f1-score": 0.532608695652174,
+          "support": 192.0
+        },
+        "2": {
+          "precision": 0.5217391304347826,
+          "recall": 0.24,
+          "f1-score": 0.3287671232876712,
+          "support": 50.0
+        },
+        "3": {
+          "precision": 1.0,
+          "recall": 0.5,
+          "f1-score": 0.6666666666666666,
+          "support": 2.0
+        },
+        "4": {
+          "precision": 0.7672209026128266,
+          "recall": 0.8659517426273459,
+          "f1-score": 0.8136020151133502,
+          "support": 373.0
+        },
+        "accuracy": 0.6990445859872612,
+        "macro avg": {
+          "precision": 0.7120127858303011,
+          "recall": 0.5141827727678934,
+          "f1-score": 0.5794400112550835,
+          "support": 628.0
+        },
+        "weighted avg": {
+          "precision": 0.6831633550359191,
+          "recall": 0.6990445859872612,
+          "f1-score": 0.6841038563874603,
+          "support": 628.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          5,
+          3,
+          3,
+          0,
+          0
+        ],
+        [
+          1,
+          98,
+          7,
+          0,
+          86
+        ],
+        [
+          0,
+          26,
+          12,
+          0,
+          12
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          49,
+          1,
+          0,
+          323
+        ]
+      ],
+      "top_features": [
+        {
+          "feature": "housing_burden_30pct",
+          "importance": 0.43620742788419536
+        },
+        {
+          "feature": "insurance_premium",
+          "importance": 0.10905453681096577
+        },
+        {
+          "feature": "property_taxes_utilities",
+          "importance": 0.07822115653702554
+        },
+        {
+          "feature": "median_household_income",
+          "importance": 0.07467312805264836
+        },
+        {
+          "feature": "insurance_burden",
+          "importance": 0.06953679129229004
+        },
+        {
+          "feature": "homes_sold_yoy",
+          "importance": 0.06116112909037613
+        },
+        {
+          "feature": "median_dom_yoy",
+          "importance": 0.047670008553570065
+        },
+        {
+          "feature": "net_migration_rate",
+          "importance": 0.044836507539997135
+        },
+        {
+          "feature": "housing_cost_burden",
+          "importance": 0.04394284117897147
+        },
+        {
+          "feature": "market_cooling",
+          "importance": 0.033896246846092624
+        }
+      ]
+    },
+    "neural_network": {
+      "model_name": "neural_network",
+      "params": {
+        "hidden_layer_sizes": [
+          100,
+          50
+        ],
+        "random_state": 42,
+        "max_iter": 500,
+        "early_stopping": true
+      },
+      "cv_mean": 0.6202073484883892,
+      "cv_std": 0.018417757630083034,
+      "trained_at": "2026-07-07T11:59:19.286466",
+      "accuracy": 0.6815286624203821,
+      "f1_weighted": 0.6604766241363823,
+      "classification_report": {
+        "0": {
+          "precision": 0.25,
+          "recall": 0.09090909090909091,
+          "f1-score": 0.13333333333333333,
+          "support": 11.0
+        },
+        "1": {
+          "precision": 0.532967032967033,
+          "recall": 0.5052083333333334,
+          "f1-score": 0.5187165775401069,
+          "support": 192.0
+        },
+        "2": {
+          "precision": 0.5625,
+          "recall": 0.18,
+          "f1-score": 0.2727272727272727,
+          "support": 50.0
+        },
+        "3": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 2.0
+        },
+        "4": {
+          "precision": 0.7552941176470588,
+          "recall": 0.8605898123324397,
+          "f1-score": 0.8045112781954887,
+          "support": 373.0
+        },
+        "accuracy": 0.6815286624203821,
+        "macro avg": {
+          "precision": 0.4201522301228183,
+          "recall": 0.32734144731497283,
+          "f1-score": 0.34585769235924035,
+          "support": 628.0
+        },
+        "weighted avg": {
+          "precision": 0.6607155672165975,
+          "recall": 0.6815286624203821,
+          "f1-score": 0.6604766241363823,
+          "support": 628.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          1,
+          6,
+          3,
+          1,
+          0
+        ],
+        [
+          1,
+          97,
+          4,
+          0,
+          90
+        ],
+        [
+          1,
+          26,
+          9,
+          0,
+          14
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          52,
+          0,
+          0,
+          321
+        ]
+      ]
+    }
+  }
+}

@@ -1117,6 +1117,29 @@ def _create_acs_mart(con, *, mart_name: str, table_names: list[str], variable_lo
     _null_acs_special_values_in_mart(con, mart_name, [column for column in columns if column not in {"fips", "state_fips", "year", "source_table"}])
 
 
+def _add_affordability_computed_columns(con) -> None:
+    """Add computed columns to affordability mart derived from S2503 data."""
+    # Add housing_cost_pct_income: median monthly housing costs as percentage of median household income
+    # Uses S2503_C02_024E (median monthly housing costs for owner-occupied) and S2503_C02_013E (median household income for owner-occupied)
+    con.execute(
+        """
+        ALTER TABLE mart.acs_county_affordability_annual
+        ADD COLUMN IF NOT EXISTS housing_cost_pct_income DOUBLE
+        """
+    )
+    con.execute(
+        """
+        UPDATE mart.acs_county_affordability_annual
+        SET housing_cost_pct_income = (
+            CAST(s2503_owner_occupied_units_occupied_housing_units_monthly_housing_costs_median_est AS DOUBLE) * 12.0 * 100.0 /
+            NULLIF(CAST(s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est AS DOUBLE), 0)
+        )
+        WHERE s2503_owner_occupied_units_occupied_housing_units_monthly_housing_costs_median_est IS NOT NULL
+          AND s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est IS NOT NULL
+        """
+    )
+
+
 def _create_acs_marts(con, acs_table_names: list[str], variable_lookup: dict[str, dict[str, str]]) -> None:
     grouped = {"economic": [], "demographic": [], "affordability": []}
     for table_name in acs_table_names:
@@ -1127,6 +1150,7 @@ def _create_acs_marts(con, acs_table_names: list[str], variable_lookup: dict[str
     _create_acs_mart(con, mart_name="acs_county_economic_annual", table_names=grouped["economic"], variable_lookup=variable_lookup)
     _create_acs_mart(con, mart_name="acs_county_demographic_annual", table_names=grouped["demographic"], variable_lookup=variable_lookup)
     _create_acs_mart(con, mart_name="acs_county_affordability_annual", table_names=grouped["affordability"], variable_lookup=variable_lookup)
+    _add_affordability_computed_columns(con)
 
 
 def _existing_acs_raw_tables(con) -> list[str]:

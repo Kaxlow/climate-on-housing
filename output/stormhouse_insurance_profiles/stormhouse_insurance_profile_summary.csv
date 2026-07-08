@@ -1,0 +1,26 @@
+nri_risk_rating,insurance_profile,insurance_profile_label,counties,mean_assignment_confidence,risk_group_count,share
+Very Low,2,Typical lower-premium counties,542,0.9745265120063381,1344,0.40327380952380953
+Very Low,3,High-premium slower-growth counties,320,0.9548221136427353,1344,0.23809523809523808
+Very Low,4,High-premium high-nonrenewal counties,175,0.9601927363631203,1344,0.13020833333333334
+Very Low,1,Stable low-volatility insurance counties,165,0.9913808722933841,1344,0.12276785714285714
+Very Low,0,Fast-rising lower-premium counties,142,0.9474315438551111,1344,0.1056547619047619
+Low,2,Typical lower-premium counties,531,0.9741881756388452,1198,0.44323873121869783
+Low,3,High-premium slower-growth counties,243,0.9574117691997981,1198,0.2028380634390651
+Low,1,Stable low-volatility insurance counties,217,0.988730301641185,1198,0.18113522537562604
+Low,0,Fast-rising lower-premium counties,126,0.913558328106636,1198,0.10517529215358931
+Low,4,High-premium high-nonrenewal counties,81,0.9551707750946967,1198,0.0676126878130217
+Moderate,2,Typical lower-premium counties,167,0.9640628472812798,416,0.4014423076923077
+Moderate,3,High-premium slower-growth counties,111,0.9592578841198471,416,0.2668269230769231
+Moderate,1,Stable low-volatility insurance counties,59,0.9829600009490457,416,0.14182692307692307
+Moderate,0,Fast-rising lower-premium counties,42,0.8822150240947574,416,0.10096153846153846
+Moderate,4,High-premium high-nonrenewal counties,37,0.9095191030917075,416,0.0889423076923077
+High,2,Typical lower-premium counties,56,0.9398521823073835,159,0.3522012578616352
+High,3,High-premium slower-growth counties,48,0.9421183868116478,159,0.3018867924528302
+High,4,High-premium high-nonrenewal counties,24,0.8691643747541073,159,0.1509433962264151
+High,1,Stable low-volatility insurance counties,23,0.9891859463857601,159,0.14465408805031446
+High,0,Fast-rising lower-premium counties,8,0.881070350159687,159,0.050314465408805034
+Very High,2,Typical lower-premium counties,6,0.9830646555556054,17,0.35294117647058826
+Very High,1,Stable low-volatility insurance counties,4,0.9991871681903748,17,0.23529411764705882
+Very High,3,High-premium slower-growth counties,3,0.9999999637414542,17,0.17647058823529413
+Very High,4,High-premium high-nonrenewal counties,3,0.9846052651116876,17,0.17647058823529413
+Very High,0,Fast-rising lower-premium counties,1,0.8978557201238764,17,0.058823529411764705

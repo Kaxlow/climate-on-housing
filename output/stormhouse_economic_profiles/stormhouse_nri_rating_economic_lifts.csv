@@ -1,0 +1,51 @@
+nri_risk_rating,direction,feature,feature_label,standardized_lift,group_median,national_median
+Very Low,higher,econ_domestic_migration_rate_slope,domestic migration rate trend,0.08308478197119586,0.0006491188439790751,0.0005430780155140074
+Very Low,higher,econ_transfer_receipts_share_latest,transfer receipts share latest,0.04793122205680299,0.2864613125242179,0.28191822876605493
+Very Low,higher,econ_transfer_receipts_share,transfer receipts share,0.032123346238756206,0.28724649271044356,0.2842873746182906
+Very Low,higher,econ_dividends_rent_share,"dividends, interest, and rent share",0.02015403343669354,0.15893848240601544,0.1575134629831644
+Very Low,higher,econ_employment_rate_proxy,employment per resident,0.01427548451799621,0.6427665163924853,0.38789849482834504
+Very Low,lower,econ_log_population_latest,population scale latest,-0.6387798922395074,9.197153810172008,10.174716235672506
+Very Low,lower,econ_log_population,population scale,-0.6286302365584762,9.205955674135927,10.155358425769684
+Very Low,lower,econ_natural_increase_rate,natural increase rate,-0.21675406409682127,-0.002005952695386461,-0.0011409162592027871
+Very Low,lower,econ_natural_increase_rate_latest,natural increase rate latest,-0.1902128727483646,-0.002480427873808232,-0.0016281928688933562
+Very Low,lower,econ_log_population_slope,population scale trend,-0.17936293699364356,-0.0007625489050334475,0.0013684959115151303
+Low,higher,econ_transfer_receipts_share,transfer receipts share,0.2836611473656711,0.3104174927875464,0.2842873746182906
+Low,higher,econ_transfer_receipts_share_latest,transfer receipts share latest,0.2798887094110432,0.30844702972822513,0.28191822876605493
+Low,higher,econ_log_population,population scale,0.2613029508906489,10.549997000496475,10.155358425769684
+Low,higher,econ_log_population_latest,population scale latest,0.24917422724382055,10.556042205565983,10.174716235672506
+Low,higher,econ_domestic_migration_rate_latest,domestic migration rate latest,0.08968256446547972,0.0028648644800101097,0.0019457398802742612
+Low,lower,econ_proprietors_income_share,proprietors income share,-0.1528342413750555,0.05814654157851219,0.06382671968012436
+Low,lower,econ_Average Weekly Wage,average weekly wage,-0.12552794112469765,839.0,873.6
+Low,lower,econ_per_capita_income,per capita income,-0.11986255465920456,42639.45,44851.5
+Low,lower,econ_dividends_rent_share,"dividends, interest, and rent share",-0.11630976006112537,0.14928961698852172,0.1575134629831644
+Low,lower,econ_proprietors_income_share_latest,proprietors income share latest,-0.115532974572567,0.05679619210710711,0.061749433617201935
+Moderate,higher,econ_log_population,population scale,1.210520610475866,11.98357401525041,10.155358425769684
+Moderate,higher,econ_log_population_latest,population scale latest,1.202414801384114,12.014842300971427,10.174716235672506
+Moderate,higher,econ_natural_increase_rate,natural increase rate,0.5321794374226799,0.0009829405915398734,-0.0011409162592027871
+Moderate,higher,econ_natural_increase_rate_latest,natural increase rate latest,0.46237192378557745,0.00044343105984671395,-0.0016281928688933562
+Moderate,higher,econ_international_migration_rate,international migration rate,0.43942705735219767,0.0016317305037685439,0.0007664950776251126
+Moderate,lower,econ_transfer_receipts_share_latest,transfer receipts share latest,-0.34320984706558877,0.24938763565917688,0.28191822876605493
+Moderate,lower,econ_transfer_receipts_share,transfer receipts share,-0.311318067876728,0.25560957373723925,0.2842873746182906
+Moderate,lower,econ_domestic_migration_rate_slope,domestic migration rate trend,-0.22990694447375812,0.00024964855366235803,0.0005430780155140074
+Moderate,lower,econ_domestic_migration_rate_latest,domestic migration rate latest,-0.013296673328909698,0.0018094670202808715,0.0019457398802742612
+Moderate,lower,econ_employment_rate_proxy_latest,employment per resident latest,-0.00253309687049459,0.35654314363325396,0.4078586068835858
+High,higher,econ_log_population,population scale,2.101294785556221,13.328885461825905,10.155358425769684
+High,higher,econ_log_population_latest,population scale latest,2.0916426473646914,13.375679954911583,10.174716235672506
+High,higher,econ_international_migration_rate,international migration rate,1.0777890929027345,0.002888670509219018,0.0007664950776251126
+High,higher,econ_international_migration_rate_latest,international migration rate latest,1.01548847240583,0.0031090570309356396,0.0006579320437254443
+High,higher,econ_natural_increase_rate,natural increase rate,0.9705865503530221,0.002732564655785496,-0.0011409162592027871
+High,lower,econ_transfer_receipts_share,transfer receipts share,-0.6832896691754031,0.2213445290252402,0.2842873746182906
+High,lower,econ_transfer_receipts_share_latest,transfer receipts share latest,-0.6626476616172866,0.219110236403363,0.28191822876605493
+High,lower,econ_domestic_migration_rate_slope,domestic migration rate trend,-0.5501478853824923,-0.0001590738847520299,0.0005430780155140074
+High,lower,econ_domestic_migration_rate_latest,domestic migration rate latest,-0.4049615505129868,-0.002204566539285445,0.0019457398802742612
+High,lower,econ_domestic_migration_rate,domestic migration rate,-0.21841998414010141,-0.0019113096940657818,0.00019209768831679423
+Very High,higher,econ_log_population,population scale,3.0202060765144356,14.716691611462016,10.155358425769684
+Very High,higher,econ_log_population_latest,population scale latest,2.9894246870860974,14.749608594468345,10.174716235672506
+Very High,higher,econ_international_migration_rate,international migration rate,2.137347035161855,0.004974948657902623,0.0007664950776251126
+Very High,higher,econ_Average Weekly Wage,average weekly wage,1.8738491789279272,1390.1,873.6
+Very High,higher,econ_Average Weekly Wage_latest,average weekly wage latest,1.8368216722719113,1600.5,1017.0
+Very High,lower,econ_transfer_receipts_share,transfer receipts share,-1.5339786065311065,0.14298130351897104,0.2842873746182906
+Very High,lower,econ_transfer_receipts_share_latest,transfer receipts share latest,-1.5161849324219303,0.13820907958779283,0.28191822876605493
+Very High,lower,econ_domestic_migration_rate_slope,domestic migration rate trend,-0.8919177290290121,-0.0005952735894972137,0.0005430780155140074
+Very High,lower,econ_domestic_migration_rate,domestic migration rate,-0.7995294610107728,-0.007507454975526013,0.00019209768831679423
+Very High,lower,econ_domestic_migration_rate_latest,domestic migration rate latest,-0.7926706190766782,-0.006178058427942661,0.0019457398802742612

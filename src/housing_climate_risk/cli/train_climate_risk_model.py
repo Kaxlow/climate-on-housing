@@ -2,20 +2,44 @@
 CLI command to train climate risk prediction models.
 
 Usage:
-    train-climate-risk-model [--tune] [--model MODEL_NAME]
+    train-climate-risk-model [--tune] [--model MODEL_NAME] [--hazard HAZARD_TYPE]
+    train-climate-risk-model --all-hazards [--tune]
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-from housing_climate_risk.modeling.climate_risk_prediction import ClimateRiskPredictor
+from housing_climate_risk.modeling.climate_risk_prediction import (
+    ClimateRiskPredictor,
+    HAZARD_TYPES,
+    train_all_hazards
+)
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Train climate risk prediction models'
+        description='Train climate risk prediction models',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Hazard Types:
+  overall     Overall climate risk (default)
+{chr(10).join(f'  {code:<12}{name}' for code, name in HAZARD_TYPES.items())}
+
+Examples:
+  # Train overall risk model
+  train-climate-risk-model
+
+  # Train specific hazard model
+  train-climate-risk-model --hazard TRND
+
+  # Train all hazards (overall + 5 hazard-specific models)
+  train-climate-risk-model --all-hazards
+
+  # Train with hyperparameter tuning
+  train-climate-risk-model --all-hazards --tune
+        """
     )
 
     parser.add_argument(
@@ -30,6 +54,20 @@ def parse_args():
         choices=['logistic_regression', 'random_forest', 'gradient_boosting', 'neural_network', 'all'],
         default='all',
         help='Specific model to train (default: all)'
+    )
+
+    parser.add_argument(
+        '--hazard',
+        type=str,
+        choices=['overall'] + list(HAZARD_TYPES.keys()),
+        default='overall',
+        help='Hazard type to train (default: overall)'
+    )
+
+    parser.add_argument(
+        '--all-hazards',
+        action='store_true',
+        help='Train models for overall risk and all 5 hazard types'
     )
 
     parser.add_argument(
@@ -63,14 +101,47 @@ def main():
     print("=" * 70)
     print("Climate Risk Prediction Model Training")
     print("=" * 70)
-    print(f"\nConfiguration:")
-    print(f"  Model(s): {args.model}")
-    print(f"  Data years: {args.min_year} - {args.max_year}")
-    print(f"  Test size: {args.test_size}")
-    print(f"  Hyperparameter tuning: {args.tune}")
 
     try:
-        predictor = ClimateRiskPredictor()
+        # Train all hazards if requested
+        if args.all_hazards:
+            print(f"\nConfiguration:")
+            print(f"  Training: Overall + All 5 hazard types")
+            print(f"  Model(s): {args.model}")
+            print(f"  Data years: {args.min_year} - {args.max_year}")
+            print(f"  Test size: {args.test_size}")
+            print(f"  Hyperparameter tuning: {args.tune}")
+
+            all_results = train_all_hazards(
+                tune_hyperparams=args.tune,
+                min_year=args.min_year,
+                max_year=args.max_year
+            )
+
+            # Summary
+            print("\n" + "=" * 70)
+            print("Training Complete - Summary")
+            print("=" * 70)
+
+            for hazard_key, (predictor, results) in all_results.items():
+                hazard_name = HAZARD_TYPES.get(hazard_key, 'Overall')
+                best_name, _, best_f1 = predictor.get_best_model()
+                print(f"{hazard_name:20} -> Best: {best_name:20} (F1: {best_f1:.4f})")
+
+            return 0
+
+        # Single hazard training
+        hazard_type = None if args.hazard == 'overall' else args.hazard
+        hazard_display = HAZARD_TYPES.get(hazard_type, 'Overall') if hazard_type else 'Overall'
+
+        print(f"\nConfiguration:")
+        print(f"  Hazard type: {hazard_display}")
+        print(f"  Model(s): {args.model}")
+        print(f"  Data years: {args.min_year} - {args.max_year}")
+        print(f"  Test size: {args.test_size}")
+        print(f"  Hyperparameter tuning: {args.tune}")
+
+        predictor = ClimateRiskPredictor(hazard_type=hazard_type)
 
         # Load data
         print("\nLoading data...")
@@ -130,7 +201,7 @@ def main():
         # Report best model
         best_name, best_model, best_f1 = predictor.get_best_model()
         print(f"\n{'='*70}")
-        print(f"Best Model: {best_name}")
+        print(f"Best {hazard_display} Model: {best_name}")
         print(f"F1 Score: {best_f1:.4f}")
         print(f"{'='*70}")
 
