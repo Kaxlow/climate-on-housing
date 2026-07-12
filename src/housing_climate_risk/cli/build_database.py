@@ -13,6 +13,7 @@ from housing_climate_risk.paths import ACS_DIR, CLIMATE_DAMAGE_DIR, CLIMATE_DIR,
 
 
 DATABASE_PATH = DATA_DIR / "quoll.duckdb"
+STATSAMERICA_DIR = DATA_DIR / "statsamerica"
 
 
 RAW_FILES = {
@@ -27,6 +28,10 @@ RAW_FILES = {
     "noaa_storm_events_county_damage": CLIMATE_DAMAGE_DIR / "noaa_storm_events_county_damage.csv",
     "noaa_storm_events_zone_county_mapping": CLIMATE_DAMAGE_DIR / "noaa_storm_events_zone_county_mapping.csv",
     "ncei_climate_at_a_glance_county_monthly": CLIMATE_DIR / "ncei_climate_at_a_glance_county_monthly.csv",
+    "statsamerica_population_components": STATSAMERICA_DIR / "Components of Population Change - U.S., States, and Counties.csv",
+    "statsamerica_bea_per_capita_income": STATSAMERICA_DIR / "BEA - US, States, Counties - Per Capita Income.csv",
+    "statsamerica_bea_personal_income": STATSAMERICA_DIR / "BEA - US, States, Counties - Personal Income.csv",
+    "statsamerica_cew_total_ownership": STATSAMERICA_DIR / "CEW - US, States, Counties - Total Ownership.csv",
 }
 
 
@@ -611,6 +616,259 @@ def _redfin_fips_expr() -> str:
     """
 
 
+def _raw_table_exists(con, table_name: str) -> bool:
+    return bool(
+        con.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'raw' AND table_name = ?",
+            [table_name],
+        ).fetchone()
+    )
+
+
+def _create_statsamerica_bea_cew_marts(con) -> None:
+    """
+    Build mart tables from the three StatsAmerica BEA/CEW raw tables.
+
+    Tables created:
+      mart.statsamerica_bea_per_capita_income_annual
+      mart.statsamerica_bea_personal_income_annual
+      mart.statsamerica_cew_county_annual
+    All are filtered to county-level rows (Countyfips != '000') and the
+    last 10 completed calendar years relative to the most recent year in the file.
+    """
+    # ------------------------------------------------------------------
+    # BEA Per Capita Income
+    # ------------------------------------------------------------------
+    con.execute("DROP TABLE IF EXISTS mart.statsamerica_bea_per_capita_income_annual")
+    if _raw_table_exists(con, "statsamerica_bea_per_capita_income"):
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_bea_per_capita_income_annual AS
+            WITH county_rows AS (
+                SELECT
+                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
+                    lpad(Statefips, 2, '0') AS state_fips,
+                    TRY_CAST(Year AS INTEGER) AS year,
+                    Description AS county_name,
+                    TRY_CAST("BEA Per Capita Personal Income" AS INTEGER)
+                        AS per_capita_personal_income_dollars
+                FROM raw.statsamerica_bea_per_capita_income
+                WHERE Statefips IS NOT NULL
+                  AND Statefips != '0'
+                  AND Countyfips IS NOT NULL
+                  AND Countyfips != '000'
+                  AND Year IS NOT NULL
+            ),
+            max_year AS (SELECT max(year) AS max_yr FROM county_rows)
+            SELECT c.*
+            FROM county_rows c, max_year m
+            WHERE c.year >= m.max_yr - 9
+            """
+        )
+    else:
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_bea_per_capita_income_annual (
+                fips VARCHAR,
+                state_fips VARCHAR,
+                year INTEGER,
+                county_name VARCHAR,
+                per_capita_personal_income_dollars INTEGER
+            )
+            """
+        )
+
+    # ------------------------------------------------------------------
+    # BEA Personal Income — pivoted wide, one column per selected linecode.
+    # Linecodes: 0010 personal_income, 0020 population,
+    #   0035 earnings_by_place_of_work, 0045 net_earnings_by_place_of_residence,
+    #   0046 dividends_interest_rent, 0047 transfer_receipts,
+    #   0050 wage_salary_disbursements, 0070 proprietors_income
+    # ------------------------------------------------------------------
+    con.execute("DROP TABLE IF EXISTS mart.statsamerica_bea_personal_income_annual")
+    if _raw_table_exists(con, "statsamerica_bea_personal_income"):
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_bea_personal_income_annual AS
+            WITH county_rows AS (
+                SELECT
+                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
+                    lpad(Statefips, 2, '0') AS state_fips,
+                    TRY_CAST(Year AS INTEGER) AS year,
+                    Description AS county_name,
+                    Linecode AS linecode,
+                    -- Suppressed rows carry non-numeric Data; treat as NULL
+                    CASE WHEN Disclosure = '0' THEN TRY_CAST(Data AS DOUBLE) ELSE NULL END AS data_value
+                FROM raw.statsamerica_bea_personal_income
+                WHERE Statefips IS NOT NULL
+                  AND Statefips != '0'
+                  AND Countyfips IS NOT NULL
+                  AND Countyfips != '000'
+                  AND Year IS NOT NULL
+                  AND Linecode IN ('0010', '0020', '0035', '0045', '0046', '0047', '0050', '0070')
+            ),
+            max_year AS (SELECT max(year) AS max_yr FROM county_rows),
+            recent AS (
+                SELECT c.*
+                FROM county_rows c, max_year m
+                WHERE c.year >= m.max_yr - 9
+            )
+            SELECT
+                fips,
+                state_fips,
+                year,
+                county_name,
+                max(data_value) FILTER (WHERE linecode = '0010') AS personal_income_thousands,
+                max(data_value) FILTER (WHERE linecode = '0020') AS population,
+                max(data_value) FILTER (WHERE linecode = '0035') AS earnings_by_place_of_work_thousands,
+                max(data_value) FILTER (WHERE linecode = '0045') AS net_earnings_by_place_of_residence_thousands,
+                max(data_value) FILTER (WHERE linecode = '0046') AS dividends_interest_rent_thousands,
+                max(data_value) FILTER (WHERE linecode = '0047') AS transfer_receipts_thousands,
+                max(data_value) FILTER (WHERE linecode = '0050') AS wage_salary_disbursements_thousands,
+                max(data_value) FILTER (WHERE linecode = '0070') AS proprietors_income_thousands
+            FROM recent
+            GROUP BY fips, state_fips, year, county_name
+            """
+        )
+    else:
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_bea_personal_income_annual (
+                fips VARCHAR,
+                state_fips VARCHAR,
+                year INTEGER,
+                county_name VARCHAR,
+                personal_income_thousands DOUBLE,
+                population DOUBLE,
+                earnings_by_place_of_work_thousands DOUBLE,
+                net_earnings_by_place_of_residence_thousands DOUBLE,
+                dividends_interest_rent_thousands DOUBLE,
+                transfer_receipts_thousands DOUBLE,
+                wage_salary_disbursements_thousands DOUBLE,
+                proprietors_income_thousands DOUBLE
+            )
+            """
+        )
+
+    # ------------------------------------------------------------------
+    # CEW Total Ownership — 2-digit sector breakdown
+    #   Ownership Code '0' (All), top-level sector NAICS codes only
+    #   (2-digit codes + multi-range codes like 31-33, 44-45, 48-49)
+    # ------------------------------------------------------------------
+    con.execute("DROP TABLE IF EXISTS mart.statsamerica_cew_county_sector_annual")
+    if _raw_table_exists(con, "statsamerica_cew_total_ownership"):
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_cew_county_sector_annual AS
+            WITH county_rows AS (
+                SELECT
+                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
+                    lpad(Statefips, 2, '0') AS state_fips,
+                    TRY_CAST(Year AS INTEGER) AS year,
+                    Description AS county_name,
+                    trim("NAICS Code") AS naics_code,
+                    trim("NAICS Description") AS naics_description,
+                    TRY_CAST(Units AS DOUBLE) AS establishments,
+                    TRY_CAST(Employment AS DOUBLE) AS employment,
+                    TRY_CAST(Wages AS DOUBLE) AS total_wages_dollars,
+                    TRY_CAST("Average Wage" AS DOUBLE) AS avg_annual_wage_dollars,
+                    TRY_CAST("Average Weekly Wage" AS DOUBLE) AS avg_weekly_wage_dollars
+                FROM raw.statsamerica_cew_total_ownership
+                WHERE Statefips IS NOT NULL
+                  AND Statefips != '0'
+                  AND Countyfips IS NOT NULL
+                  AND Countyfips != '000'
+                  AND Year IS NOT NULL
+                  AND "Ownership Code" = '0'
+                  -- Top-level sector codes: 2-digit integers plus BLS multi-range codes
+                  AND trim("NAICS Code") IN (
+                      '11','21','22','23',
+                      '31-33',
+                      '42',
+                      '44-45',
+                      '48-49',
+                      '51','52','53','54','55','56',
+                      '61','62','71','72','81','92','99'
+                  )
+            ),
+            max_year AS (SELECT max(year) AS max_yr FROM county_rows)
+            SELECT c.*
+            FROM county_rows c, max_year m
+            WHERE c.year >= m.max_yr - 9
+            """
+        )
+    else:
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_cew_county_sector_annual (
+                fips VARCHAR,
+                state_fips VARCHAR,
+                year INTEGER,
+                county_name VARCHAR,
+                naics_code VARCHAR,
+                naics_description VARCHAR,
+                establishments DOUBLE,
+                employment DOUBLE,
+                total_wages_dollars DOUBLE,
+                avg_annual_wage_dollars DOUBLE,
+                avg_weekly_wage_dollars DOUBLE
+            )
+            """
+        )
+
+    # ------------------------------------------------------------------
+    # CEW Total Ownership — aggregate totals only:
+    #   Ownership Code '0' (All), NAICS Code '00' (Total all industries)
+    # ------------------------------------------------------------------
+    con.execute("DROP TABLE IF EXISTS mart.statsamerica_cew_county_annual")
+    if _raw_table_exists(con, "statsamerica_cew_total_ownership"):
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_cew_county_annual AS
+            WITH county_rows AS (
+                SELECT
+                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
+                    lpad(Statefips, 2, '0') AS state_fips,
+                    TRY_CAST(Year AS INTEGER) AS year,
+                    Description AS county_name,
+                    TRY_CAST(Units AS DOUBLE) AS establishments,
+                    TRY_CAST(Employment AS DOUBLE) AS employment,
+                    TRY_CAST(Wages AS DOUBLE) AS total_wages_dollars,
+                    TRY_CAST("Average Wage" AS DOUBLE) AS avg_annual_wage_dollars,
+                    TRY_CAST("Average Weekly Wage" AS DOUBLE) AS avg_weekly_wage_dollars
+                FROM raw.statsamerica_cew_total_ownership
+                WHERE Statefips IS NOT NULL
+                  AND Statefips != '0'
+                  AND Countyfips IS NOT NULL
+                  AND Countyfips != '000'
+                  AND Year IS NOT NULL
+                  AND "Ownership Code" = '0'
+                  AND "NAICS Code" = '00'
+            ),
+            max_year AS (SELECT max(year) AS max_yr FROM county_rows)
+            SELECT c.*
+            FROM county_rows c, max_year m
+            WHERE c.year >= m.max_yr - 9
+            """
+        )
+    else:
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_cew_county_annual (
+                fips VARCHAR,
+                state_fips VARCHAR,
+                year INTEGER,
+                county_name VARCHAR,
+                establishments DOUBLE,
+                employment DOUBLE,
+                total_wages_dollars DOUBLE,
+                avg_annual_wage_dollars DOUBLE,
+                avg_weekly_wage_dollars DOUBLE
+            )
+            """
+        )
+
+
 def _create_core_marts(con) -> None:
     con.execute("CREATE SCHEMA IF NOT EXISTS mart")
     con.create_function(
@@ -996,6 +1254,60 @@ def _create_core_marts(con) -> None:
     else:
         con.execute("CREATE TABLE mart.insurance_non_renewal_annual (fips VARCHAR, year INTEGER, non_renewal_rate DOUBLE)")
 
+    _create_statsamerica_bea_cew_marts(con)
+
+    # Load StatsAmerica Components of Population Change (true net migration)
+    con.execute("DROP TABLE IF EXISTS mart.statsamerica_population_components_annual")
+    statsamerica_path = DATA_DIR / "statsamerica" / "Components of Population Change - U.S., States, and Counties.csv"
+    if statsamerica_path.exists():
+        con.execute(
+            f"""
+            CREATE TABLE mart.statsamerica_population_components_annual AS
+            SELECT
+                lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
+                lpad(Statefips, 2, '0') AS state_fips,
+                TRY_CAST(Year AS INTEGER) AS year,
+                Description AS county_name,
+                TRY_CAST(Births AS INTEGER) AS births,
+                TRY_CAST(Deaths AS INTEGER) AS deaths,
+                TRY_CAST("Net International Migration" AS INTEGER) AS net_international_migration,
+                TRY_CAST("Net Domestic Migration" AS INTEGER) AS net_domestic_migration,
+                TRY_CAST(Residual AS INTEGER) AS residual,
+                -- Computed columns
+                TRY_CAST(Births AS INTEGER) - TRY_CAST(Deaths AS INTEGER) AS natural_increase,
+                TRY_CAST("Net International Migration" AS INTEGER) + TRY_CAST("Net Domestic Migration" AS INTEGER) AS total_net_migration
+            FROM read_csv_auto(
+                {_quote_literal(statsamerica_path)},
+                header = true,
+                all_varchar = true,
+                ignore_errors = true
+            )
+            WHERE Statefips IS NOT NULL
+              AND Statefips != '0'
+              AND Countyfips IS NOT NULL
+              AND Countyfips != '000'
+              AND Year IS NOT NULL
+            """
+        )
+    else:
+        con.execute(
+            """
+            CREATE TABLE mart.statsamerica_population_components_annual (
+                fips VARCHAR,
+                state_fips VARCHAR,
+                year INTEGER,
+                county_name VARCHAR,
+                births INTEGER,
+                deaths INTEGER,
+                net_international_migration INTEGER,
+                net_domestic_migration INTEGER,
+                residual INTEGER,
+                natural_increase INTEGER,
+                total_net_migration INTEGER
+            )
+            """
+        )
+
     con.execute("DROP TABLE IF EXISTS mart.county_snapshot")
     con.execute(
         """
@@ -1140,6 +1452,28 @@ def _add_affordability_computed_columns(con) -> None:
     )
 
 
+def _add_demographic_computed_columns(con) -> None:
+    """Add computed columns to demographic mart derived from migration data."""
+    # Add total_in_migration_rate: combines domestic and international in-migration
+    # Uses domestic_in_migration_rate and moved_from_abroad_rate from B07001 migration data
+    con.execute(
+        """
+        ALTER TABLE mart.acs_county_demographic_annual
+        ADD COLUMN IF NOT EXISTS total_in_migration_rate DOUBLE
+        """
+    )
+    con.execute(
+        """
+        UPDATE mart.acs_county_demographic_annual
+        SET total_in_migration_rate = (
+            CAST(domestic_in_migration_rate AS DOUBLE) + CAST(moved_from_abroad_rate AS DOUBLE)
+        )
+        WHERE domestic_in_migration_rate IS NOT NULL
+          AND moved_from_abroad_rate IS NOT NULL
+        """
+    )
+
+
 def _create_acs_marts(con, acs_table_names: list[str], variable_lookup: dict[str, dict[str, str]]) -> None:
     grouped = {"economic": [], "demographic": [], "affordability": []}
     for table_name in acs_table_names:
@@ -1151,6 +1485,7 @@ def _create_acs_marts(con, acs_table_names: list[str], variable_lookup: dict[str
     _create_acs_mart(con, mart_name="acs_county_demographic_annual", table_names=grouped["demographic"], variable_lookup=variable_lookup)
     _create_acs_mart(con, mart_name="acs_county_affordability_annual", table_names=grouped["affordability"], variable_lookup=variable_lookup)
     _add_affordability_computed_columns(con)
+    _add_demographic_computed_columns(con)
 
 
 def _existing_acs_raw_tables(con) -> list[str]:
@@ -1182,6 +1517,11 @@ def _create_indexes(con) -> None:
         ("idx_acs_afford_fips_year", "mart.acs_county_affordability_annual", "fips, year"),
         ("idx_insurance_premiums_fips_year", "mart.insurance_premiums_annual", "fips, year"),
         ("idx_insurance_non_renewal_fips_year", "mart.insurance_non_renewal_annual", "fips, year"),
+        ("idx_statsamerica_fips_year", "mart.statsamerica_population_components_annual", "fips, year"),
+        ("idx_statsamerica_bea_pci_fips_year", "mart.statsamerica_bea_per_capita_income_annual", "fips, year"),
+        ("idx_statsamerica_bea_pi_fips_year", "mart.statsamerica_bea_personal_income_annual", "fips, year"),
+        ("idx_statsamerica_cew_fips_year", "mart.statsamerica_cew_county_annual", "fips, year"),
+        ("idx_statsamerica_cew_sector_fips_year", "mart.statsamerica_cew_county_sector_annual", "fips, year"),
     ]
     for index_name, table_name, columns in index_specs:
         con.execute(f"CREATE INDEX IF NOT EXISTS {_quote_ident(index_name)} ON {table_name} ({columns})")

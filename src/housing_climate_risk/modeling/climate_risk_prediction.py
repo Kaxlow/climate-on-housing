@@ -14,14 +14,22 @@ Target Variables:
   * TRND (Tornado)
   * HAIL (Hail)
 
-Features:
-1. Income - Median household income
+Base Features (7):
+1. Income - Median household income (owner-occupied units only, from S2503)
 2. Housing Burden - Share with housing costs >= 30% of income
 3. Insurance - Mean homeowner insurance premium
 4. Property Taxes & Utilities - Median owner costs with mortgage
-5. Net Migration - County net migration rate
+5. In-Migration Rate - County total in-migration rate (domestic + international)
 6. Homes Sold YOY - Year-over-year change in homes sold
 7. Median Days on Market YOY - Year-over-year change in days on market
+
+Engineered Features (6):
+8. Insurance Burden - Premium as % of income
+9. Housing Cost Burden - Mortgage costs as % of income
+10. Market Cooling - DOM YoY minus sales YoY
+11. Market Stress - Weighted combination of burden and market cooling
+12. Burden-Migration Interaction - Burden adjusted by migration
+13. Insurance-Market Interaction - Insurance adjusted by market velocity
 """
 
 import duckdb
@@ -194,16 +202,9 @@ class ClimateRiskPredictor:
             SELECT
                 fips,
                 AVG(CAST(owner_mortgage_cost_burden_30pct_plus AS DOUBLE)) as housing_burden_30pct,
-                AVG(CAST(median_owner_costs_mortgage AS DOUBLE)) as property_taxes_utilities
+                AVG(CAST(median_owner_costs_mortgage AS DOUBLE)) as property_taxes_utilities,
+                AVG(CAST(s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est AS DOUBLE)) as median_homeowner_income
             FROM mart.acs_county_affordability_annual
-            WHERE year BETWEEN {min_year} AND {max_year}
-            GROUP BY fips
-        ),
-        recent_acs_economic AS (
-            SELECT
-                fips,
-                AVG(CAST(dp03_income_and_benefits_total_households_median_household_income_est AS DOUBLE)) as median_household_income
-            FROM mart.acs_county_economic_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
         ),
@@ -215,10 +216,10 @@ class ClimateRiskPredictor:
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
         ),
-        net_migration AS (
+        in_migration AS (
             SELECT
                 fips,
-                AVG(CAST(domestic_in_migration_rate AS DOUBLE)) as net_migration_rate
+                AVG(CAST(total_in_migration_rate AS DOUBLE)) as in_migration_rate
             FROM mart.acs_county_demographic_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
@@ -227,18 +228,17 @@ class ClimateRiskPredictor:
             n.fips,
             n.{risk_col} as risk_rating,
             CAST(n.{risk_score_col} AS DOUBLE) as risk_score,
-            e.median_household_income,
+            COALESCE(a.median_homeowner_income, 0) as median_household_income,
             a.housing_burden_30pct,
             i.insurance_premium,
             a.property_taxes_utilities,
-            m.net_migration_rate,
+            m.in_migration_rate,
             h.homes_sold_yoy,
             h.median_dom_yoy
         FROM mart.nri_county_risk n
         LEFT JOIN recent_acs_affordability a ON n.fips = a.fips
-        LEFT JOIN recent_acs_economic e ON n.fips = e.fips
         LEFT JOIN recent_insurance i ON n.fips = i.fips
-        LEFT JOIN net_migration m ON n.fips = m.fips
+        LEFT JOIN in_migration m ON n.fips = m.fips
         LEFT JOIN recent_housing h ON n.fips = h.fips
         WHERE n.{risk_col} IS NOT NULL
             AND n.{risk_col} != ''
@@ -266,19 +266,13 @@ class ClimateRiskPredictor:
         """
         df = df.copy()
 
-        # Create income brackets
-        df['income_bracket'] = pd.cut(
-            df['median_household_income'],
-            bins=[0, 40000, 60000, 80000, float('inf')],
-            labels=['low', 'medium', 'high', 'very_high']
-        )
-
-        # Create burden severity levels
-        df['burden_severity'] = pd.cut(
-            df['housing_burden_30pct'],
-            bins=[0, 20, 35, 50, 100],
-            labels=['minimal', 'moderate', 'high', 'severe']
-        )
+        # Fill missing numeric values with median first (needed for derived features)
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            if df[col].isna().any():
+                median_val = df[col].median()
+                df[col] = df[col].fillna(median_val)
+                print(f"Filled {col} missing values with median: {median_val:.2f}")
 
         # Insurance premium per $1000 income
         df['insurance_burden'] = (
@@ -292,22 +286,24 @@ class ClimateRiskPredictor:
 
         # Market cooling indicator (high DOM YoY + low sales YoY)
         df['market_cooling'] = (
-            df['median_dom_yoy'].fillna(0) - df['homes_sold_yoy'].fillna(0)
+            df['median_dom_yoy'] - df['homes_sold_yoy']
         )
 
-        # Fill missing numeric values with median
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if df[col].isna().any():
-                median_val = df[col].median()
-                df[col] = df[col].fillna(median_val)
-                print(f"Filled {col} missing values with median: {median_val:.2f}")
+        # Interaction Features
+        # Market stress: combines housing burden with market cooling
+        df['market_stress'] = (
+            df['housing_burden_30pct'] * 0.5 + df['market_cooling'] * 0.5
+        )
 
-        # One-hot encode categorical features
-        if 'income_bracket' in df.columns:
-            df = pd.get_dummies(df, columns=['income_bracket'], prefix='income', drop_first=True)
-        if 'burden_severity' in df.columns:
-            df = pd.get_dummies(df, columns=['burden_severity'], prefix='burden', drop_first=True)
+        # Burden-migration interaction: how burden affects in-migration
+        df['burden_migration_interaction'] = (
+            df['housing_burden_30pct'] * (1 - df['in_migration_rate'] / 100)
+        )
+
+        # Insurance-market interaction: insurance costs adjusted for market velocity
+        df['insurance_market_interaction'] = (
+            df['insurance_premium'] * (1 + df['median_dom_yoy'] / 100)
+        )
 
         return df
 
@@ -322,24 +318,23 @@ class ClimateRiskPredictor:
             Tuple of (X features, y target, feature_names)
         """
         # Define feature columns
-        base_features = [
+        feature_cols = [
             'median_household_income',
             'housing_burden_30pct',
             'insurance_premium',
             'property_taxes_utilities',
-            'net_migration_rate',
+            'in_migration_rate',
             'homes_sold_yoy',
             'median_dom_yoy',
             'insurance_burden',
             'housing_cost_burden',
-            'market_cooling'
+            'market_cooling',
+            'market_stress',
+            'burden_migration_interaction',
+            'insurance_market_interaction'
         ]
 
-        # Add engineered categorical features
-        engineered_features = [col for col in df.columns
-                              if col.startswith(('income_', 'burden_'))]
-
-        feature_cols = base_features + engineered_features
+        # Only keep features that exist in the dataframe
         feature_cols = [col for col in feature_cols if col in df.columns]
 
         X = df[feature_cols].values

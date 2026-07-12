@@ -19,20 +19,22 @@ Models predict risk ratings on a 5-level scale: Very Low, Relatively Low, Relati
 
 All models use the same feature set:
 
-1. **Income** - Median household income
+### Base Features (7)
+1. **Income** - Median household income for owner-occupied units only (Census S2503)
 2. **Housing Burden** - Share of households with housing costs ≥ 30% of income
 3. **Insurance Premium** - Mean homeowner insurance premium
 4. **Property Taxes & Utilities** - Median owner costs with mortgage
-5. **Net Migration Rate** - County domestic in-migration rate
+5. **In-Migration Rate** - County total in-migration rate (domestic + international)
 6. **Homes Sold YOY** - Year-over-year change in homes sold
 7. **Median Days on Market YOY** - Year-over-year change in days on market
 
-Additional engineered features:
-- Income brackets (binned)
-- Burden severity levels (binned)
-- Insurance burden (premium as % of income)
-- Housing cost burden (mortgage costs as % of income)
-- Market cooling indicator (combined DOM and sales trends)
+### Engineered Features (6)
+8. **Insurance Burden** - Premium as % of income
+9. **Housing Cost Burden** - Mortgage costs as % of income
+10. **Market Cooling** - DOM YoY minus sales YoY (captures market velocity slowdown)
+11. **Market Stress** - Weighted combination of housing burden and market cooling
+12. **Burden-Migration Interaction** - Housing burden adjusted by in-migration tendency
+13. **Insurance-Market Interaction** - Insurance premium adjusted by market velocity
 
 ## Models
 
@@ -241,11 +243,19 @@ print(f"Best: {best_name} (F1: {best_f1:.4f})")
 ## Data Sources
 
 - **FEMA NRI** (`mart.nri_county_risk`): Risk ratings and scores by hazard type
-- **ACS** (`mart.acs_county_affordability_annual`, `mart.acs_county_demographic_annual`): Income, housing burden, migration
+- **ACS Affordability** (`mart.acs_county_affordability_annual`): 
+  - Homeowner income (S2503_C02_013E - median household income for owner-occupied units)
+  - Housing burden, property taxes & utilities
+- **ACS Demographics** (`mart.acs_county_demographic_annual`): 
+  - Total in-migration rate (domestic + international, from B07001)
 - **Insurance** (`mart.insurance_premiums_annual`): Mean homeowner premiums
 - **Redfin** (`mart.redfin_county_monthly`): Housing market trends (sales, days on market)
 
 All features are averaged over the specified year range (default 2021-2023).
+
+**Key Data Improvements**:
+- **Income**: Now uses owner-occupied household income instead of county-wide median, providing more accurate insurance burden calculations
+- **In-Migration**: Now includes international migration in addition to domestic migration for a more complete picture of population inflows. Note: This is in-migration only, not net migration (we don't track out-migration)
 
 ## Troubleshooting
 
