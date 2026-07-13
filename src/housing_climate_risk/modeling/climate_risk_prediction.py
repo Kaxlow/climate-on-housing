@@ -14,22 +14,19 @@ Target Variables:
   * TRND (Tornado)
   * HAIL (Hail)
 
-Base Features (7):
-1. Income - Median household income (owner-occupied units only, from S2503)
-2. Housing Burden - Share with housing costs >= 30% of income
-3. Insurance - Mean homeowner insurance premium
-4. Property Taxes & Utilities - Median owner costs with mortgage
-5. In-Migration Rate - County total in-migration rate (domestic + international)
-6. Homes Sold YOY - Year-over-year change in homes sold
-7. Median Days on Market YOY - Year-over-year change in days on market
-
-Engineered Features (6):
-8. Insurance Burden - Premium as % of income
-9. Housing Cost Burden - Mortgage costs as % of income
-10. Market Cooling - DOM YoY minus sales YoY
-11. Market Stress - Weighted combination of burden and market cooling
-12. Burden-Migration Interaction - Burden adjusted by migration
-13. Insurance-Market Interaction - Insurance adjusted by market velocity
+Features (12):
+1.  Median Household Income of Homeowners (ACS S2503, owner-occupied units)
+2.  Net Resident Earnings Per Capita (BEA net earnings by place of residence)
+3.  Dividends, Interest, and Rent Per Capita (BEA)
+4.  Transfer Receipts Per Capita (BEA)
+5.  Utilities as % of Income (derived: no-mortgage monthly costs minus taxes and insurance)
+6.  Insurance as % of Income (mean annual premium / homeowner income)
+7.  Property Taxes as % of Income (ACS S2507 median annual taxes / homeowner income)
+8.  Net Migration Rate (total net migration per 1,000 residents, StatsAmerica)
+9.  Unemployment Rate (ACS DP03 civilian labor force unemployment rate)
+10. New Listings YOY (Redfin ratio)
+11. Homes Sold YOY (Redfin ratio)
+12. Median Days on Market YOY (Redfin absolute day delta)
 """
 
 import duckdb
@@ -190,8 +187,9 @@ class ClimateRiskPredictor:
         WITH recent_housing AS (
             SELECT
                 fips,
-                AVG(CAST(HOMES_SOLD_YOY AS DOUBLE)) as homes_sold_yoy,
-                AVG(CAST(MEDIAN_DOM_YOY AS DOUBLE)) as median_dom_yoy
+                AVG(CAST(NEW_LISTINGS_YOY AS DOUBLE))  AS new_listings_yoy,
+                AVG(CAST(HOMES_SOLD_YOY AS DOUBLE))    AS homes_sold_yoy,
+                AVG(CAST(MEDIAN_DOM_YOY AS DOUBLE))    AS median_dom_yoy
             FROM mart.redfin_county_monthly
             WHERE period_begin >= '{min_year}-01-01'
                 AND period_begin <= '{max_year}-12-31'
@@ -201,9 +199,12 @@ class ClimateRiskPredictor:
         recent_acs_affordability AS (
             SELECT
                 fips,
-                AVG(CAST(owner_mortgage_cost_burden_30pct_plus AS DOUBLE)) as housing_burden_30pct,
-                AVG(CAST(median_owner_costs_mortgage AS DOUBLE)) as property_taxes_utilities,
-                AVG(CAST(s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est AS DOUBLE)) as median_homeowner_income
+                -- Median household income for owner-occupied units (S2503)
+                AVG(TRY_CAST(s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est AS DOUBLE)) AS median_homeowner_income,
+                -- Median annual real estate taxes, non-mortgaged owners (S2507) for property tax % of income
+                AVG(TRY_CAST(s2507_owner_occupied_units_no_mortgage_real_estate_taxes_median_est AS DOUBLE)) AS median_property_taxes_annual,
+                -- Median monthly owner costs (no mortgage) — includes taxes, insurance, utilities, etc.
+                AVG(TRY_CAST(dp04_selected_monthly_owner_costs_housing_units_no_mortgage_median_est AS DOUBLE)) AS median_monthly_owner_costs_no_mortgage
             FROM mart.acs_county_affordability_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
@@ -211,42 +212,74 @@ class ClimateRiskPredictor:
         recent_insurance AS (
             SELECT
                 fips,
-                AVG(mean_premium) as insurance_premium
+                AVG(mean_premium) AS insurance_premium_annual
             FROM mart.insurance_premiums_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
         ),
-        in_migration AS (
+        recent_bea AS (
             SELECT
                 fips,
-                AVG(CAST(total_in_migration_rate AS DOUBLE)) as in_migration_rate
-            FROM mart.acs_county_demographic_annual
+                AVG(NULLIF(population, 0)) AS population,
+                AVG(net_earnings_by_place_of_residence_thousands) AS net_earnings_thousands,
+                AVG(dividends_interest_rent_thousands)            AS dividends_interest_rent_thousands,
+                AVG(transfer_receipts_thousands)                  AS transfer_receipts_thousands
+            FROM mart.statsamerica_bea_personal_income_annual
+            WHERE year BETWEEN {min_year} AND {max_year}
+            GROUP BY fips
+        ),
+        recent_migration AS (
+            SELECT
+                fips,
+                AVG(CAST(total_net_migration AS DOUBLE)) AS total_net_migration
+            FROM mart.statsamerica_population_components_annual
+            WHERE year BETWEEN {min_year} AND {max_year}
+            GROUP BY fips
+        ),
+        recent_unemployment AS (
+            SELECT
+                fips,
+                AVG(TRY_CAST(dp03_civilian_labor_force_unemployment_rate_pct AS DOUBLE)) AS unemployment_rate
+            FROM mart.acs_county_economic_annual
             WHERE year BETWEEN {min_year} AND {max_year}
             GROUP BY fips
         )
         SELECT
             n.fips,
-            n.{risk_col} as risk_rating,
-            CAST(n.{risk_score_col} AS DOUBLE) as risk_score,
-            COALESCE(a.median_homeowner_income, 0) as median_household_income,
-            a.housing_burden_30pct,
-            i.insurance_premium,
-            a.property_taxes_utilities,
-            m.in_migration_rate,
+            n.{risk_col}                        AS risk_rating,
+            CAST(n.{risk_score_col} AS DOUBLE)  AS risk_score,
+            -- Income (homeowners)
+            a.median_homeowner_income,
+            -- BEA income components per capita
+            b.net_earnings_thousands * 1000.0 / b.population           AS net_earnings_per_capita,
+            b.dividends_interest_rent_thousands * 1000.0 / b.population AS dividends_interest_rent_per_capita,
+            b.transfer_receipts_thousands * 1000.0 / b.population       AS transfer_receipts_per_capita,
+            -- Raw inputs for % of income features (computed in engineer_features)
+            a.median_property_taxes_annual,
+            a.median_monthly_owner_costs_no_mortgage,
+            i.insurance_premium_annual,
+            -- Migration (rate computed in engineer_features using BEA population)
+            m.total_net_migration,
+            b.population                                                AS bea_population,
+            -- Labor market
+            u.unemployment_rate,
+            -- Housing market dynamics
+            h.new_listings_yoy,
             h.homes_sold_yoy,
             h.median_dom_yoy
         FROM mart.nri_county_risk n
-        LEFT JOIN recent_acs_affordability a ON n.fips = a.fips
-        LEFT JOIN recent_insurance i ON n.fips = i.fips
-        LEFT JOIN in_migration m ON n.fips = m.fips
-        LEFT JOIN recent_housing h ON n.fips = h.fips
+        LEFT JOIN recent_acs_affordability a  ON n.fips = a.fips
+        LEFT JOIN recent_insurance i          ON n.fips = i.fips
+        LEFT JOIN recent_bea b                ON n.fips = b.fips
+        LEFT JOIN recent_migration m          ON n.fips = m.fips
+        LEFT JOIN recent_unemployment u       ON n.fips = u.fips
+        LEFT JOIN recent_housing h            ON n.fips = h.fips
         WHERE n.{risk_col} IS NOT NULL
             AND n.{risk_col} != ''
             AND n.{risk_col} NOT IN ('Insufficient Data', 'Not Applicable', 'No Rating')
         """
 
         df = conn.execute(query).fetchdf()
-
         conn.close()
 
         print(f"Loaded {len(df)} counties with complete data")
@@ -256,54 +289,55 @@ class ClimateRiskPredictor:
 
     def engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Create derived features and handle missing values.
+        Derive % of income features and net migration rate, then impute missing values.
 
         Args:
             df: Raw feature DataFrame
 
         Returns:
-            DataFrame with engineered features
+            DataFrame with all model features ready for scaling
         """
         df = df.copy()
 
-        # Fill missing numeric values with median first (needed for derived features)
+        # Net migration rate per 1,000 residents
+        df['net_migration_rate'] = np.where(
+            df['bea_population'] > 0,
+            df['total_net_migration'] / df['bea_population'] * 1000,
+            np.nan
+        )
+
+        # % of income features — use median_homeowner_income as denominator
+        # Guard against zero/missing income
+        income = df['median_homeowner_income'].replace(0, np.nan)
+
+        df['insurance_pct_income'] = df['insurance_premium_annual'] / income * 100
+
+        df['property_taxes_pct_income'] = df['median_property_taxes_annual'] / income * 100
+
+        # Utilities approximation: monthly no-mortgage owner costs include taxes,
+        # insurance, and utilities; subtract taxes (monthly) and insurance (monthly)
+        # to isolate the utilities + HOA + other component.
+        monthly_costs = df['median_monthly_owner_costs_no_mortgage']
+        monthly_taxes = df['median_property_taxes_annual'] / 12
+        monthly_insurance = df['insurance_premium_annual'] / 12
+        residual_monthly = (monthly_costs - monthly_taxes - monthly_insurance).clip(lower=0)
+        df['utilities_pct_income'] = residual_monthly * 12 / income * 100
+
+        # Drop raw intermediate columns not used as model features
+        df.drop(columns=[
+            'total_net_migration', 'bea_population',
+            'median_property_taxes_annual',
+            'median_monthly_owner_costs_no_mortgage',
+            'insurance_premium_annual',
+        ], inplace=True)
+
+        # Impute remaining missing values with column medians
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         for col in numeric_cols:
             if df[col].isna().any():
                 median_val = df[col].median()
                 df[col] = df[col].fillna(median_val)
                 print(f"Filled {col} missing values with median: {median_val:.2f}")
-
-        # Insurance premium per $1000 income
-        df['insurance_burden'] = (
-            df['insurance_premium'] * 12 / df['median_household_income'] * 100
-        )
-
-        # Housing costs per $1000 income
-        df['housing_cost_burden'] = (
-            df['property_taxes_utilities'] * 12 / df['median_household_income'] * 100
-        )
-
-        # Market cooling indicator (high DOM YoY + low sales YoY)
-        df['market_cooling'] = (
-            df['median_dom_yoy'] - df['homes_sold_yoy']
-        )
-
-        # Interaction Features
-        # Market stress: combines housing burden with market cooling
-        df['market_stress'] = (
-            df['housing_burden_30pct'] * 0.5 + df['market_cooling'] * 0.5
-        )
-
-        # Burden-migration interaction: how burden affects in-migration
-        df['burden_migration_interaction'] = (
-            df['housing_burden_30pct'] * (1 - df['in_migration_rate'] / 100)
-        )
-
-        # Insurance-market interaction: insurance costs adjusted for market velocity
-        df['insurance_market_interaction'] = (
-            df['insurance_premium'] * (1 + df['median_dom_yoy'] / 100)
-        )
 
         return df
 
@@ -319,19 +353,18 @@ class ClimateRiskPredictor:
         """
         # Define feature columns
         feature_cols = [
-            'median_household_income',
-            'housing_burden_30pct',
-            'insurance_premium',
-            'property_taxes_utilities',
-            'in_migration_rate',
+            'median_homeowner_income',
+            'net_earnings_per_capita',
+            'dividends_interest_rent_per_capita',
+            'transfer_receipts_per_capita',
+            'utilities_pct_income',
+            'insurance_pct_income',
+            'property_taxes_pct_income',
+            'net_migration_rate',
+            'unemployment_rate',
+            'new_listings_yoy',
             'homes_sold_yoy',
             'median_dom_yoy',
-            'insurance_burden',
-            'housing_cost_burden',
-            'market_cooling',
-            'market_stress',
-            'burden_migration_interaction',
-            'insurance_market_interaction'
         ]
 
         # Only keep features that exist in the dataframe
