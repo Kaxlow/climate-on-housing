@@ -38,12 +38,13 @@ import joblib
 import json
 from datetime import datetime
 
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import GroupKFold, cross_val_score, GridSearchCV
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     classification_report, confusion_matrix, accuracy_score,
-    f1_score, roc_auc_score
+    f1_score, mean_absolute_error
 )
+from sklearn.inspection import permutation_importance
 
 # Model imports
 from sklearn.linear_model import LogisticRegression
@@ -52,6 +53,16 @@ from sklearn.neural_network import MLPClassifier
 
 from housing_climate_risk.paths import DATA_DIR, OUTPUT_DIR
 
+
+# Ordinal encoding of risk classes — order must be preserved for MAE to be meaningful
+RISK_ORDER = {
+    'Very Low': 0,
+    'Relatively Low': 1,
+    'Relatively Moderate': 2,
+    'Relatively High': 3,
+    'Very High': 4,
+}
+RISK_ORDER_INVERSE = {v: k for k, v in RISK_ORDER.items()}
 
 # Top 5 hazards used in stormhouse-2.html "Are climate risks priced into housing markets?" section
 HAZARD_TYPES = {
@@ -155,23 +166,30 @@ class ClimateRiskPredictor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.scaler = StandardScaler()
-        self.label_encoder = LabelEncoder()
         self.feature_names = []
         self.models = {}
         self.results = {}
+        self.n_spatial_splits = 5
 
-    def load_data(self, min_year: int = 2021, max_year: int = 2023) -> pd.DataFrame:
+    def load_data(self, min_year: Optional[int] = None, max_year: Optional[int] = None) -> pd.DataFrame:
         """
         Load and join data from database tables.
 
         Args:
-            min_year: Minimum year for ACS and insurance data
-            max_year: Maximum year for ACS and insurance data
+            min_year: Minimum year for time-varying data. Defaults to max_year - 9 (last 10 years).
+            max_year: Maximum year for time-varying data. Defaults to the most recent year
+                      available in the BEA personal income table, which is typically the most
+                      restrictive recent boundary.
 
         Returns:
             DataFrame with features and target variable
         """
         conn = duckdb.connect(str(self.db_path), read_only=True)
+
+        if max_year is None:
+            max_year = datetime.now().year - 1
+        if min_year is None:
+            min_year = max_year - 9
 
         # Determine which risk column to use
         if self.hazard_type:
@@ -246,6 +264,7 @@ class ClimateRiskPredictor:
         )
         SELECT
             n.fips,
+            LEFT(n.fips, 2)                     AS state_fips,
             n.{risk_col}                        AS risk_rating,
             CAST(n.{risk_score_col} AS DOUBLE)  AS risk_score,
             -- Income (homeowners)
@@ -382,16 +401,18 @@ class ClimateRiskPredictor:
         model_name: str,
         X_train: np.ndarray,
         y_train: np.ndarray,
+        groups_train: np.ndarray,
         custom_params: Optional[Dict] = None,
         tune_hyperparams: bool = False
     ) -> Tuple[object, Dict]:
         """
-        Train a single model with optional hyperparameter tuning.
+        Train a single model with spatial cross-validation.
 
         Args:
             model_name: Name of model type from MODEL_CONFIGS
             X_train: Training features
-            y_train: Training labels
+            y_train: Ordinal-encoded labels
+            groups_train: State FIPS array for GroupKFold
             custom_params: Optional custom parameters (override defaults)
             tune_hyperparams: Whether to run grid search
 
@@ -408,17 +429,19 @@ class ClimateRiskPredictor:
 
         model = config['class'](**params)
 
+        spatial_cv = GroupKFold(n_splits=self.n_spatial_splits)
+
         if tune_hyperparams:
             print(f"\nTuning hyperparameters for {model_name}...")
             grid_search = GridSearchCV(
                 model,
                 config['param_grid'],
-                cv=5,
+                cv=spatial_cv,
                 scoring='f1_weighted',
                 n_jobs=-1,
                 verbose=1
             )
-            grid_search.fit(X_train, y_train)
+            grid_search.fit(X_train, y_train, groups=groups_train)
             model = grid_search.best_estimator_
             best_params = grid_search.best_params_
             print(f"Best parameters: {best_params}")
@@ -426,16 +449,18 @@ class ClimateRiskPredictor:
             model.fit(X_train, y_train)
             best_params = params
 
-        # Cross-validation scores
+        # Spatial cross-validation scores on the training set
         cv_scores = cross_val_score(
-            model, X_train, y_train, cv=5, scoring='f1_weighted'
+            model, X_train, y_train,
+            cv=spatial_cv, groups=groups_train,
+            scoring='f1_weighted'
         )
 
         metrics = {
             'model_name': model_name,
             'params': best_params,
-            'cv_mean': cv_scores.mean(),
-            'cv_std': cv_scores.std(),
+            'spatial_cv_f1_mean': cv_scores.mean(),
+            'spatial_cv_f1_std': cv_scores.std(),
             'trained_at': datetime.now().isoformat()
         }
 
@@ -449,12 +474,15 @@ class ClimateRiskPredictor:
         model_name: str
     ) -> Dict:
         """
-        Evaluate model on test set.
+        Evaluate model on the spatial holdout set.
+
+        Ordinal MAE and adjacent accuracy are the primary metrics — they reward
+        predictions that are close on the risk scale even when not exactly right.
 
         Args:
             model: Trained model
             X_test: Test features
-            y_test: Test labels
+            y_test: Ordinal-encoded labels (0–4)
             model_name: Model identifier
 
         Returns:
@@ -462,37 +490,62 @@ class ClimateRiskPredictor:
         """
         y_pred = model.predict(X_test)
 
-        # Classification metrics
+        # Standard classification metrics
         accuracy = accuracy_score(y_test, y_pred)
         f1_weighted = f1_score(y_test, y_pred, average='weighted')
 
-        # Classification report
+        # Ordinal metrics — penalize by distance on the risk scale
+        ordinal_mae = mean_absolute_error(y_test, y_pred)
+
+        # Adjacent accuracy: fraction of predictions within ±1 ordinal step
+        adjacent_accuracy = float(np.mean(np.abs(y_pred - y_test) <= 1))
+
+        # Classification report using human-readable class labels
+        class_labels = [RISK_ORDER_INVERSE[i] for i in sorted(RISK_ORDER_INVERSE)]
+        present_classes = sorted(set(y_test) | set(y_pred))
         report = classification_report(
-            y_test, y_pred, output_dict=True, zero_division=0
+            y_test, y_pred,
+            labels=present_classes,
+            target_names=[RISK_ORDER_INVERSE[i] for i in present_classes],
+            output_dict=True,
+            zero_division=0
         )
 
-        # Confusion matrix
-        cm = confusion_matrix(y_test, y_pred)
+        # Confusion matrix ordered by risk level
+        cm = confusion_matrix(y_test, y_pred, labels=list(range(len(RISK_ORDER))))
 
         metrics = {
             'model_name': model_name,
             'accuracy': accuracy,
             'f1_weighted': f1_weighted,
+            'ordinal_mae': ordinal_mae,
+            'adjacent_accuracy': adjacent_accuracy,
             'classification_report': report,
             'confusion_matrix': cm.tolist()
         }
 
-        # Feature importance if available
-        if hasattr(model, 'feature_importances_'):
-            importances = model.feature_importances_
-            indices = np.argsort(importances)[::-1][:10]
-            metrics['top_features'] = [
-                {
-                    'feature': self.feature_names[i],
-                    'importance': float(importances[i])
-                }
-                for i in indices
-            ]
+        # Permutation importance on the holdout set, scored by ordinal MAE degradation.
+        # Negative values mean shuffling that feature *improved* MAE (noise feature).
+        perm = permutation_importance(
+            model, X_test, y_test,
+            n_repeats=10,
+            random_state=42,
+            scoring='neg_mean_absolute_error',
+            n_jobs=-1
+        )
+        # Higher mean = larger MAE increase when shuffled = more important.
+        # Negate because scoring returns negative MAE.
+        perm_mean = -perm.importances_mean
+        perm_std = perm.importances_std
+        indices = np.argsort(perm_mean)[::-1]
+        metrics['top_features'] = [
+            {
+                'feature': self.feature_names[i],
+                'importance': float(perm_mean[i]),
+                'importance_std': float(perm_std[i])
+            }
+            for i in indices
+        ]
 
         return metrics
 
@@ -500,15 +553,17 @@ class ClimateRiskPredictor:
         self,
         df: pd.DataFrame,
         tune_hyperparams: bool = False,
-        test_size: float = 0.2
     ) -> Dict:
         """
-        Train and evaluate all configured models.
+        Train and evaluate all configured models with ordinal encoding and spatial CV.
+
+        Spatial split: the last GroupKFold fold (one held-out state group) is used
+        as the test set; remaining folds form the training set. Spatial CV on the
+        training set gives an honest estimate of out-of-region generalisation.
 
         Args:
-            df: Input DataFrame with features
-            tune_hyperparams: Whether to tune hyperparameters
-            test_size: Fraction of data for testing
+            df: Input DataFrame with features (must include 'state_fips' column)
+            tune_hyperparams: Whether to run spatial grid search
 
         Returns:
             Dictionary of results for all models
@@ -517,30 +572,43 @@ class ClimateRiskPredictor:
         df_engineered = self.engineer_features(df)
 
         print("\nPreparing features...")
-        X, y, feature_names = self.prepare_features(df_engineered)
+        X, y_labels, feature_names = self.prepare_features(df_engineered)
 
-        # Encode labels
-        y_encoded = self.label_encoder.fit_transform(y)
+        # Ordinal encoding: map risk labels to integers 0-4
+        unknown = set(y_labels) - set(RISK_ORDER)
+        if unknown:
+            raise ValueError(f"Unknown risk labels in data: {unknown}")
+        y = np.array([RISK_ORDER[label] for label in y_labels])
 
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
-        )
+        # State FIPS groups for spatial splitting — aligned to df_engineered index
+        groups = df_engineered['state_fips'].values
 
-        # Scale features
+        # Spatial train/test split: reserve the last GroupKFold fold as the holdout.
+        # This ensures no county from the test states leaks into training.
+        gkf = GroupKFold(n_splits=self.n_spatial_splits)
+        splits = list(gkf.split(X, y, groups))
+        train_idx, test_idx = splits[-1]
+
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        groups_train = groups[train_idx]
+
+        # Scale on train only
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
 
-        print(f"\nTraining set: {X_train.shape}")
-        print(f"Test set: {X_test.shape}")
+        test_states = sorted(set(groups[test_idx]))
+        print(f"\nTraining set: {X_train.shape} counties")
+        print(f"Spatial holdout: {X_test.shape} counties from states {test_states}")
 
         results = {
             'feature_names': feature_names,
-            'label_classes': self.label_encoder.classes_.tolist(),
+            'risk_order': RISK_ORDER,
+            'spatial_cv_n_splits': self.n_spatial_splits,
+            'holdout_states': test_states,
             'models': {}
         }
 
-        # Train each model
         for model_name in self.MODEL_CONFIGS.keys():
             print(f"\n{'='*60}")
             print(f"Training {model_name}...")
@@ -550,6 +618,7 @@ class ClimateRiskPredictor:
                 model_name,
                 X_train_scaled,
                 y_train,
+                groups_train,
                 tune_hyperparams=tune_hyperparams
             )
 
@@ -557,17 +626,19 @@ class ClimateRiskPredictor:
                 model, X_test_scaled, y_test, model_name
             )
 
-            # Combine metrics
             combined_metrics = {**train_metrics, **eval_metrics}
-
-            # Store model and results
             self.models[model_name] = model
             results['models'][model_name] = combined_metrics
 
             print(f"\n{model_name} Results:")
-            print(f"  CV F1 Score: {train_metrics['cv_mean']:.4f} (+/- {train_metrics['cv_std']:.4f})")
-            print(f"  Test Accuracy: {eval_metrics['accuracy']:.4f}")
-            print(f"  Test F1 Score: {eval_metrics['f1_weighted']:.4f}")
+            print(f"  Spatial CV F1:     {train_metrics['spatial_cv_f1_mean']:.4f} "
+                  f"(+/- {train_metrics['spatial_cv_f1_std']:.4f})")
+            print(f"  Holdout Accuracy:  {eval_metrics['accuracy']:.4f}")
+            print(f"  Holdout F1:        {eval_metrics['f1_weighted']:.4f}")
+            print(f"  Ordinal MAE:       {eval_metrics['ordinal_mae']:.4f} "
+                  f"(0 = perfect, 4 = worst)")
+            print(f"  Adjacent Accuracy: {eval_metrics['adjacent_accuracy']:.4f} "
+                  f"(within ±1 risk level)")
 
         self.results = results
         return results
@@ -585,11 +656,9 @@ class ClimateRiskPredictor:
             joblib.dump(model, model_path)
             print(f"Saved model: {model_path}")
 
-        # Save scaler and label encoder
+        # Save scaler
         scaler_path = self.output_dir / f'{prefix}scaler_{timestamp}.joblib'
-        encoder_path = self.output_dir / f'{prefix}label_encoder_{timestamp}.joblib'
         joblib.dump(self.scaler, scaler_path)
-        joblib.dump(self.label_encoder, encoder_path)
 
         # Save results with metadata
         results_with_meta = {
@@ -611,30 +680,30 @@ class ClimateRiskPredictor:
                 'hazard_type': self.hazard_type,
                 'hazard_name': HAZARD_TYPES.get(self.hazard_type) if self.hazard_type else 'Overall',
                 'feature_names': self.feature_names,
-                'label_classes': self.label_encoder.classes_.tolist()
+                'risk_order': RISK_ORDER,
             }, f, indent=2)
         print(f"Saved feature info: {features_path}")
 
     def get_best_model(self) -> Tuple[str, object, float]:
         """
-        Identify the best performing model based on test F1 score.
+        Identify the best performing model by ordinal MAE (lower = better).
 
         Returns:
-            Tuple of (model_name, model_object, f1_score)
+            Tuple of (model_name, model_object, ordinal_mae)
         """
         best_model_name = None
-        best_f1 = -1
+        best_mae = float('inf')
 
         for model_name, metrics in self.results['models'].items():
-            f1 = metrics['f1_weighted']
-            if f1 > best_f1:
-                best_f1 = f1
+            mae = metrics['ordinal_mae']
+            if mae < best_mae:
+                best_mae = mae
                 best_model_name = model_name
 
-        return best_model_name, self.models[best_model_name], best_f1
+        return best_model_name, self.models[best_model_name], best_mae
 
 
-def train_all_hazards(tune_hyperparams: bool = False, min_year: int = 2021, max_year: int = 2023):
+def train_all_hazards(tune_hyperparams: bool = False, min_year: Optional[int] = None, max_year: Optional[int] = None):
     """
     Train models for overall risk and all hazard types.
 
@@ -658,8 +727,8 @@ def train_all_hazards(tune_hyperparams: bool = False, min_year: int = 2021, max_
     results_overall = overall_predictor.train_all_models(df_overall, tune_hyperparams=tune_hyperparams)
     overall_predictor.save_models()
 
-    best_name, _, best_f1 = overall_predictor.get_best_model()
-    print(f"\nBest Overall Model: {best_name} (F1: {best_f1:.4f})")
+    best_name, _, best_mae = overall_predictor.get_best_model()
+    print(f"\nBest Overall Model: {best_name} (Ordinal MAE: {best_mae:.4f})")
 
     all_results['overall'] = (overall_predictor, results_overall)
 
@@ -680,8 +749,8 @@ def train_all_hazards(tune_hyperparams: bool = False, min_year: int = 2021, max_
             results = predictor.train_all_models(df, tune_hyperparams=tune_hyperparams)
             predictor.save_models()
 
-            best_name, _, best_f1 = predictor.get_best_model()
-            print(f"\nBest {hazard_name} Model: {best_name} (F1: {best_f1:.4f})")
+            best_name, _, best_mae = predictor.get_best_model()
+            print(f"\nBest {hazard_name} Model: {best_name} (Ordinal MAE: {best_mae:.4f})")
 
             all_results[hazard_code] = (predictor, results)
 
@@ -703,7 +772,7 @@ def main():
 
     # Load data
     print("\nLoading data...")
-    df = predictor.load_data(min_year=2021, max_year=2023)
+    df = predictor.load_data()
 
     # Train all models
     print("\nTraining models...")
@@ -714,10 +783,10 @@ def main():
     predictor.save_models()
 
     # Report best model
-    best_name, best_model, best_f1 = predictor.get_best_model()
+    best_name, best_model, best_mae = predictor.get_best_model()
     print(f"\n{'='*60}")
     print(f"Best Model: {best_name}")
-    print(f"F1 Score: {best_f1:.4f}")
+    print(f"Ordinal MAE: {best_mae:.4f}")
     print(f"{'='*60}")
 
     return predictor, results

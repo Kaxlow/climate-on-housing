@@ -13,28 +13,28 @@ This module trains classification models to predict:
   * **TRND** - Tornado
   * **HAIL** - Hail
 
-Models predict risk ratings on a 5-level scale: Very Low, Relatively Low, Relatively Moderate, Relatively High, Very High.
+Models predict risk ratings on a 5-level ordinal scale: Very Low → Relatively Low → Relatively Moderate → Relatively High → Very High.
 
 ## Features
 
-All models use the same feature set:
+All models use the same 12 features, averaged over the specified year range (default 2021–2023):
 
-### Base Features (7)
-1. **Income** - Median household income for owner-occupied units only (Census S2503)
-2. **Housing Burden** - Share of households with housing costs ≥ 30% of income
-3. **Insurance Premium** - Mean homeowner insurance premium
-4. **Property Taxes & Utilities** - Median owner costs with mortgage
-5. **In-Migration Rate** - County total in-migration rate (domestic + international)
-6. **Homes Sold YOY** - Year-over-year change in homes sold
-7. **Median Days on Market YOY** - Year-over-year change in days on market
+| # | Feature | Source | Notes |
+|---|---------|--------|-------|
+| 1 | **Median Household Income of Homeowners** | ACS S2503 | Owner-occupied units only |
+| 2 | **Net Resident Earnings Per Capita** | BEA via StatsAmerica | Net earnings by place of residence ÷ population |
+| 3 | **Dividends, Interest, and Rent Per Capita** | BEA via StatsAmerica | Unearned income component ÷ population |
+| 4 | **Transfer Receipts Per Capita** | BEA via StatsAmerica | Government transfers ÷ population |
+| 5 | **Utilities as % of Income** | ACS DP04 + insurance data | Residual of monthly no-mortgage owner costs after subtracting taxes and insurance, annualised ÷ homeowner income |
+| 6 | **Insurance as % of Income** | Insurance premiums + ACS | Mean annual premium ÷ homeowner income |
+| 7 | **Property Taxes as % of Income** | ACS S2507 | Median annual real estate taxes (non-mortgaged owners) ÷ homeowner income |
+| 8 | **Net Migration Rate** | StatsAmerica population components | Total net migration (domestic + international) per 1,000 residents |
+| 9 | **Unemployment Rate** | ACS DP03 | Civilian labour force unemployment rate (%) |
+| 10 | **New Listings YOY** | Redfin county monthly | Year-over-year ratio |
+| 11 | **Homes Sold YOY** | Redfin county monthly | Year-over-year ratio |
+| 12 | **Median Days on Market YOY** | Redfin county monthly | Absolute day delta year-over-year |
 
-### Engineered Features (6)
-8. **Insurance Burden** - Premium as % of income
-9. **Housing Cost Burden** - Mortgage costs as % of income
-10. **Market Cooling** - DOM YoY minus sales YoY (captures market velocity slowdown)
-11. **Market Stress** - Weighted combination of housing burden and market cooling
-12. **Burden-Migration Interaction** - Housing burden adjusted by in-migration tendency
-13. **Insurance-Market Interaction** - Insurance premium adjusted by market velocity
+Missing feature values are imputed with the column median before training.
 
 ## Models
 
@@ -46,11 +46,32 @@ Four model types are trained for each risk target:
 4. **Neural Network** - Multi-layer perceptron
 
 All models use:
-- Stratified train/test split (80/20 default)
+- Ordinal target encoding (Very Low = 0, …, Very High = 4)
+- Spatial train/test split via `GroupKFold` grouped by state FIPS
 - Balanced class weights
-- 5-fold cross-validation
+- Spatial 5-fold cross-validation on the training set
 - Standard feature scaling
 - Optional grid search hyperparameter tuning
+
+### Ordinal Encoding
+
+Risk classes are mapped to integers that preserve their order:
+
+| Label | Ordinal Value |
+|-------|--------------|
+| Very Low | 0 |
+| Relatively Low | 1 |
+| Relatively Moderate | 2 |
+| Relatively High | 3 |
+| Very High | 4 |
+
+This ensures that predicting "Very High" when the truth is "Very Low" is penalised more than a one-step error, which nominal classification ignores.
+
+### Spatial Cross-Validation
+
+Training and evaluation use `GroupKFold(n_splits=5)` with state FIPS as the group key. The last fold's states form the holdout set; all counties from those states are withheld from training entirely. This prevents geographic leakage — adjacent counties that share climate exposure and demographics can no longer appear in both train and test.
+
+Spatial CV on the training set gives an honest estimate of out-of-region generalisation, rather than the optimistic scores produced by random splits.
 
 ## Usage
 
@@ -87,7 +108,7 @@ This runs grid search over:
 - Tree depth, sample splits, estimator count (Random Forest, Gradient Boosting)
 - Network architecture, learning rate, activation (Neural Network)
 
-Tuning significantly increases training time (5-10x) but may improve accuracy by 1-3 percentage points.
+Tuning significantly increases training time (5–10×) but may improve accuracy by 1–3 percentage points.
 
 ### Train Single Model Type
 
@@ -112,7 +133,6 @@ output/models/climate_risk_prediction/
 ├── overall/                           # Overall risk models
 │   ├── overall_random_forest_20260707_142315.joblib
 │   ├── overall_scaler_20260707_142315.joblib
-│   ├── overall_label_encoder_20260707_142315.joblib
 │   ├── overall_results_20260707_142315.json
 │   └── overall_feature_names_20260707_142315.json
 ├── erqk/                              # Earthquake-specific models
@@ -128,19 +148,22 @@ output/models/climate_risk_prediction/
 
 - **`*_<model>_<timestamp>.joblib`**: Trained scikit-learn model
 - **`*_scaler_<timestamp>.joblib`**: StandardScaler fitted to training data
-- **`*_label_encoder_<timestamp>.joblib`**: LabelEncoder for risk rating classes
 - **`*_results_<timestamp>.json`**: Performance metrics, confusion matrices, feature importance
-- **`*_feature_names_<timestamp>.json`**: Feature list and label classes
+- **`*_feature_names_<timestamp>.json`**: Feature list and ordinal risk mapping
 
 ## Evaluation Metrics
 
 Each model reports:
-- **Accuracy**: Fraction of correct predictions
-- **F1 Score (weighted)**: Harmonic mean of precision and recall, weighted by class support
-- **Cross-validation scores**: 5-fold CV F1 scores on training set
-- **Classification report**: Per-class precision, recall, F1
-- **Confusion matrix**: Predicted vs actual risk ratings
-- **Feature importance**: Top 10 features (tree-based models only)
+- **Ordinal MAE**: Mean absolute error on the 0–4 scale — the primary ranking metric. A score of 0.8 means predictions are off by less than one risk tier on average.
+- **Adjacent Accuracy**: Fraction of predictions within ±1 ordinal step of the true label.
+- **Accuracy**: Fraction of exact correct predictions.
+- **F1 Score (weighted)**: Harmonic mean of precision and recall, weighted by class support.
+- **Spatial CV F1**: 5-fold spatial cross-validation F1 on the training set.
+- **Classification report**: Per-class precision, recall, F1.
+- **Confusion matrix**: Ordered by risk level (Very Low → Very High).
+- **Feature importance**: Top 10 features (tree-based models only).
+
+The best model is selected by lowest ordinal MAE.
 
 ## County Coverage
 
@@ -155,7 +178,7 @@ Models are trained only on counties with valid risk ratings in the NRI dataset:
 | Tornado (TRND) | 3,144 | 26% Very Low, 39% Relatively Low, 25% Moderate |
 | Hail (HAIL) | 3,144 | 39% Relatively Low, 33% Very Low, 21% Moderate |
 
-Counties with "Not Applicable", "No Rating", or "Insufficient Data" are excluded. This means predictions are only made for counties where the hazard is actually relevant and has been assessed.
+Counties with "Not Applicable", "No Rating", or "Insufficient Data" are excluded.
 
 ## Key Implementation Details
 
@@ -167,30 +190,14 @@ The 5 hazards were selected to align with the "Are climate risks priced into hou
 3. **Reasonable class distributions** (avoiding extreme imbalance)
 4. **Relevance to housing markets** (direct property damage potential)
 
-These hazards match the visualization used in the main StormHouse infographic, ensuring model predictions align with the public-facing analysis.
-
 ### Missing Value Handling
 
-- Numeric features with missing values are filled with the median
-- Categorical features are one-hot encoded with `drop_first=True`
-- Counties missing the target risk rating are excluded from training
+- All numeric features with missing values are imputed with the column median after feature engineering.
+- Counties missing the target risk rating are excluded from training.
 
 ### Class Imbalance
 
-All models use `class_weight='balanced'` to handle imbalanced risk rating distributions. This prevents the model from simply predicting the majority class (e.g., "Very Low").
-
-## Example Results
-
-Typical F1 scores (without hyperparameter tuning):
-
-| Model Type | Overall Risk | Earthquake | Tornado | Hail |
-|------------|--------------|------------|---------|------|
-| Logistic Regression | 0.42 | 0.44 | 0.48 | 0.46 |
-| Random Forest | 0.48 | 0.51 | 0.55 | 0.53 |
-| Gradient Boosting | 0.50 | 0.53 | 0.57 | 0.55 |
-| Neural Network | 0.46 | 0.49 | 0.53 | 0.51 |
-
-*Note: These are illustrative estimates. Actual performance varies by data year range and tuning.*
+All models use `class_weight='balanced'` to handle imbalanced risk rating distributions.
 
 ## Configuration
 
@@ -223,6 +230,8 @@ MODEL_CONFIGS = {
 from housing_climate_risk.modeling.climate_risk_prediction import (
     ClimateRiskPredictor,
     HAZARD_TYPES,
+    RISK_ORDER,
+    RISK_ORDER_INVERSE,
     train_all_hazards
 )
 
@@ -235,76 +244,72 @@ predictor.save_models()
 # Train all hazards
 all_results = train_all_hazards(tune_hyperparams=True, min_year=2020, max_year=2024)
 
-# Access best model
-best_name, best_model, best_f1 = predictor.get_best_model()
-print(f"Best: {best_name} (F1: {best_f1:.4f})")
+# Access best model (selected by lowest ordinal MAE)
+best_name, best_model, best_mae = predictor.get_best_model()
+print(f"Best: {best_name} (Ordinal MAE: {best_mae:.4f})")
 ```
 
 ## Data Sources
 
 - **FEMA NRI** (`mart.nri_county_risk`): Risk ratings and scores by hazard type
-- **ACS Affordability** (`mart.acs_county_affordability_annual`): 
-  - Homeowner income (S2503_C02_013E - median household income for owner-occupied units)
-  - Housing burden, property taxes & utilities
-- **ACS Demographics** (`mart.acs_county_demographic_annual`): 
-  - Total in-migration rate (domestic + international, from B07001)
-- **Insurance** (`mart.insurance_premiums_annual`): Mean homeowner premiums
-- **Redfin** (`mart.redfin_county_monthly`): Housing market trends (sales, days on market)
-
-All features are averaged over the specified year range (default 2021-2023).
-
-**Key Data Improvements**:
-- **Income**: Now uses owner-occupied household income instead of county-wide median, providing more accurate insurance burden calculations
-- **In-Migration**: Now includes international migration in addition to domestic migration for a more complete picture of population inflows. Note: This is in-migration only, not net migration (we don't track out-migration)
+- **ACS Affordability** (`mart.acs_county_affordability_annual`):
+  - Homeowner income (S2503 median household income, owner-occupied units)
+  - Median annual property taxes (S2507, non-mortgaged owners)
+  - Median monthly owner costs with no mortgage (DP04)
+- **BEA via StatsAmerica** (`mart.statsamerica_bea_personal_income_annual`):
+  - Net earnings by place of residence, dividends/interest/rent, transfer receipts (all in thousands), population
+- **StatsAmerica population components** (`mart.statsamerica_population_components_annual`):
+  - Total net migration (domestic + international)
+- **ACS Economic** (`mart.acs_county_economic_annual`):
+  - Civilian labour force unemployment rate (DP03)
+- **Insurance** (`mart.insurance_premiums_annual`): Mean annual homeowner premiums
+- **Redfin** (`mart.redfin_county_monthly`): New listings YOY, homes sold YOY, median days on market YOY
 
 ## Troubleshooting
 
-**Q: Model accuracy is low (~40% F1 score)**  
-A: This is expected. Climate risk ratings reflect many factors beyond economic/housing data (geology, weather patterns, infrastructure). 40-55% F1 is a reasonable benchmark for this feature set. To improve:
+**Q: Model accuracy is low**  
+A: Climate risk ratings reflect many factors beyond economic/housing data (geology, weather patterns, infrastructure). The ordinal MAE is the more informative metric — a MAE below 1.0 means predictions are within one risk tier on average. To improve:
 - Add hazard-specific features (elevation, precipitation, wildfire fuel)
 - Use larger date ranges to capture trends
 - Enable hyperparameter tuning with `--tune`
 
 **Q: Training fails with "only X counties with data"**  
-A: Check that the year range overlaps with available ACS, insurance, and housing data. Some counties lack recent housing data. Try expanding `--min-year` or `--max-year`.
+A: Check that the year range overlaps with available ACS, insurance, BEA, and housing data. Try expanding `--min-year` or `--max-year`.
 
 **Q: Grid search takes too long**  
 A: Disable tuning or train a single model type:
 ```bash
-train-climate-risk-model --model random_forest  # Skip tuning, single model
+train-climate-risk-model --model random_forest
 ```
 
 **Q: How do I use a trained model to predict new counties?**  
 A: Load the saved artifacts and predict:
 ```python
 import joblib
-import pandas as pd
 import numpy as np
+from housing_climate_risk.modeling.climate_risk_prediction import RISK_ORDER_INVERSE
 
 # Load artifacts (replace timestamp with actual filename)
 model = joblib.load('output/models/climate_risk_prediction/erqk/erqk_random_forest_20260707_142330.joblib')
 scaler = joblib.load('output/models/climate_risk_prediction/erqk/erqk_scaler_20260707_142330.joblib')
-encoder = joblib.load('output/models/climate_risk_prediction/erqk/erqk_label_encoder_20260707_142330.joblib')
 
 # Prepare new data (must match training feature order)
-new_data = pd.DataFrame({...})  # Same features as training
+new_data = pd.DataFrame({...})  # Same 12 features as training
 X_scaled = scaler.transform(new_data.values)
 
-# Predict
-y_pred_encoded = model.predict(X_scaled)
-y_pred = encoder.inverse_transform(y_pred_encoded)
-print(y_pred)  # ['Relatively High', 'Very Low', ...]
+# Predict — returns ordinal integers 0-4
+y_pred_ordinal = model.predict(X_scaled)
+y_pred_labels = [RISK_ORDER_INVERSE[i] for i in y_pred_ordinal]
+print(y_pred_labels)  # ['Relatively High', 'Very Low', ...]
 ```
 
 ## Future Enhancements
 
-Potential improvements:
-- Add hazard-specific features (elevation for landslides, forest cover for wildfires)
+- Add hazard-specific physical features (elevation, forest cover, flood zone share, seismic zone)
 - Train hierarchical models (predict overall risk from hazard-specific risks)
-- Use regression to predict continuous risk scores instead of categorical ratings
-- Add time-series features (climate trends over 5-10 years)
+- Add time-series features (climate trends over 5–10 years)
 - Ensemble predictions across multiple models
-- Spatial features (neighbor risk spillover, regional clustering)
+- Swap `GradientBoostingClassifier` for LightGBM for faster training and native ordinal support
 
 ## References
 

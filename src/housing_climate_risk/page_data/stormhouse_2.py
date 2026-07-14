@@ -728,7 +728,7 @@ def build_playbook_data(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
 
 
 def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
-    nri = con.execute("SELECT fips, risk_rating FROM mart.nri_county_risk WHERE fips IS NOT NULL").df()
+    nri = con.execute("SELECT fips, risk_rating, risk_score FROM mart.nri_county_risk WHERE fips IS NOT NULL").df()
     nri["fips"] = nri["fips"].astype(str).str.zfill(5)
     nri["riskRating"] = nri["risk_rating"].map(rating_clean)
     nri["riskValue"] = nri["riskRating"].map(RISK_NUMERIC)
@@ -914,7 +914,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     afford["estimated_annual_utilities"] = electricity + gas + water + other_fuel
 
     features = (
-        nri[["fips", "riskRating", "riskValue"]]
+        nri[["fips", "riskRating", "riskValue", "risk_score"]]
         .merge(econ[["fips", *econ_cols[2:]]], on="fips", how="left")
         .merge(demo[["fips", *demo_cols[2:]]], on="fips", how="left")
         .merge(afford[["fips", "median_owner_costs_mortgage", "housing_cost_pct_income", "owner_mortgage_cost_burden_30pct_plus", "estimated_annual_home_insurance", "estimated_annual_property_tax", "estimated_annual_utilities"]], on="fips", how="left")
@@ -1001,7 +1001,68 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                 "medianDomYoy": serialize_number(getattr(row, "median_dom_yoy"), 5),
             }
         )
-    return {"riskOrder": RISK_ORDER, "rows": rows, "correlations": correlations, "topFeatures": top, "countyProfiles": county_profiles}
+
+    # --- Option B: within-group feature correlations ---
+    # For each risk rating, Spearman correlation of each feature with the continuous
+    # NRI risk_score (0–100) restricted to counties in that tier. Uses the raw score
+    # rather than the integer riskValue so there is meaningful variance within each tier.
+    within_group_correlations: dict[str, list[dict]] = {}
+    for rating in RISK_ORDER:
+        group = features[features["riskRating"] == rating].copy()
+        rating_corrs = []
+        for _, label, column, _, _ in feature_defs:
+            valid_group = group.dropna(subset=[column, "risk_score"])
+            if len(valid_group) < 10:
+                corr = None
+            else:
+                corr = serialize_number(
+                    valid_group[["risk_score", column]].corr(method="spearman").iloc[0, 1], 3
+                )
+            rating_corrs.append({"feature": label, "corr": corr})
+        within_group_correlations[rating] = rating_corrs
+
+    # --- Option A: within-group percentile ranks ---
+    # For each county, each feature's percentile rank (0–100) among counties sharing
+    # its risk rating. Answers "where does this county sit within its peer group?"
+    # Stored as {fips: {featureLabel: percentile, ...}, ...}.
+    profile_feature_map = [
+        ("income", "dp03_income_and_benefits_total_households_median_household_income_est"),
+        ("housingBurden", "housing_cost_pct_income"),
+        ("insurance", "estimated_annual_home_insurance"),
+        ("propertyTaxes", "estimated_annual_property_tax"),
+        ("utilities", "estimated_annual_utilities"),
+        ("netMigration", "domestic_in_migration_rate"),
+        ("homesSoldYoy", "homes_sold_yoy"),
+        ("medianDomYoy", "median_dom_yoy"),
+    ]
+    # Compute percentile ranks within each risk group for the profile features.
+    # pandas rank(pct=True) gives a 0–1 value; multiply by 100 and round to 1dp.
+    percentile_cols = {col: f"pct_{key}" for key, col in profile_feature_map}
+    features_pct = features[["fips", "riskRating"] + [col for _, col in profile_feature_map]].copy()
+    for col, pct_col in percentile_cols.items():
+        features_pct[pct_col] = (
+            features_pct.groupby("riskRating")[col]
+            .rank(method="average", pct=True, na_option="keep")
+            .mul(100)
+            .round(1)
+        )
+    within_group_percentiles: dict[str, dict[str, float | None]] = {}
+    for row in features_pct.itertuples(index=False):
+        entry: dict[str, float | None] = {}
+        for key, col in profile_feature_map:
+            raw = getattr(row, percentile_cols[col])
+            entry[key] = None if pd.isna(raw) else float(raw)
+        within_group_percentiles[row.fips] = entry
+
+    return {
+        "riskOrder": RISK_ORDER,
+        "rows": rows,
+        "correlations": correlations,
+        "topFeatures": top,
+        "countyProfiles": county_profiles,
+        "withinGroupCorrelations": within_group_correlations,
+        "withinGroupPercentiles": within_group_percentiles,
+    }
 
 
 def make_html(data: dict[str, object]) -> str:
