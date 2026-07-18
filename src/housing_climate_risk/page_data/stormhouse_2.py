@@ -206,8 +206,8 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         counties.append(
             {
                 "fips": row.fips,
-                "county": row.county_label or f"{row.COUNTY}, {row.STATEABBRV}",
-                "state": row.state_code or row.STATEABBRV,
+                "county": row.county_label if pd.notna(row.county_label) else f"{row.COUNTY}, {row.STATEABBRV}",
+                "state": row.state_code if pd.notna(row.state_code) else row.STATEABBRV,
                 "avgPpsfYoy": serialize_number(row.avg_median_ppsf_yoy, 5),
                 "avgPpsfYoyCapped": serialize_number(min(max(row.avg_median_ppsf_yoy, cap_lower), cap_upper), 5),
                 "ppsfYoyWasCapped": bool(row.avg_median_ppsf_yoy < cap_lower or row.avg_median_ppsf_yoy > cap_upper),
@@ -588,7 +588,8 @@ def _build_window_data(
     pre_months: int,
     post_months: int,
     anchor_col: str = "event_window_month",
-    sample_per_group: int = 5,
+    sample_per_group: int = 2,
+    eligible_feature_fips_by_risk: dict[str, set[str]] | None = None,
 ) -> dict[str, object]:
     """Build by-rating aggregates + example lines for one event-window definition.
 
@@ -681,6 +682,9 @@ def _build_window_data(
     example_lines = []
     for risk in RISK_ORDER:
         group = line_avg.loc[line_avg["riskRating"].eq(risk)].dropna(subset=["pct_rank"]).copy()
+        if eligible_feature_fips_by_risk is not None:
+            eligible_fips = eligible_feature_fips_by_risk.get(risk, set())
+            group = group.loc[group["fips"].astype(str).isin(eligible_fips)].copy()
         if group.empty:
             continue
         if eligible_line_ids:
@@ -695,16 +699,18 @@ def _build_window_data(
         # Within the bounded set, still avoid the most extreme eligible lines.
         p95 = group["max_abs"].quantile(0.95)
         mild = group.loc[group["max_abs"].le(p95)]
-        if len(mild) >= sample_per_group:
+        if len(mild) >= 2:
             group = mild
-        # Stratified sample: pick counties spread across percentile ranks
-        group = group.sort_values("pct_rank")
-        n = min(sample_per_group, len(group))
-        indices = np.linspace(0, len(group) - 1, n, dtype=int)
-        candidates = group.iloc[indices]
+        group_median = group["avg_metric"].median()
+        below = group.loc[group["avg_metric"].lt(group_median)].sort_values("avg_metric").head(1)
+        above = group.loc[group["avg_metric"].gt(group_median)].sort_values("avg_metric", ascending=False).head(1)
+        candidates = pd.concat([below, above], ignore_index=True)
+        if candidates.empty:
+            candidates = group.sort_values("pct_rank").head(sample_per_group)
 
         for candidate in candidates.itertuples(index=False):
             rows = complete.loc[complete["line_id"].eq(candidate.line_id)].sort_values(anchor_col)
+            sample_position = "Above group median" if candidate.avg_metric > group_median else "Below group median"
             example_lines.append(
                 {
                     "riskRating": risk,
@@ -713,6 +719,9 @@ def _build_window_data(
                     "county": candidate.county_label,
                     "state": candidate.state_code,
                     "pctRank": float(candidate.pct_rank),
+                    "avgPpsfYoy": serialize_number(candidate.avg_metric, 5),
+                    "groupMedianPpsfYoy": serialize_number(group_median, 5),
+                    "samplePosition": sample_position,
                     "minPpsfYoy": serialize_number(candidate.min_metric, 3),
                     "maxPpsfYoy": serialize_number(candidate.max_metric, 3),
                     "values": [
@@ -746,7 +755,10 @@ def _build_window_data(
     }
 
 
-def build_event_windows(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
+def build_event_windows(
+    con: duckdb.DuckDBPyConnection,
+    eligible_feature_fips_by_risk: dict[str, set[str]] | None = None,
+) -> dict[str, object]:
     events = load_disaster_events(con)
     events = events.loc[events["event_start_month"].between(pd.Timestamp("2016-01-01"), pd.Timestamp("2025-12-01"))].copy()
     housing = load_redfin_county_monthly(con)
@@ -773,7 +785,14 @@ def build_event_windows(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     nri["riskRating"] = nri["risk_rating"].map(rating_clean)
 
     # Window A uses event_window_month (relative to event start), pre=12, post=36
-    window_a = _build_window_data(affected, nri, metric, pre_months=12, post_months=36)
+    window_a = _build_window_data(
+        affected,
+        nri,
+        metric,
+        pre_months=12,
+        post_months=36,
+        eligible_feature_fips_by_risk=eligible_feature_fips_by_risk,
+    )
 
     # Window B is anchored at event END: use months_after_event_end for post, months_from_event_start for pre.
     # We derive a combined "end-anchored" month column: negative = months before event end, positive = after.
@@ -786,7 +805,15 @@ def build_event_windows(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         affected_b["months_after_event_end"],
     )
     affected_b["line_id"] = affected_b["event_key"]
-    window_b = _build_window_data(affected_b, nri, metric, pre_months=12, post_months=60, anchor_col="ewm_end")
+    window_b = _build_window_data(
+        affected_b,
+        nri,
+        metric,
+        pre_months=12,
+        post_months=60,
+        anchor_col="ewm_end",
+        eligible_feature_fips_by_risk=eligible_feature_fips_by_risk,
+    )
 
     total_complete_lines = len(
         set(window_a["exampleCountyLines"][0]["lineId"] for x in window_a["exampleCountyLines"])
@@ -1011,6 +1038,141 @@ def build_playbook_data(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             for row in playbook_counties.itertuples(index=False)
         ],
         "countyFeatures": county_feature_map,
+    }
+
+
+def build_county_playbook_data(
+    con: duckdb.DuckDBPyConnection,
+) -> dict[str, object]:
+    """Build county hazard ratings, monthly PPSF history, and event periods."""
+    hazard_cols: list[str] = []
+    for hazard in HAZARDS:
+        if hazard["key"] == "overall":
+            hazard_cols.extend(["risk_score", "risk_rating"])
+        else:
+            hazard_cols.extend([hazard["score"], hazard["rating"]])
+    nri = con.execute(
+        f"""
+        SELECT fips, COUNTY, STATEABBRV, {", ".join(hazard_cols)}
+        FROM mart.nri_county_risk
+        WHERE fips IS NOT NULL
+        """
+    ).df()
+    nri["fips"] = nri["fips"].astype(str).str.zfill(5)
+    labels = con.execute(
+        """
+        SELECT lpad(fips, 5, '0') AS fips,
+               any_value(REGION) AS county_label,
+               any_value(STATE_CODE) AS state_code
+        FROM mart.redfin_county_monthly
+        WHERE fips IS NOT NULL
+        GROUP BY fips
+        """
+    ).df()
+    labels["fips"] = labels["fips"].astype(str).str.zfill(5)
+    nri = nri.merge(labels, on="fips", how="left")
+    for hazard in HAZARDS:
+        nri[hazard["score"]] = clean_numeric(nri[hazard["score"]])
+        nri[hazard["rating"]] = nri[hazard["rating"]].map(rating_clean)
+    counties = []
+    for row in nri.itertuples(index=False):
+        state = (
+            str(row.state_code)
+            if pd.notna(row.state_code)
+            else str(row.STATEABBRV)
+            if pd.notna(row.STATEABBRV)
+            else ""
+        )
+        county = (
+            str(row.county_label)
+            if pd.notna(row.county_label)
+            else f"{row.COUNTY}, {state}"
+            if pd.notna(row.COUNTY)
+            else f"County FIPS {row.fips}"
+        )
+        hazards = {}
+        for hazard in HAZARDS:
+            rating = getattr(row, hazard["rating"])
+            hazards[hazard["key"]] = {
+                "score": serialize_number(getattr(row, hazard["score"]), 3),
+                "rating": rating,
+                "ratingValue": RISK_NUMERIC.get(rating),
+            }
+        counties.append(
+            {
+                "fips": row.fips,
+                "county": county,
+                "state": state,
+                "riskRating": hazards["overall"]["rating"],
+                "riskScore": hazards["overall"]["score"],
+                "hazards": hazards,
+            }
+        )
+    if not counties:
+        return {"available": False, "message": "County housing and NRI data are unavailable"}
+
+    history = con.execute(
+        """
+        SELECT
+            lpad(fips, 5, '0') AS fips,
+            date_trunc('month', period_begin)::DATE AS month,
+            avg(CASE
+                WHEN try_cast(replace(MEDIAN_PPSF_YOY, ',', '') AS DOUBLE) <= -888888000 THEN NULL
+                ELSE try_cast(replace(MEDIAN_PPSF_YOY, ',', '') AS DOUBLE)
+            END) AS median_ppsf_yoy
+        FROM mart.redfin_county_monthly
+        WHERE fips IS NOT NULL
+          AND period_begin IS NOT NULL
+          AND coalesce(property_type, PROPERTY_TYPE_1) = 'All Residential'
+          AND extract(year FROM period_begin) >= (
+              SELECT max(extract(year FROM period_begin)) - 9
+              FROM mart.redfin_county_monthly
+              WHERE period_begin IS NOT NULL
+          )
+        GROUP BY fips, date_trunc('month', period_begin)
+        ORDER BY fips, month
+        """
+    ).df()
+    history["fips"] = history["fips"].astype(str).str.zfill(5)
+    history["median_ppsf_yoy"] = pd.to_numeric(history["median_ppsf_yoy"], errors="coerce")
+    history = history.dropna(subset=["median_ppsf_yoy"])
+
+    events = load_disaster_events(con)
+    events = events.loc[
+        events["event_start_month"].between(pd.Timestamp("2016-01-01"), pd.Timestamp("2025-12-01"))
+    ].drop_duplicates("event_key")
+    county_fips = {str(county["fips"]).zfill(5) for county in counties}
+    events = events.loc[events["fips"].isin(county_fips)].sort_values(["fips", "event_start_month"])
+
+    monthly_history_by_fips: dict[str, list[dict[str, object]]] = {}
+    for row in history.itertuples(index=False):
+        monthly_history_by_fips.setdefault(row.fips, []).append(
+            {
+                "month": row.month.strftime("%Y-%m"),
+                "value": serialize_number(row.median_ppsf_yoy, 5),
+            }
+        )
+    events_by_fips: dict[str, list[dict[str, object]]] = {}
+    for row in events.itertuples(index=False):
+        events_by_fips.setdefault(row.fips, []).append(
+            {
+                "eventKey": row.event_key,
+                "source": row.event_source,
+                "type": row.event_type,
+                "name": row.event_name,
+                "start": row.event_start_month.strftime("%Y-%m"),
+                "end": row.event_end_month.strftime("%Y-%m"),
+            }
+        )
+
+    return {
+        "available": True,
+        "hazards": [{"key": hazard["key"], "label": hazard["label"]} for hazard in HAZARDS],
+        "counties": counties,
+        "monthlyHistoryByFips": monthly_history_by_fips,
+        "eventsByFips": events_by_fips,
+        "historyStart": history["month"].min().strftime("%Y-%m"),
+        "historyEnd": history["month"].max().strftime("%Y-%m"),
     }
 
 
@@ -1370,7 +1532,11 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         ("Climate", "Temperature", "avg_temperature_f", "number", "mart.ncei_county_weather_monthly"),
         ("Climate", "Precipitation", "precipitation_inches", "number", "mart.ncei_county_weather_monthly"),
     ]
-    excluded_feature_labels = {"Median PPSF YOY", "Homeownership Cost Share"}
+    excluded_feature_labels = {
+        "Median PPSF YOY",
+        "Homeownership Cost Share",
+        "Accom. & Food Wages % Total Wages",
+    }
     for _, _, column, _, _ in feature_defs:
         if column in features:
             features[column] = pd.to_numeric(features[column], errors="coerce")
@@ -1552,9 +1718,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             rating_corrs.append({"feature": label, "corr": corr})
         within_group_correlations[rating] = rating_corrs
         selected_corrs = [item for item in rating_corrs if item["corr"] is not None]
-        selected_corrs = sorted(selected_corrs, key=lambda item: abs(item["corr"] or 0), reverse=True)[:5]
-        if len(selected_corrs) < 3:
-            selected_corrs = selected_corrs[:3]
+        selected_corrs = sorted(selected_corrs, key=lambda item: abs(item["corr"] or 0), reverse=True)[:10]
         within_group_top_features[rating] = selected_corrs
         within_group_feature_bins[rating] = {}
         group_position_baseline = group["relative_position"].median()
@@ -1567,6 +1731,20 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                 continue
             valid_group["bucket"], bucket_order = feature_bucket_labels(valid_group[column], meta["format"])
             valid_group = valid_group.dropna(subset=["bucket"]).copy()
+            county_feature_values = valid_group[["fips", column]].drop_duplicates("fips").copy()
+            county_feature_values["feature_percentile"] = (
+                county_feature_values[column]
+                .rank(method="average", pct=True, na_option="keep")
+                .mul(100)
+            )
+            valid_group = valid_group.merge(
+                county_feature_values[["fips", "feature_percentile"]],
+                on="fips",
+                how="left",
+            )
+            valid_group["feature_contribution"] = (
+                (valid_group["feature_percentile"] / 100 * 2 - 1) * float(selected["corr"])
+            )
             bucket_summaries = (
                 valid_group.groupby("bucket", observed=False)
                 .agg(
@@ -1593,12 +1771,16 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                     "count": int(summary.count),
                     "baselineRelativePosition": serialize_number(group_position_baseline, 5),
                 }
-            for row in valid_group[["fips", column, "bucket"]].itertuples(index=False):
+            for row in valid_group[
+                ["fips", column, "bucket", "feature_percentile", "feature_contribution"]
+            ].drop_duplicates("fips").itertuples(index=False):
                 summary = bucket_summary_by_name.get(str(row.bucket))
                 if not summary:
                     continue
                 within_group_feature_bins[rating].setdefault(str(row.fips), {})[label] = {
                     "value": serialize_number(row[1], 4),
+                    "valuePercentile": serialize_number(row.feature_percentile, 2),
+                    "contribution": serialize_number(row.feature_contribution, 4),
                     "bucket": str(row.bucket),
                     "bucketOrder": summary["bucketOrder"],
                     "bucketCount": summary["bucketCount"],
@@ -1668,6 +1850,35 @@ HTML_TEMPLATE = r"""<!doctype html>
     .card-sidebar-right button { border-radius: 6px; padding: 9px 10px; font-size: 12px; text-align: left; border: 1px solid var(--line); background: #fff; cursor: pointer; font-weight: 700; width: 100%; display: flex; align-items: center; gap: 6px; }
     .card-sidebar-right button.active { border-color: transparent; color: white; }
     .card-main-left { flex: 1; min-width: 0; padding: 16px; }
+    .control-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 12px; }
+    .toggle-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .control-bar .sidebar-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-right: 4px; }
+    .control-bar button { border-radius: 999px; padding: 8px 11px; font-size: 12px; text-align: left; border: 1px solid var(--line); background: #fff; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+    .control-bar button.active { border-color: transparent; color: white; }
+    .pricing-viz-grid { align-items: center; margin-bottom: 32px; }
+    .map-with-legend { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
+    .map-with-legend .legend { position: absolute; top: 100%; left: 0; justify-content: center; width: 100%; }
+    .feature-detail-list { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(90px, auto) minmax(280px, 1.15fr) minmax(280px, 1.15fr); column-gap: 12px; align-items: center; }
+    .feature-detail-header, .feature-detail-row { display: contents; }
+    .feature-detail-header > div { padding: 0 0 7px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .feature-detail-row > div { min-width: 0; padding: 9px 0; border-top: 1px solid rgba(216,208,196,.7); font-size: 13px; }
+    .feature-scale { display: grid; grid-template-columns: 68px minmax(120px, 1fr) 68px; gap: 6px; align-items: center; color: var(--muted); font-size: 10px; }
+    .feature-scale-bar { position: relative; height: 10px; border-radius: 999px; border: 1px solid rgba(23,32,38,.14); background: linear-gradient(90deg, #16803c 0%, #e0b33b 50%, #b42318 100%); }
+    .feature-scale-bar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: rgba(23,32,38,.42); }
+    .feature-scale-bar.percentile { background: linear-gradient(90deg, #e8f1f5 0%, #6fa3b8 50%, #22566b 100%); }
+    .feature-scale-bar.percentile::after { display: none; }
+    .feature-scale-arrow { position: absolute; top: -8px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid #172026; transform: translateX(-5px); }
+    .county-count { margin-top: 8px; text-align: center; color: var(--ink); font-size: 20px; font-weight: 850; }
+    #risk-play-button { margin-left: 4px; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
+    #risk-play-button.visible { visibility: visible; opacity: 1; pointer-events: auto; }
+    .playbook-map-wrap { position: relative; height: 380px; overflow: hidden; }
+    .playbook-map-wrap .chart { height: 380px; }
+    .playbook-map-controls { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; gap: 6px; }
+    .playbook-map-controls button { min-width: 34px; justify-content: center; box-shadow: 0 2px 8px rgba(23,32,38,.16); }
+    .hazard-icon { display: inline-flex; width: 22px; justify-content: center; margin-right: 6px; }
+    .hazard-rating-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px 16px; margin: 10px 0 18px; }
+    .hazard-rating-item { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .playbook-commentary { margin-top: 12px; padding: 13px 15px; border-left: 4px solid var(--teal); background: #edf7f4; font-size: 14px; line-height: 1.55; }
     /* ---- window frame transition ---- */
     .window-frame { transition: opacity 380ms ease, transform 380ms ease; }
     .window-frame.sliding-left { opacity: 0; transform: translateX(-32px); pointer-events: none; }
@@ -1750,6 +1961,10 @@ HTML_TEMPLATE = r"""<!doctype html>
       h1 { font-size: clamp(42px, 12vw, 66px); }
       .dek { font-size: 19px; line-height: 1.42; }
       .chart, .chart.tall, .chart.xtall { height: 360px; }
+      .feature-detail-header { display: none; }
+      .feature-detail-list { grid-template-columns: minmax(140px, 1fr) auto; }
+      .feature-detail-row > :nth-child(3), .feature-detail-row > :nth-child(4) { grid-column: 1 / -1; }
+      .hazard-rating-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1765,7 +1980,6 @@ HTML_TEMPLATE = r"""<!doctype html>
 
   <section class="slide" id="pricing">
     <h2 id="t-pricing-h2"></h2>
-    <p class="section-copy" id="t-pricing-copy"></p>
 
     <!-- County PPSF YoY histories — full width, footnotes below chart -->
     <div class="panel" style="margin-top:12px;">
@@ -1776,28 +1990,26 @@ HTML_TEMPLATE = r"""<!doctype html>
       <p class="footnote" id="t-scatter-fn2"></p>
     </div>
     <div class="takeaway" id="score-scatter-takeaway"></div>
-    <h3 id="t-pricing-grouping-subtitle" style="margin:22px 0 4px;"></h3>
+  </section>
+
+  <section class="slide" id="pricing-grouping">
+    <h2 id="t-pricing-grouping-subtitle"></h2>
     <p class="section-copy" id="t-pricing-nri-placeholder" style="margin-top:6px;"></p>
 
     <!-- PPSF YoY grouped by risk rating + map — side by side, hazard toggle on right -->
     <div class="panel" style="margin-top:16px;">
       <h3 id="t-pricing-card-title"></h3>
       <p class="sub" id="t-pricing-card-text"></p>
-      <div class="card-with-sidebar-right">
-        <div class="card-main-left">
-          <div class="viz-grid">
-            <div>
-              <svg id="rating-scatter" class="chart xtall"></svg>
-            </div>
-            <div>
-              <div class="tabs" id="rating-map-mode"></div>
-              <svg id="rating-map" class="chart"></svg>
-              <div class="legend" id="rating-map-legend"></div>
-            </div>
-          </div>
+      <div class="control-bar" id="rating-hazard-sidebar-right">
+        <div class="sidebar-label" id="t-hazard-sidebar-label"></div>
+      </div>
+      <div class="viz-grid pricing-viz-grid">
+        <div>
+          <svg id="rating-scatter" class="chart xtall"></svg>
         </div>
-        <div class="card-sidebar-right" id="rating-hazard-sidebar-right">
-          <div class="sidebar-label" id="t-hazard-sidebar-label"></div>
+        <div class="map-with-legend">
+          <svg id="rating-map" class="chart"></svg>
+          <div class="legend" id="rating-map-legend"></div>
         </div>
       </div>
     </div>
@@ -1812,28 +2024,25 @@ HTML_TEMPLATE = r"""<!doctype html>
     <!-- Event window + affected map in one card, risk toggle on right, arrow nav for windows -->
     <div class="panel" style="margin-top:12px;">
       <h3 id="t-events-card-title"></h3>
-      <p class="sub" id="t-events-card-text"></p>
-      <div class="card-with-sidebar-right">
-        <div class="card-main-left">
-          <div class="viz-grid timeseries-grid">
-            <div class="event-chart-wrap" style="position:relative;">
-              <div id="event-window-frame" class="window-frame">
-                <svg id="event-window" class="chart tall"></svg>
-              </div>
-              <button class="window-arrow window-arrow-left" id="event-arrow-left" type="button">&#8592;</button>
-              <button class="window-arrow window-arrow-right" id="event-arrow-right" type="button">&#8594;</button>
-            </div>
-            <div>
-              <svg id="affected-map" class="chart"></svg>
-              <div class="note" id="affected-county-count" style="margin-top:8px;"></div>
-            </div>
+      <div class="control-bar" id="risk-frame-sidebar-right">
+        <div class="sidebar-label" id="t-risk-sidebar-label"></div>
+        <div class="toggle-row" id="risk-rating-toggles"></div>
+        <button id="risk-play-button" type="button">&#9654; Play</button>
+      </div>
+      <div class="viz-grid timeseries-grid">
+        <div class="event-chart-wrap" style="position:relative;">
+          <div id="event-window-frame" class="window-frame">
+            <svg id="event-window" class="chart tall"></svg>
           </div>
-          <div class="takeaway" id="event-window-takeaway" style="margin-top:10px; font-size:14px;"></div>
+          <button class="window-arrow window-arrow-left" id="event-arrow-left" type="button">&#8592;</button>
+          <button class="window-arrow window-arrow-right" id="event-arrow-right" type="button">&#8594;</button>
         </div>
-        <div class="card-sidebar-right" id="risk-frame-sidebar-right">
-          <div class="sidebar-label" id="t-risk-sidebar-label"></div>
+        <div>
+          <svg id="affected-map" class="chart"></svg>
+          <div class="county-count" id="affected-county-count"></div>
         </div>
       </div>
+      <div class="takeaway" id="event-window-takeaway" style="margin-top:10px; font-size:14px;"></div>
     </div>
     <div class="takeaway" id="event-takeaway"></div>
     <div class="sources" id="t-events-sources"></div>
@@ -1845,35 +2054,21 @@ HTML_TEMPLATE = r"""<!doctype html>
 
     <!-- Chart + map side by side, risk group toggle on right -->
     <div class="panel" style="margin-top:12px;">
-      <h3 id="t-features-card-title"></h3>
-      <p class="sub" id="t-features-card-text"></p>
-      <div class="card-with-sidebar-right">
-        <div class="card-main-left">
-          <div class="viz-grid timeseries-grid">
-            <div>
-              <svg id="feature-event-window" class="chart tall"></svg>
-            </div>
-            <div>
-              <svg id="feature-county-map" class="chart"></svg>
-            </div>
-          </div>
-          <div id="county-features-card" style="margin-top:16px; display:none; border-top:1px solid var(--line); padding-top:14px;">
-            <h3 id="county-features-title"></h3>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:8px;">
-              <div>
-                <p class="sub" id="t-feature-values-label" style="font-weight:700; margin-bottom:6px;"></p>
-                <div id="selected-county-features"></div>
-              </div>
-              <div>
-                <p class="sub" id="t-feature-corr-label" style="font-weight:700; margin-bottom:6px;"></p>
-                <div id="within-group-correlations"></div>
-              </div>
-            </div>
-          </div>
+      <div class="control-bar" id="feature-risk-sidebar">
+        <div class="sidebar-label" id="t-feature-sidebar-label"></div>
+      </div>
+      <div class="viz-grid timeseries-grid">
+        <div>
+          <svg id="feature-event-window" class="chart tall"></svg>
         </div>
-        <div class="card-sidebar-right" id="feature-risk-sidebar">
-          <div class="sidebar-label" id="t-feature-sidebar-label"></div>
+        <div>
+          <svg id="feature-county-map" class="chart"></svg>
         </div>
+      </div>
+      <div id="county-features-card" style="margin-top:16px; display:none; border-top:1px solid var(--line); padding-top:14px;">
+        <h3 id="county-features-title"></h3>
+        <p class="sub" id="t-feature-corr-label" style="font-weight:700; margin-bottom:6px;"></p>
+        <div id="within-group-correlations"></div>
       </div>
     </div>
 
@@ -1883,32 +2078,27 @@ HTML_TEMPLATE = r"""<!doctype html>
 
   <section class="slide" id="playbook">
     <h2 id="t-playbook-h2"></h2>
-    <p class="section-copy" id="t-playbook-copy"></p>
 
-    <!-- Consolidated playbook card: search, map, profile, features, impact all in one -->
+    <!-- County search, fixed map viewport, hazard profile, and housing history -->
     <div class="panel" style="margin-top:12px;">
-      <div id="model-unavailable" style="display:none; padding:16px; background:#fef3c7; border-radius:8px; margin-bottom:12px;">
-        <p style="margin:0; color:#92400e;" id="t-model-unavailable"></p>
-      </div>
       <div style="margin-bottom:10px;">
         <input type="text" id="county-search" style="padding:9px 14px; border:1px solid var(--line); border-radius:999px; font-size:13px; width:min(400px,100%); background:#fff;">
       </div>
       <div id="county-results" style="max-height:200px; overflow-y:auto; margin-bottom:10px; border:1px solid var(--line); border-radius:6px; display:none;"></div>
-      <svg id="county-selection-map" class="chart" style="height:380px;"></svg>
-
-      <!-- Inline playbook detail (shown after selection) -->
-      <div id="playbook-display" style="display:none; margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
-        <h3 id="playbook-profile-title"></h3>
-        <p class="sub"><span id="t-playbook-risk-label"></span> <span id="projected-risk-rating" style="font-weight:800;"></span></p>
-
-        <!-- Top model features with importance bars -->
-        <div id="playbook-county-features" style="margin-bottom:16px;"></div>
-
-        <!-- Expected impact -->
-        <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-          <h4 id="t-playbook-impact-title" style="font-size:15px; margin:0 0 6px;"></h4>
-          <div id="expected-impact"></div>
+      <div class="playbook-map-wrap">
+        <svg id="county-selection-map" class="chart"></svg>
+        <div class="playbook-map-controls">
+          <button id="playbook-map-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="playbook-map-zoom-minus" type="button" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+          <button id="playbook-map-zoom-toggle" type="button" style="display:none;"></button>
         </div>
+      </div>
+
+      <div id="playbook-display" style="display:none; margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
+        <div class="hazard-rating-grid" id="playbook-hazard-ratings"></div>
+        <h3 id="t-playbook-history-title" style="margin-top:18px;"></h3>
+        <svg id="playbook-ppsf-history" class="chart tall"></svg>
+        <div class="playbook-commentary" id="playbook-event-commentary"></div>
       </div>
     </div>
 
@@ -1924,56 +2114,73 @@ HTML_TEMPLATE = r"""<!doctype html>
 const TEXT = {
   // ---- Hero ----
   heroEyebrow: "Which Way the Wind Blows",
-  heroH1: "How Climate Events Matter to Your Home",
-  heroDek: "Are climate risks priced into housing markets? Exploring the relationship between climate risk, house price growth, and what happens to counties when extreme weather strikes.",
+  heroH1: "Are Climate Risks Priced Into Housing Markets?",
+  heroDek: "Climate change results in more severe weather events and natural disasters that cause substantial damage to properties and in extreme cases, devastate local communities. What does all this mean to you as a homeowner?",
 
   // ---- Pricing section ----
-  pricingH2: "Are Climate Risks Priced Into Housing Markets?",
-  pricingCopy: "Climate change comes with an increasing frequency of severe weather events and natural disasters that cause heavy damage to properties and in extreme cases, devastate local communities. What does this mean for housing markets across the United States?",
+  pricingH2: "To Begin: What Does Growth in Housing Markets Look Like Across the United States?",
   scatterTitle: "Median Price-Per-Square-Foot (PPSF) Year-Over-Year (YoY) by County",
-  scatterSub: "Each line is a county's Median PPSF YoY over the last 10 years.",
+  scatterSub: "Each line represents a county's Median PPSF YoY over the last 10 years.",
   scatterFootnote1: "* Outliers beyond the 1st–99th percentile are excluded.",
   scatterFootnote2: "* County-year observations with fewer than 3 reported months are excluded.",
-  pricingScoreScatterTakeaway: "Looking at the median house price growth across counties over the last 10 years, there isn't a clear pattern.",
-  pricingTakeaway: "When counties are grouped by climate risk level, a pattern emerges: counties with higher risk tend to have lower levels of house price growth.",
-  pricingGroupingSubtitle: "What About Grouping Counties by Climate Risk?",
-  pricingNriPlaceholder: "Placeholder: The FEMA National Risk Index summarizes a county's expected annual loss, social vulnerability, and community resilience across natural hazards. In this page, the NRI rating is used as a broad measure of climate-related risk exposure.",
+  pricingScoreScatterTakeaway: "From county-level median house price growth over the last 10 years, there is significant variation and there doesn't seem to be a clear pattern.<br>However, the impact of climate change is uneven across the country, so looking from a climate angle might reveal a more meaningful pattern.",
+  pricingGroupingSubtitle: "A Climate Perspective: What Does House Price Growth Look Like When Grouping Counties by Climate Risk?",
+  pricingNriPlaceholder: "The FEMA National Risk Index (NRI) serves as a measure of climate-related risk exposure. It summarizes a county's expected annual loss, social vulnerability, and community resilience across natural hazards. Counties are assigned a risk rating along a scale from \"Very Low\" to \"Very High\".",
   pricingCardTitle: "Median PPSF YoY by Climate Risk",
-  pricingCardText: "Counties are grouped by their FEMA National Risk Index (NRI) risk rating.",
+  pricingCardText: "House price growth of counties grouped by their FEMA National Risk Index (NRI) risk rating. Risk ratings are available for specific hazards and for overall climate risk.",
   hazardSidebarLabel: "Hazard type",
+  pricingTakeaway: "A pattern now emerges: Counties with higher risk tend to show lower levels of house price growth.<br>Housing markets are influenced by events across time. With respect to climate events, is there a shift in house price growth?",
   pricingSources: 'Sources: <a href="https://hazards.fema.gov/nri/" target="_blank" rel="noopener">FEMA National Risk Index</a>, local mart <code>data/quoll.duckdb: mart.nri_county_risk</code>; <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>, local mart <code>mart.redfin_county_monthly</code>. House prices use the average monthly <code>MEDIAN_PPSF_YOY</code> value in 2025.',
 
   // ---- Events section ----
-  eventsH2: "What Happens to House Price Growth When An Extreme Climate Event Occurs?",
-  eventsCopy: "Extreme climate events can change the housing market outlook in its area as buyers and sellers re-evaluate their positions based on the perceived increased risk. Here's how the growth momentum in housing markets have changed over time around previous extreme climate events.",
-  eventsCardTitle: "Median PPSF YoY Around Extreme Climate Events by Risk Rating",
-  eventsCardText: "A look at county house price growth during the time around extreme climate events.",
+  eventsH2: "Observing Climate Events: What Happens to House Price Growth?",
+  eventsCopy: "Severe weather incidents and natural disasters can change the housing market outlook in its area as buyers and sellers re-evaluate their positions based on the perceived increased risk.",
+  eventsCardTitle: "Median PPSF YoY Around Extreme Climate Events",
   riskSidebarLabel: "Risk rating",
   eventWindowATakeaway: "Past the 2-year mark post-event, house price growth momentum diverges across different risk groups. Growth weakening is more pronounced in higher risk groups.",
-  eventWindowBTakeaway: "Around the 4-year mark post-event, house price growth across different risk groups begin to converge to the same level. It appears that the event’s impact is largely forgotten eventually.",
-  eventsTakeaway: "Past extreme climate events show that house price growth declines significantly some time after the event for counties with higher level of climate risk. Homeowners who could hold on throughout the period of weakness experienced some subsequent recovery in house price growth.",
+  eventWindowBTakeaway: "Around the 4-year mark post-event, house price growth across different risk groups begin to converge to the same level. It appears that the event’s impact fades out from view eventually.",
+  eventsTakeaway: "In higher-risk counties, there appears to be some time lag after an event before house price growth declines significantly. Homeowners who made it through the period of weakness then experienced some subsequent recovery.<br>The wide band within each risk group shows that counties are hardly uniform, even within the same risk category. Why does this variation exist?",
   eventsSources: "Sources: local marts <code>mart.fema_disaster_declarations</code>, <code>mart.noaa_storm_events</code>, <code>mart.redfin_county_monthly</code>, and <code>mart.nri_county_risk</code>.",
 
   // ---- Features section ----
-  featuresH2: "What Sets Apart Counties With Different Climate Risk?",
-  featuresCopy: "A county's features can make it more vulnerable or resilient to destructive weather events. Let's examine these features' relationships to climate risk and house price growth.",
-  featuresCardTitle: "What are the attributes of counties with different climate risk levels?",
-  featuresCardText: "Click on a county's line plot to see its features and what its climate risk looks like.",
-  featureSidebarLabel: "Risk group",
-  featureValuesLabel: "County feature values and individual features' association with overall climate risk",
+  featuresH2: "What Sets Apart Counties Within the Same Risk Group?",
+  featuresCopy: "A county's features can make its housing market more vulnerable or resilient to destructive weather events, and also influence its housing market.",
+  featureSidebarLabel: "Risk Rating",
   featureCorrLabel: "County features most correlated with relative position within its risk group",
-  featuresTakeaway: "Different features have different correlations with climate risk and house price growth. Each county is a distinct combination of features, therefore its climate risk and house price growth are functions of the amalgamation of its features.",
+  featuresTakeaway: "Since counties at different price growth levels within the same risk group have distinctly different features, a county's features are correlated with its housing market performance.<br>Given the significance of climate risk to housing markets, we can paint a picture of a county's climate risk that will be invaluable to homeowners.",
   featuresSources: "Sources: local marts <code>mart.acs_county_economic_annual</code>, <code>mart.acs_county_demographic_annual</code>, <code>mart.acs_county_affordability_annual</code>, <code>mart.ncei_county_weather_monthly</code>, and <code>mart.nri_county_risk</code>. Cost components are midpoint estimates from ACS cost buckets.",
 
   // ---- Playbook section ----
-  playbookH2: "What to Expect for a County When an Extreme Climate Event Happens",
-  playbookCopy: "Given the relationship between county characteristics, climate risk, and house price growth, we can project what would likely happen in a county when an extreme climate event occurs.",
+  playbookH2: "Climate Playbook: What to Know About Your County's Climate Exposure",
   playbookSearchPlaceholder: "Search for a county by name, state, or FIPS…",
-  modelUnavailable: 'Climate risk prediction models are not available. Please train using <code>train-climate-risk-model --all-hazards</code>',
-  playbookProfileTitle: "TODO: Placeholder selected county title",
-  playbookRiskLabel: "Projected risk:",
-  playbookImpactTitle: "Expected House Price Growth Post-Event",
-  playbookSources: "Sources: Climate risk prediction models from <code>output/models/climate_risk_prediction/overall/</code>; county data from local marts.",
+  playbookHistoryTitle: "Monthly Median PPSF YoY Over the Past 10 Years",
+  playbookZoomOut: "Zoom out",
+  playbookZoomIn: "Zoom to county",
+  playbookEventLegend: "Extreme event period",
+  playbookMissingDataLegend: "Missing county data",
+  playbookTakeaways: {
+    noEvents: "<strong>No qualifying extreme climate events were recorded for this county during the displayed period.</strong><br>{expectation}",
+    eventSummary: "<strong>{eventCount} qualifying extreme {eventNoun} shown.</strong> {observation}{alignment}<ul style=\"margin:8px 0 0;padding-left:20px;max-height:170px;overflow:auto;\">{details}</ul>",
+    insufficientHistory: "There is not enough pre- and post-event housing history to measure a change.",
+    observedChange: "Across {measuredCount} measurable {eventNoun}, the median 12-month PPSF YoY change {direction} by {magnitude} percentage points.",
+    expectationComparison: " This is {alignment} with the group-level expectation for {risk} NRI risk. {expectation}",
+    eventDetail: "<li>{name} ({start} to {end}): {result}</li>",
+    unavailableExpectation: "A group-level post-event expectation is unavailable for this NRI rating.",
+  },
+  playbookTakeawayTerms: {
+    event: "event",
+    events: "events",
+    declined: "declined",
+    increased: "increased",
+    unchanged: "was broadly unchanged",
+    aligned: "broadly in line",
+    notAligned: "not clearly in line",
+    down: "down",
+    up: "up",
+    littleChanged: "little changed",
+    insufficient: "insufficient pre/post data",
+  },
+  playbookSources: "Sources: FEMA National Risk Index and local mart <code>mart.nri_county_risk</code>; Redfin Data Center and local mart <code>mart.redfin_county_monthly</code>; local marts <code>mart.fema_disaster_declarations</code> and <code>mart.noaa_storm_events</code>.",
   riskImpacts: {
     "Very Low": "Counties with Very Low climate risk tend to maintain steady house price growth around climate events, with minimal disruption to market momentum.",
     "Low": "Counties with Low climate risk typically see modest softening of house price growth about two years after the event, but generally recover within three years.",
@@ -1992,7 +2199,6 @@ function hydrateText() {
     heroH1: "t-hero-h1",
     heroDek: "t-hero-dek",
     pricingH2: "t-pricing-h2",
-    pricingCopy: "t-pricing-copy",
     scatterTitle: "t-scatter-title",
     scatterSub: "t-scatter-sub",
     scatterFootnote1: "t-scatter-fn1",
@@ -2008,25 +2214,17 @@ function hydrateText() {
     eventsH2: "t-events-h2",
     eventsCopy: "t-events-copy",
     eventsCardTitle: "t-events-card-title",
-    eventsCardText: "t-events-card-text",
     riskSidebarLabel: "t-risk-sidebar-label",
     eventsTakeaway: "event-takeaway",
     eventsSources: "t-events-sources",
     featuresH2: "t-features-h2",
     featuresCopy: "t-features-copy",
-    featuresCardTitle: "t-features-card-title",
-    featuresCardText: "t-features-card-text",
     featureSidebarLabel: "t-feature-sidebar-label",
-    featureValuesLabel: "t-feature-values-label",
     featureCorrLabel: "t-feature-corr-label",
     featuresTakeaway: "feature-takeaway",
     featuresSources: "t-features-sources",
     playbookH2: "t-playbook-h2",
-    playbookCopy: "t-playbook-copy",
-    modelUnavailable: "t-model-unavailable",
-    playbookProfileTitle: "playbook-profile-title",
-    playbookRiskLabel: "t-playbook-risk-label",
-    playbookImpactTitle: "t-playbook-impact-title",
+    playbookHistoryTitle: "t-playbook-history-title",
     playbookSources: "t-playbook-sources",
   };
   for (const [key, id] of Object.entries(map)) {
@@ -2056,8 +2254,8 @@ const fmtNum = d3.format(",.1f");
 const fmtMoney = d3.format("$,.0f");
 const tooltip = d3.select("#tooltip");
 const countyByFips = new Map(DATA.priceRisk.counties.map(d => [d.fips, d]));
+const playbookCountyByFips = new Map((DATA.playbook?.counties || []).map(d => [d.fips, d]));
 let ratingHazard = "overall";
-let ratingMapMode = "rating";
 // Event section state
 let selectedRisk = "Very Low";
 let riskTimer = null;
@@ -2068,6 +2266,10 @@ let selectedFeatureRisk = "Medium";
 let selectedFeatureCounty = null;
 // Playbook state
 let selectedCountyFips = null;
+let playbookMapZoomed = false;
+let playbookZoomBehavior = null;
+let playbookMapTransform = d3.zoomIdentity;
+let playbookSelectedTransform = d3.zoomIdentity;
 
 function hazardLabel(key) { return DATA.priceRisk.hazards.find(h => h.key === key)?.label || key; }
 function hazardCounty(county, key) { return county?.hazards?.[key] || {}; }
@@ -2192,18 +2394,14 @@ function drawRatingScatter() {
 }
 
 function drawRatingMap() {
-  const values = DATA.priceRisk.counties.map(d => d.avgPpsfYoy);
-  const ppsfDomain = robustDomain(values);
-  const ppsfScale = colorScale(values, d3.interpolateBlues, true);
   drawMap("#rating-map",
     (county, fips) => {
       if (!county) return "#ece7df";
-      if (ratingMapMode === "ppsf") return county.avgPpsfYoy == null ? "#ece7df" : ppsfScale(capValue(county.avgPpsfYoy, ppsfDomain));
       return RISK_COLORS[hazardCounty(county, ratingHazard).rating] || "#ece7df";
     },
-    (county, fips) => county ? `<strong>${county.county}</strong>${ratingMapMode === "ppsf" ? `PPSF YoY: ${pctText(county.avgPpsfYoy)}` : `${hazardLabel(ratingHazard)} rating: ${hazardCounty(county, ratingHazard).rating ?? "n/a"}`}` : "",
+    (county, fips) => county ? `<strong>${county.county}</strong>${hazardLabel(ratingHazard)} rating: ${hazardCounty(county, ratingHazard).rating ?? "n/a"}` : "",
     "#rating-map-legend",
-    ratingMapMode === "ppsf" ? scaleLegendHtml(ppsfDomain, "#eff6ff", "#2563eb", "Average 2025 median PPSF YoY, color-capped", fmtPct) : RISK_ORDER.map(r => `<span><span class="swatch" style="background:${RISK_COLORS[r]}"></span>${r}</span>`).join("")
+    RISK_ORDER.map(r => `<span><span class="swatch" style="background:${RISK_COLORS[r]}"></span>${r}</span>`).join("")
   );
 }
 
@@ -2262,30 +2460,27 @@ function initButtons() {
       drawRatingScatter(); drawRatingMap();
     });
 
-  // Rating map mode tabs
-  d3.select("#rating-map-mode").selectAll("button")
-    .data([{key:"rating",label:"NRI risk rating"},{key:"ppsf",label:"Median PPSF YoY"}]).join("button")
-    .text(d=>d.label).classed("active",d=>d.key===ratingMapMode)
-    .on("click",(event,d)=>{ratingMapMode=d.key; d3.select("#rating-map-mode").selectAll("button").classed("active",x=>x.key===ratingMapMode); drawRatingMap();});
-
   // Event section: arrow nav for windows
   d3.select("#event-arrow-left").on("click", () => switchEventWindow("left"));
   d3.select("#event-arrow-right").on("click", () => switchEventWindow("right"));
 
   // Event section: risk rating sidebar (right, color-coded)
-  const riskSidebar = d3.select("#risk-frame-sidebar-right");
-  riskSidebar.selectAll("button")
+  const riskSidebar = d3.select("#risk-rating-toggles");
+  riskSidebar.selectAll("button.risk-toggle")
     .data(RISK_ORDER).join("button")
+    .attr("class", "risk-toggle")
     .text(d=>d)
     .style("border-left", d=>`4px solid ${RISK_COLORS[d]}`)
     .classed("active", d=>d===selectedRisk)
     .style("background", d=>d===selectedRisk ? RISK_COLORS[d] : null)
     .on("click",(event,d)=>{
       selectedRisk=d; clearInterval(riskTimer); riskAutoPaused=true;
-      riskSidebar.selectAll("button").classed("active",x=>x===selectedRisk)
+      riskSidebar.selectAll("button.risk-toggle").classed("active",x=>x===selectedRisk)
         .style("background", x=>x===selectedRisk ? RISK_COLORS[x] : null);
+      d3.select("#risk-play-button").classed("visible", true);
       renderEventSection();
     });
+  d3.select("#risk-play-button").on("click", startRiskTimer);
 
   // Features risk group sidebar (right, color-coded)
   const featureSidebar = d3.select("#feature-risk-sidebar");
@@ -2344,6 +2539,23 @@ function riskAssociationText(association) {
   return `<span style="color:#66717b;font-size:11px;">No clear NRI risk association</span>`;
 }
 
+function featureScaleHtml(contribution) {
+  const score = contribution == null || !Number.isFinite(+contribution)
+    ? null
+    : Math.max(-1, Math.min(1, +contribution));
+  const p = score == null ? null : 50 + score * 50;
+  const marker = p == null ? "" : `<span class="feature-scale-arrow" style="left:${p}%;"></span>`;
+  return `<div class="feature-scale"><span>Lower PPSF YoY</span><span class="feature-scale-bar">${marker}</span><span style="text-align:right;">Higher PPSF YoY</span></div>`;
+}
+
+function featurePercentileScaleHtml(percentile) {
+  const p = percentile == null || !Number.isFinite(+percentile)
+    ? null
+    : Math.max(0, Math.min(100, +percentile));
+  const marker = p == null ? "" : `<span class="feature-scale-arrow" style="left:${p}%;"></span>`;
+  return `<div class="feature-scale"><span>Low value</span><span class="feature-scale-bar percentile">${marker}</span><span style="text-align:right;">High value</span></div>`;
+}
+
 // ---- render event section with two windows ----
 function activeWindowData() {
   return activeEventWindow === "A" ? DATA.eventWindows.windowA : DATA.eventWindows.windowB;
@@ -2351,8 +2563,9 @@ function activeWindowData() {
 
 function renderEventSection() {
   const wd = activeWindowData();
-  d3.select("#risk-frame-sidebar-right").selectAll("button").classed("active", d => d === selectedRisk)
+  d3.select("#risk-rating-toggles").selectAll("button.risk-toggle").classed("active", d => d === selectedRisk)
     .style("background", d => d === selectedRisk ? RISK_COLORS[d] : null);
+  d3.select("#risk-play-button").classed("visible", riskAutoPaused);
   const ta = activeEventWindow === "A" ? TEXT.eventWindowATakeaway : TEXT.eventWindowBTakeaway;
   d3.select("#event-window-takeaway").text(ta);
   drawLineChart("#event-window", wd.byRating, "riskRating",
@@ -2366,7 +2579,7 @@ function renderEventSection() {
 function drawAffectedMap(wd) {
   const affected = new Map((wd.affectedCounties || []).map(d => [d.fips, d.riskRating]));
   const selectedCount = new Set((wd.affectedCounties || []).filter(d => d.riskRating === selectedRisk).map(d => d.fips)).size;
-  d3.select("#affected-county-count").text(`${fmtNum(selectedCount)} counties in the selected ${selectedRisk} risk group`);
+  d3.select("#affected-county-count").text(`${d3.format(",d")(selectedCount)} counties`);
   drawMap("#affected-map",
     (county, fips) => affected.get(fips) === selectedRisk ? RISK_COLORS[selectedRisk] : "#e6dfd5",
     (county, fips) => affected.get(fips) ? `<strong>${county?.county || fips}</strong>Affected county<br>NRI rating: ${affected.get(fips)}` : "",
@@ -2377,9 +2590,10 @@ function drawAffectedMap(wd) {
 function startRiskTimer() {
   clearInterval(riskTimer);
   riskAutoPaused = false;
+  d3.select("#risk-play-button").classed("visible", false);
   riskTimer = setInterval(() => {
     selectedRisk = RISK_ORDER[(RISK_ORDER.indexOf(selectedRisk) + 1) % RISK_ORDER.length];
-    d3.select("#risk-frame-sidebar-right").selectAll("button").classed("active", d => d === selectedRisk)
+    d3.select("#risk-rating-toggles").selectAll("button.risk-toggle").classed("active", d => d === selectedRisk)
       .style("background", d => d === selectedRisk ? RISK_COLORS[d] : null);
     renderEventSection();
   }, 3200);
@@ -2424,7 +2638,7 @@ function drawFeatureHeatmaps() {
       .attr("y", y(lastPt.value) + 3)
       .attr("opacity", isSelected ? 1 : 0.55)
       .attr("font-weight", isSelected ? 700 : 400)
-      .text(d.county);
+      .text(`${d.county} (${d.samplePosition === "Above group median" ? "above" : "below"})`);
   });
 
   // Highlight selected county on map
@@ -2442,53 +2656,26 @@ function drawCountyFeaturePanelV2() {
     return;
   }
   d3.select("#county-features-card").style("display","block");
-  d3.select("#county-features-title").text(`${selectedFeatureCounty.county}, ${selectedFeatureCounty.state} - ${selectedFeatureCounty.riskRating} Risk`);
+  d3.select("#county-features-title").text(`${countyDisplayName(selectedFeatureCounty)} - ${selectedFeatureCounty.riskRating} Risk`);
 
-  const profile = DATA.features.countyProfiles.find(d => d.fips === selectedFeatureCounty.fips);
-  const countyBins = (DATA.features.countyFeatureBins || {})[selectedFeatureCounty.fips] || {};
   const featureMeta = DATA.features.featureMeta || {};
-  const impactText = (association, subject = "risk") => {
-    if (subject === "risk") {
-      if (association === "higher") return `<span style="color:#b42318;font-size:11px;">Associated with higher NRI risk</span>`;
-      if (association === "lower") return `<span style="color:#16803c;font-size:11px;">Associated with lower NRI risk</span>`;
-      return `<span style="color:#66717b;font-size:11px;">No clear NRI risk association</span>`;
-    }
-    if (association === "higher") return `<span style="color:#b42318;font-size:11px;">Associated with higher ${subject}</span>`;
-    if (association === "lower") return `<span style="color:#16803c;font-size:11px;">Associated with lower ${subject}</span>`;
-    return `<span style="color:#66717b;font-size:11px;">No clear ${subject} association</span>`;
-  };
-  const impactMark = association => association === "higher" ? "+" : association === "lower" ? "-" : "0";
-
-  if (profile) {
-    const rows = (DATA.features.selectedFeatures || []).map(label => [label, profile.featureValues?.[label], featureMeta[label]?.format || "number"]);
-    const html = `<div style="display:grid;grid-template-columns:1fr auto 1.2fr auto;gap:6px;font-size:13px;line-height:1.7;">
-      ${rows.map(([k,v,fmt]) => {
-        const bin = countyBins[k];
-        const association = bin?.riskAssociation || "neutral";
-        const color = association === "higher" ? "#b42318" : association === "lower" ? "#16803c" : "#66717b";
-        const marker = `<span style="color:${color};">${impactMark(association)}</span>`;
-        const label = impactText(association, "risk");
-        const disp = formatFeatureVal(v, fmt);
-        const bucket = `<span style="font-size:11px;color:var(--muted);">${relativeBinLabel(bin)}</span>`;
-        return `<div style="font-weight:600;">${k}</div><div style="text-align:right;">${disp}</div><div>${bucket}</div><div style="text-align:center;">${marker} ${label}</div>`;
-      }).join("")}
-    </div>`;
-    d3.select("#selected-county-features").html(html);
-  } else {
-    d3.select("#selected-county-features").text("Feature profile not available for this county.");
-  }
-
   const wgBins = ((DATA.features.withinGroupFeatureBins || {})[selectedFeatureCounty.riskRating] || {})[selectedFeatureCounty.fips] || {};
   const wgTop = ((DATA.features.withinGroupTopFeatures || {})[selectedFeatureCounty.riskRating] || [])
-    .filter(c => wgBins[c.feature])
-    .slice(0, 5);
+    .slice(0, 10);
   if (wgTop.length) {
-    const html2 = `<div style="display:grid;grid-template-columns:1fr 1.15fr auto;gap:5px;font-size:13px;line-height:1.7;">
+    const html2 = `<div class="feature-detail-list">
+      <div class="feature-detail-header">
+        <div>Feature</div><div>County value</div><div>Percentile within risk group</div><div>Contribution to Median PPSF YoY</div>
+      </div>
       ${wgTop.map(c => {
         const bin = wgBins[c.feature];
-        return `<div style="font-weight:600;">${c.feature}</div>
-          <div style="font-size:11px;color:var(--muted);">${relativeBinLabel(bin)}</div>
-          <div>${impactText(bin.relativePpsfAssociation || bin.ppsfAssociation, "relative PPSF YoY")}</div>`;
+        const fmt = featureMeta[c.feature]?.format || "number";
+        return `<div class="feature-detail-row">
+          <div style="font-weight:600;">${c.feature}</div>
+          <div style="text-align:right;">${formatFeatureVal(bin?.value, fmt)}</div>
+          <div>${featurePercentileScaleHtml(bin?.valuePercentile)}</div>
+          <div>${featureScaleHtml(bin?.contribution)}</div>
+        </div>`;
       }).join("")}
     </div>`;
     d3.select("#within-group-correlations").html(html2);
@@ -2561,7 +2748,7 @@ function formatFeatureVal(v, fmt) {
 }
 
 // ---- playbook section ----
-function initPlaybook() {
+function initPlaybookLegacy() {
   if (!DATA.playbook || !DATA.playbook.available) {
     d3.select("#model-unavailable").style("display","block");
     d3.select("#county-search").style("display","none");
@@ -2601,11 +2788,10 @@ function initPlaybook() {
   });
 }
 
-function showCountyPlaybook(county) {
+function showCountyPlaybookLegacy(county) {
   d3.select("#playbook-display").style("display","block");
   const risk = county.riskRating || "Unknown";
   d3.select("#projected-risk-rating").html(`<span style="color:${RISK_COLORS[risk]||'#666'};font-size:18px;font-weight:800;">${risk}</span>`);
-  d3.select("#playbook-profile-title").text(`${countyDisplayName(county)} - Climate Playbook`);
 
   // Re-draw map to highlight selected county
   drawMap("#county-selection-map",
@@ -2648,6 +2834,323 @@ function showCountyPlaybook(county) {
   d3.select("#expected-impact").html(`<p style="line-height:1.55;font-size:15px;">${TEXT.riskImpacts[risk] || "Impact data not available for this risk level."}</p>`);
 }
 
+function drawPlaybookMapLegacy(county = null, zoomed = false) {
+  const svg = d3.select("#county-selection-map");
+  const width = svg.node().clientWidth || 1100;
+  const height = svg.node().clientHeight || 380;
+  svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
+  const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
+  const path = d3.geoPath(projection);
+  const group = svg.append("g");
+
+  group.selectAll("path")
+    .data(DATA.geojson.features)
+    .join("path")
+    .attr("class", "county")
+    .attr("d", path)
+    .attr("fill", d => d.properties.fips === county?.fips ? "#172026" : "#d8d0c4")
+    .style("cursor", d => DATA.playbook.counties.some(c => c.fips === d.properties.fips) ? "pointer" : null)
+    .on("mousemove", (event, d) => {
+      const profile = DATA.playbook.counties.find(c => c.fips === d.properties.fips);
+      if (!profile) return;
+      tooltip.style("display", "block")
+        .style("left", `${event.clientX + 12}px`)
+        .style("top", `${event.clientY + 12}px`)
+        .html(`<strong>${countyDisplayName(profile)}</strong><br>Overall NRI rating: ${profile.hazards?.overall?.rating || "n/a"}`);
+    })
+    .on("mouseleave", () => tooltip.style("display", "none"))
+    .on("click", (event, d) => {
+      const profile = DATA.playbook.counties.find(c => c.fips === d.properties.fips);
+      if (profile) selectPlaybookCounty(profile);
+    });
+
+  if (county && zoomed) {
+    const selectedFeature = DATA.geojson.features.find(d => d.properties.fips === county.fips);
+    if (selectedFeature) {
+      const [cx, cy] = path.centroid(selectedFeature);
+      const scale = county.state === "AK" ? 3.2 : county.state === "HI" ? 4.2 : 5.2;
+      group.transition().duration(520)
+        .attr("transform", `translate(${width / 2},${height / 2}) scale(${scale}) translate(${-cx},${-cy})`);
+    }
+  }
+
+  d3.select("#playbook-map-zoom-toggle")
+    .style("display", county ? "inline-flex" : "none")
+    .text(zoomed ? TEXT.playbookZoomOut : TEXT.playbookZoomIn);
+}
+
+function updatePlaybookZoomControl() {
+  const county = playbookCountyByFips.get(selectedCountyFips);
+  const zoomed = playbookMapTransform.k > 1.01;
+  d3.select("#playbook-map-zoom-toggle")
+    .style("display", county || zoomed ? "inline-flex" : "none")
+    .text(zoomed ? TEXT.playbookZoomOut : TEXT.playbookZoomIn);
+}
+
+function drawPlaybookMap(county = null, autoZoom = false) {
+  const svg = d3.select("#county-selection-map");
+  const width = svg.node().clientWidth || 1100;
+  const height = svg.node().clientHeight || 380;
+  svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
+  const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
+  const path = d3.geoPath(projection);
+  const group = svg.append("g");
+
+  group.selectAll("path")
+    .data(DATA.geojson.features)
+    .join("path")
+    .attr("class", "county")
+    .attr("d", path)
+    .attr("fill", d => d.properties.fips === county?.fips ? "#172026" : "#d8d0c4")
+    .style("cursor", "pointer")
+    .on("mousemove", (event, d) => {
+      const profile = playbookCountyByFips.get(d.properties.fips);
+      if (!profile) return;
+      tooltip.style("display", "block")
+        .style("left", `${event.clientX + 12}px`)
+        .style("top", `${event.clientY + 12}px`)
+        .html(`<strong>${countyDisplayName(profile)}</strong><br>Overall NRI rating: ${profile.hazards?.overall?.rating || "n/a"}`);
+    })
+    .on("mouseleave", () => tooltip.style("display", "none"))
+    .on("click", (event, d) => {
+      const profile = playbookCountyByFips.get(d.properties.fips);
+      if (profile) selectPlaybookCounty(profile);
+    });
+
+  playbookZoomBehavior = d3.zoom()
+    .scaleExtent([1, 12])
+    .translateExtent([[-width * .35, -height * .35], [width * 1.35, height * 1.35]])
+    .on("zoom", event => {
+      playbookMapTransform = event.transform;
+      playbookMapZoomed = event.transform.k > 1.01;
+      group.attr("transform", event.transform);
+      updatePlaybookZoomControl();
+    });
+  svg.call(playbookZoomBehavior).on("dblclick.zoom", null);
+  svg.call(playbookZoomBehavior.transform, d3.zoomIdentity);
+
+  if (county) {
+    const selectedFeature = DATA.geojson.features.find(d => d.properties.fips === county.fips);
+    if (selectedFeature) {
+      const [cx, cy] = path.centroid(selectedFeature);
+      const scale = county.state === "AK" ? 3.2 : county.state === "HI" ? 4.2 : 5.2;
+      playbookSelectedTransform = d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
+      if (autoZoom) svg.transition().duration(520).call(playbookZoomBehavior.transform, playbookSelectedTransform);
+    }
+  } else {
+    playbookSelectedTransform = d3.zoomIdentity;
+    playbookMapTransform = d3.zoomIdentity;
+    playbookMapZoomed = false;
+    updatePlaybookZoomControl();
+  }
+}
+
+function drawPlaybookHistory(county) {
+  const parseMonth = d3.utcParse("%Y-%m");
+  const observedHistory = ((DATA.playbook.monthlyHistoryByFips || {})[county.fips] || [])
+    .filter(d => d.value != null)
+    .map(d => ({...d, date: parseMonth(d.month)}))
+    .sort((a, b) => d3.ascending(a.date, b.date));
+  const historyStart = parseMonth(DATA.playbook.historyStart);
+  const historyEnd = parseMonth(DATA.playbook.historyEnd);
+  const historyDomainEnd = d3.utcDay.offset(d3.utcMonth.offset(historyEnd, 1), -1);
+  const observedByMonth = new Map(observedHistory.map(d => [d.month, d.value]));
+  const history = d3.utcMonth.range(historyStart, d3.utcMonth.offset(historyEnd, 1)).map(date => {
+    const month = d3.utcFormat("%Y-%m")(date);
+    return {date, month, value: observedByMonth.has(month) ? observedByMonth.get(month) : null};
+  });
+  const observed = history.filter(d => d.value != null);
+  const events = ((DATA.playbook.eventsByFips || {})[county.fips] || [])
+    .map(d => ({...d, startDate: parseMonth(d.start), endDate: parseMonth(d.end)}));
+  const svg = d3.select("#playbook-ppsf-history");
+  const width = svg.node().clientWidth || 1050;
+  const height = svg.node().clientHeight || 430;
+  const margin = {top: 22, right: 24, bottom: 42, left: 62};
+  svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
+
+  const x = d3.scaleUtc().domain([historyStart, historyDomainEnd]).range([margin.left, width - margin.right]);
+  const valueExtent = observed.length ? d3.extent(observed, d => d.value) : [-0.1, 0.1];
+  const padding = Math.max((valueExtent[1] - valueExtent[0]) * 0.12, 0.01);
+  const y = d3.scaleLinear().domain([valueExtent[0] - padding, valueExtent[1] + padding]).nice()
+    .range([height - margin.bottom, margin.top]);
+
+  svg.append("g").attr("class", "grid").attr("transform", `translate(${margin.left},0)`)
+    .call(d3.axisLeft(y).ticks(6).tickSize(-(width - margin.left - margin.right)).tickFormat(""));
+
+  const chartStart = x.domain()[0], chartEnd = x.domain()[1];
+  svg.append("g").selectAll("rect.missing-period")
+    .data(history.filter(d => d.value == null))
+    .join("rect")
+    .attr("class", "missing-period")
+    .attr("x", d => x(d.date))
+    .attr("y", margin.top)
+    .attr("width", d => Math.max(2, x(d3.utcMonth.offset(d.date, 1)) - x(d.date)))
+    .attr("height", height - margin.top - margin.bottom)
+    .attr("fill", "#b8c0c5").attr("opacity", .3);
+  svg.append("g").selectAll("rect.event-period")
+    .data(events.filter(d => d.endDate >= chartStart && d.startDate <= chartEnd))
+    .join("rect")
+    .attr("class", "event-period")
+    .attr("x", d => x(d3.max([d.startDate, chartStart])))
+    .attr("y", margin.top)
+    .attr("width", d => Math.max(3, x(d3.min([d.endDate, chartEnd])) - x(d3.max([d.startDate, chartStart]))))
+    .attr("height", height - margin.top - margin.bottom)
+    .attr("fill", "#df7d2f").attr("opacity", .16)
+    .on("mousemove", (event, d) => tooltip.style("display", "block")
+      .style("left", `${event.clientX + 12}px`).style("top", `${event.clientY + 12}px`)
+      .html(`<strong>${d.name || d.type}</strong><br>${d3.utcFormat("%b %Y")(d.startDate)} to ${d3.utcFormat("%b %Y")(d.endDate)}<br>${String(d.source).toUpperCase()}`))
+    .on("mouseleave", () => tooltip.style("display", "none"));
+
+  svg.append("path").datum(history).attr("class", "line")
+    .attr("stroke", "#0f766e").attr("stroke-width", 2.4)
+    .attr("d", d3.line().defined(d => d.value != null).x(d => x(d.date)).y(d => y(d.value)));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height - margin.bottom})`)
+    .call(d3.axisBottom(x).ticks(d3.utcYear.every(1)).tickFormat(d3.utcFormat("%Y")));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${margin.left},0)`)
+    .call(d3.axisLeft(y).ticks(6).tickFormat(fmtPct));
+  svg.append("text").attr("x", margin.left).attr("y", 13).attr("fill", "#66717b").attr("font-size", 11)
+    .text("Median PPSF YoY");
+  const legendItems = [];
+  if (events.length) legendItems.push({label: TEXT.playbookEventLegend, color: "#df7d2f", opacity: .22});
+  if (history.some(d => d.value == null)) legendItems.push({label: TEXT.playbookMissingDataLegend, color: "#b8c0c5", opacity: .45});
+  const legend = svg.append("g").attr("transform", `translate(${Math.max(margin.left, width - 310)},10)`);
+  legendItems.forEach((item, index) => {
+    const offset = index * 150;
+    legend.append("rect").attr("x", offset).attr("width", 14).attr("height", 9).attr("fill", item.color).attr("opacity", item.opacity);
+    legend.append("text").attr("x", offset + 20).attr("y", 9).attr("font-size", 10).attr("fill", "#66717b").text(item.label);
+  });
+  if (!observed.length) {
+    svg.append("text").attr("x", width / 2).attr("y", height / 2)
+      .attr("text-anchor", "middle").attr("fill", "#66717b")
+      .text(TEXT.playbookMissingDataLegend);
+  }
+  renderPlaybookCommentary(county, history, events);
+}
+
+function fillTextTemplate(template, values) {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, value == null ? "" : String(value)),
+    template || ""
+  );
+}
+
+function renderPlaybookCommentary(county, history, events) {
+  const container = d3.select("#playbook-event-commentary");
+  const risk = county.hazards?.overall?.rating || county.riskRating || "Unknown";
+  const copy = TEXT.playbookTakeaways;
+  const terms = TEXT.playbookTakeawayTerms;
+  const expectation = TEXT.riskImpacts[risk] || copy.unavailableExpectation;
+  if (!events.length) {
+    container.html(fillTextTemplate(copy.noEvents, {expectation}));
+    return;
+  }
+
+  const assessments = events.map(event => {
+    const preStart = d3.utcMonth.offset(event.startDate, -12);
+    const postEnd = d3.utcMonth.offset(event.endDate, 12);
+    const before = history.filter(d => d.value != null && d.date >= preStart && d.date < event.startDate).map(d => d.value);
+    const after = history.filter(d => d.value != null && d.date > event.endDate && d.date <= postEnd).map(d => d.value);
+    const beforeMedian = before.length >= 3 ? d3.median(before) : null;
+    const afterMedian = after.length >= 3 ? d3.median(after) : null;
+    const delta = beforeMedian == null || afterMedian == null ? null : afterMedian - beforeMedian;
+    return {...event, delta};
+  });
+  const measured = assessments.filter(d => d.delta != null);
+  const medianDelta = measured.length ? d3.median(measured, d => d.delta) : null;
+  let observation = copy.insufficientHistory;
+  let alignment = "";
+  if (medianDelta != null) {
+    const direction = medianDelta < -0.01 ? terms.declined : medianDelta > 0.01 ? terms.increased : terms.unchanged;
+    observation = fillTextTemplate(copy.observedChange, {
+      measuredCount: measured.length,
+      eventNoun: measured.length === 1 ? terms.event : terms.events,
+      direction,
+      magnitude: Math.abs(medianDelta * 100).toFixed(1),
+    });
+    const expectedDecline = ["Low", "Medium", "High", "Very High"].includes(risk);
+    const aligned = risk === "Very Low" ? Math.abs(medianDelta) <= 0.01 : expectedDecline && medianDelta < 0;
+    alignment = fillTextTemplate(copy.expectationComparison, {
+      alignment: aligned ? terms.aligned : terms.notAligned,
+      risk,
+      expectation,
+    });
+  }
+  const details = assessments.map(d => {
+    const result = d.delta == null
+      ? terms.insufficient
+      : `${d.delta < -0.01 ? terms.down : d.delta > 0.01 ? terms.up : terms.littleChanged} ${Math.abs(d.delta * 100).toFixed(1)} pp`;
+    return fillTextTemplate(copy.eventDetail, {
+      name: d.name || d.type,
+      start: d3.utcFormat("%b %Y")(d.startDate),
+      end: d3.utcFormat("%b %Y")(d.endDate),
+      result,
+    });
+  }).join("");
+  container.html(fillTextTemplate(copy.eventSummary, {
+    eventCount: events.length,
+    eventNoun: events.length === 1 ? terms.event : terms.events,
+    observation,
+    alignment,
+    details,
+  }));
+}
+
+function renderPlaybookHazards(county) {
+  const hazards = DATA.playbook.hazards || DATA.priceRisk.hazards || [];
+  d3.select("#playbook-hazard-ratings").html(hazards.map(hazard => {
+    const rating = county.hazards?.[hazard.key]?.rating || "No rating";
+    const color = RISK_COLORS[rating] || "#66717b";
+    return `<div class="hazard-rating-item"><span><span class="hazard-icon">${HAZARD_ICONS[hazard.key] || ""}</span>${hazard.label}</span><strong style="color:${color};">${rating}</strong></div>`;
+  }).join(""));
+}
+
+function selectPlaybookCounty(county) {
+  selectedCountyFips = county.fips;
+  playbookMapZoomed = true;
+  d3.select("#playbook-display").style("display", "block");
+  drawPlaybookMap(county, true);
+  renderPlaybookHazards(county);
+  drawPlaybookHistory(county);
+}
+
+function initPlaybook() {
+  if (!DATA.playbook?.available) {
+    d3.select("#county-search").property("disabled", true).property("placeholder", DATA.playbook?.message || "County data unavailable");
+    return;
+  }
+  drawPlaybookMap();
+  const input = d3.select("#county-search");
+  const results = d3.select("#county-results");
+  input.on("input", function() {
+    const query = this.value.toLowerCase().trim();
+    if (query.length < 2) { results.style("display", "none").html(""); return; }
+    const matches = DATA.playbook.counties.filter(c =>
+      c.county.toLowerCase().includes(query) || c.state.toLowerCase().includes(query) || c.fips.includes(query)
+    ).slice(0, 20);
+    results.style("display", matches.length ? "block" : "none").html("")
+      .selectAll("div").data(matches).join("div")
+      .style("padding", "8px 12px").style("cursor", "pointer")
+      .style("border-bottom", "1px solid var(--line)").style("font-size", "13px")
+      .html(d => `<strong>${countyDisplayName(d)}</strong> <span style="color:var(--muted);">(${d.hazards?.overall?.rating || "Unknown risk"})</span>`)
+      .on("click", (event, d) => { selectPlaybookCounty(d); input.property("value", ""); results.style("display", "none").html(""); });
+  });
+  d3.select("#playbook-map-zoom-in").on("click", () => {
+    if (playbookZoomBehavior) d3.select("#county-selection-map").transition().duration(220).call(playbookZoomBehavior.scaleBy, 1.5);
+  });
+  d3.select("#playbook-map-zoom-minus").on("click", () => {
+    if (playbookZoomBehavior) d3.select("#county-selection-map").transition().duration(220).call(playbookZoomBehavior.scaleBy, 1 / 1.5);
+  });
+  d3.select("#playbook-map-zoom-toggle").on("click", () => {
+    if (!playbookZoomBehavior) return;
+    const target = playbookMapTransform.k > 1.01 ? d3.zoomIdentity : playbookSelectedTransform;
+    d3.select("#county-selection-map").transition().duration(420).call(playbookZoomBehavior.transform, target);
+  });
+}
+
+function showCountyPlaybook(county) {
+  selectPlaybookCounty(county);
+}
+
 // ---- bootstrap ----
 hydrateText();
 const observer = new IntersectionObserver(entries => {
@@ -2671,6 +3174,9 @@ window.addEventListener("resize", () => {
   drawRatingMap();
   renderEventSection();
   drawFeatureHeatmaps();
+  const playbookCounty = DATA.playbook?.counties?.find(c => c.fips === selectedCountyFips);
+  drawPlaybookMap(playbookCounty || null, playbookCounty ? playbookMapZoomed : false);
+  if (playbookCounty) drawPlaybookHistory(playbookCounty);
 });
 </script>
 </body>
@@ -2680,15 +3186,31 @@ window.addEventListener("resize", () => {
 def main() -> None:
     with duckdb.connect(str(DB_PATH), read_only=True) as con:
         price_risk = build_price_risk(con)
-        event_windows = build_event_windows(con)
         features = build_feature_payload(con)
-        playbook = build_playbook_data(con)
+        eligible_feature_fips_by_risk: dict[str, set[str]] = {}
+        for risk in RISK_ORDER:
+            top_labels = {
+                item["feature"]
+                for item in features.get("withinGroupTopFeatures", {}).get(risk, [])
+            }
+            county_bins = features.get("withinGroupFeatureBins", {}).get(risk, {})
+            eligible_feature_fips_by_risk[risk] = {
+                str(fips)
+                for fips, values in county_bins.items()
+                if top_labels
+                and all(
+                    label in values and values[label].get("value") is not None
+                    for label in top_labels
+                )
+            }
+        event_windows = build_event_windows(con, eligible_feature_fips_by_risk)
+        playbook = build_county_playbook_data(con)
 
     # Inject event-window percentile ranks from Window A into the features payload.
     # This replaces the old static-feature percentile computation.
     features["withinGroupPercentiles"] = event_windows["windowA"].get("countyEventWindowPctRank", {})
 
-    geojson = build_geojson({county["fips"] for county in price_risk["counties"]})
+    geojson = build_geojson({county["fips"] for county in playbook["counties"]})
     data = {"priceRisk": price_risk, "eventWindows": event_windows, "features": features, "playbook": playbook, "geojson": geojson}
     OUT_PATH.write_text(make_html(data), encoding="utf-8")
     print(f"Wrote {OUT_PATH}")
