@@ -2,7 +2,7 @@
 
 This repository builds an infographic:
 
-`output/visualizations/climate-risk-housing.html`
+`output/climate-risk-housing.html`
 
 The page reads its source-of-truth data from `data/quoll.duckdb`, uses county
 boundaries from `data/fipsgeo/us_counties_boundaries_shapefile.json`, and embeds

@@ -19,7 +19,7 @@ from housing_climate_risk.page_data.event_windows import (
 ROOT = Path(__file__).resolve().parents[3]
 DB_PATH = ROOT / "data" / "quoll.duckdb"
 COUNTIES_PATH = ROOT / "data" / "fipsgeo" / "us_counties_boundaries_shapefile.json"
-OUT_PATH = ROOT / "output" / "visualizations" / "climate-risk-housing.html"
+OUT_PATH = ROOT / "output" / "climate-risk-housing.html"
 
 RISK_ORDER = ["Very Low", "Low", "Medium", "High", "Very High"]
 RISK_MAP = {
