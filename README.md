@@ -1,12 +1,8 @@
 # Climate Risk to Housing
 
-This repository builds an infographic:
+This repository builds the infographic: [Are Climate Risks Priced Into Housing Markets?](https://kaxlow.github.io/climate-on-housing/output/climate-risk-housing.html)
 
-`output/climate-risk-housing.html`
-
-The page reads its source-of-truth data from `data/quoll.duckdb`, uses county
-boundaries from `data/fipsgeo/us_counties_boundaries_shapefile.json`, and embeds
-the resulting data directly into the generated HTML.
+The page is developed from climate and county data across the United States. Data is loaded into and read from a database in the form of `data/quoll.duckdb`. County boundaries come from `data/fipsgeo/us_counties_boundaries_shapefile.json`. After cleaning, preparing, and transforming the data, the analysis results are published in the form of a story describing how climate risk is relevant to homeowners across the country.
 
 ## Build
 
@@ -22,11 +18,45 @@ Rebuild the infographic:
 build-climate-risk-housing
 ```
 
-The workflow is:
+This page-only command uses the existing `data/quoll.duckdb`. To rebuild both the
+database and infographic, run:
 
-1. Data preparation and analysis under `scripts/` populate the DuckDB marts.
-2. `build-database` can rebuild `data/quoll.duckdb` from the retained source data.
-3. `src/housing_climate_risk/page_data/event_windows.py` constructs reusable
-   climate-event housing windows.
-4. `src/housing_climate_risk/page_data/climate_risk_housing.py` queries the marts and
-   writes the self-contained HTML deliverable.
+```powershell
+build-database
+build-climate-risk-housing
+```
+
+## Infographic Pipeline
+
+1. **Retain source data.** Provider extracts under `data/` supply county identifiers,
+   Redfin housing history, FEMA National Risk Index ratings, FEMA and NOAA events,
+   NCEI weather, ACS characteristics, and StatsAmerica economic and migration data.
+   Notebooks and utilities under `scripts/` support cleaning, validation, and EDA;
+   they are not invoked by the page builder.
+
+2. **Build DuckDB.** `build-database` runs
+   `src/housing_climate_risk/cli/build_database.py`. It loads the retained files into
+   the `raw` schema, records file and ACS metadata, creates county reference tables,
+   and materializes the normalized `mart` tables in `data/quoll.duckdb`. Use
+   `build-database --marts-only` when the raw tables are already current and only the
+   reference and mart layers need rebuilding.
+
+3. **Query page datasets.** `build-climate-risk-housing` runs
+   `src/housing_climate_risk/page_data/climate_risk_housing.py` and opens DuckDB in
+   read-only mode. The builder creates the county price/risk histories, risk-group
+   feature comparisons, and Climate Playbook data directly from the marts.
+
+4. **Construct event windows.** During the page build, helpers in
+   `src/housing_climate_risk/page_data/event_windows.py` combine FEMA declarations and
+   qualifying NOAA events with monthly Redfin observations. They align each county's
+   housing history from 12 months before event start through the configured post-event
+   horizons, then retain complete observations for the grouped plots.
+
+5. **Attach geography.** The builder reads
+   `data/fipsgeo/us_counties_boundaries_shapefile.json`, keeps the counties represented
+   in the page data, and adds their GeoJSON boundaries to the page payload.
+
+6. **Generate the deliverable.** The builder serializes all chart, map, feature, and
+   playbook payloads into the HTML template and writes the self-contained output to
+   `output/climate-risk-housing.html`. The page queries no database at runtime; only
+   its external D3 and Google Fonts resources are loaded by the browser.
