@@ -27,19 +27,8 @@ dependencies = [
 ]
 
 [project.scripts]
-build-page = "housing_climate_risk.cli.build_page:main"
-run-county-clustering = "housing_climate_risk.cli.run_county_clustering:main"
-run-broad-county-profiles = "housing_climate_risk.cli.run_broad_county_profiles:main"
-download-affordability-data = "housing_climate_risk.cli.download_affordability_data:main"
+build-climate-risk-housing = "housing_climate_risk.page_data.climate_risk_housing:main"
 build-database = "housing_climate_risk.cli.build_database:main"
-download-acs-data = "housing_climate_risk.cli.download_acs_data:main"
-summarize-acs-housing-table-coverage = "housing_climate_risk.cli.summarize_acs_housing_table_coverage:main"
-download-climatecentral-bdd-risk-data = "housing_climate_risk.cli.download_climatecentral_bdd_risk_data:main"
-download-climate-damage-data = "housing_climate_risk.cli.download_climate_damage_data:main"
-download-ncei-county-weather-data = "housing_climate_risk.cli.download_ncei_county_weather_data:main"
-download-statsamerica-population-components = "housing_climate_risk.cli.download_statsamerica_population_components:main"
-download-statsamerica-bea-cew = "housing_climate_risk.cli.download_statsamerica_bea_cew:main"
-train-climate-risk-model = "housing_climate_risk.cli.train_climate_risk_model:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

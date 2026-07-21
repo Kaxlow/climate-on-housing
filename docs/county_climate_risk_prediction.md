@@ -6,7 +6,7 @@ Machine learning pipeline to predict FEMA NRI climate risk ratings based on coun
 
 This module trains classification models to predict:
 - **Overall climate risk** (FEMA NRI composite risk rating)
-- **Hazard-specific risk** for 5 common hazard types (aligned with stormhouse-2.html):
+- **Hazard-specific risk** for 5 common hazard types (aligned with climate-risk-housing.html):
   * **ERQK** - Earthquake
   * **IFLD** - Riverine Flooding
   * **WFIR** - Wildfire
@@ -184,7 +184,7 @@ Counties with "Not Applicable", "No Rating", or "Insufficient Data" are excluded
 
 ### Hazard Selection Rationale
 
-The 5 hazards were selected to align with the "Are climate risks priced into housing markets?" section of stormhouse-2.html. These hazards have:
+The 5 hazards were selected to align with the "Are climate risks priced into housing markets?" section of climate-risk-housing.html. These hazards have:
 1. **High county coverage** (>2,200 counties with valid ratings)
 2. **Meaningful risk variation** (excluding "Not Applicable" ratings)
 3. **Reasonable class distributions** (avoiding extreme imbalance)

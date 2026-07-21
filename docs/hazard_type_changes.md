@@ -179,7 +179,7 @@ python -c "import duckdb; conn = duckdb.connect('data/quoll.duckdb'); print(conn
 ## Next Steps
 
 1. **Retrain models:** Run `train-climate-risk-model --all-hazards` to generate new model files
-2. **Update visualizations:** If stormhouse-2.html references specific hazards, update to ERQK and HAIL
+2. **Update visualizations:** If climate-risk-housing.html references specific hazards, update to ERQK and HAIL
 3. **Validate performance:** Check that ERQK and HAIL achieve expected F1 scores (0.55-0.65)
 4. **Clean up old models (optional):** Remove `hrcn/` and `wntw/` directories if no longer needed
 
