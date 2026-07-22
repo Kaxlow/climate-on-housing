@@ -63,7 +63,10 @@ build-climate-risk-housing
    `data/fipsgeo/us_counties_boundaries_shapefile.json`, keeps the counties represented
    in the page data, and adds their GeoJSON boundaries to the page payload.
 
-6. **Generate the deliverable.** The builder serializes all chart, map, feature, and
-   playbook payloads into the HTML template and writes the self-contained output to
-   `output/climate-risk-housing.html`. The page queries no database at runtime; only
-   its external D3 and Google Fonts resources are loaded by the browser.
+6. **Generate the deliverable.** The builder writes the infographic to
+   `output/climate-risk-housing.html` and writes its deferred county-history and
+   Climate Playbook payloads beside it as
+   `output/climate-risk-housing-county-history.js` and
+   `output/climate-risk-housing-playbook.js`. Keep all three files together when
+   publishing or opening the page. The page queries no database at runtime; D3 and
+   Google Fonts remain external browser resources.

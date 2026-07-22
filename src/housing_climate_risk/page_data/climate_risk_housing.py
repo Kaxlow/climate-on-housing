@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[3]
 DB_PATH = ROOT / "data" / "quoll.duckdb"
 COUNTIES_PATH = ROOT / "data" / "fipsgeo" / "us_counties_boundaries_shapefile.json"
 OUT_PATH = ROOT / "output" / "climate-risk-housing.html"
+COUNTY_HISTORY_OUT_PATH = ROOT / "output" / "climate-risk-housing-county-history.js"
+PLAYBOOK_OUT_PATH = ROOT / "output" / "climate-risk-housing-playbook.js"
 
 RISK_ORDER = ["Very Low", "Low", "Medium", "High", "Very High"]
 RISK_MAP = {
@@ -265,34 +267,39 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             for row in grouped.itertuples(index=False)
             if row.riskRating in RISK_ORDER
         ]
-    # Create county history records with hazard information
-    county_history_records = []
-    for row in history.itertuples(index=False):
-        record = {
-            "fips": row.fips,
-            "county": row.county_label,
-            "state": row.state_code,
-            "month": row.month.strftime("%Y-%m-%d"),
-            "ppsfYoy": serialize_number(row.median_ppsf_yoy, 5),
-            "riskRating": row.riskRating,
-        }
-        # Add hazard-specific ratings
-        for hazard in HAZARDS:
-            if hazard["key"] != "overall":
-                hazard_rating = getattr(row, hazard["rating"], None)
-                record[f"{hazard['key']}_rating"] = hazard_rating
-        county_history_records.append(record)
+    # Store the dense county histories as shared months plus one value array per
+    # county. Repeating county and hazard metadata for every month made the
+    # standalone HTML substantially larger and slower to parse.
+    history_months = sorted(history["month"].dropna().unique())
+    history_month_labels = [pd.Timestamp(month).strftime("%Y-%m-%d") for month in history_months]
+    county_history_series = []
+    for fips, county_history in history.groupby("fips", sort=False):
+        county_history = county_history.set_index("month").reindex(history_months)
+        first = county_history.iloc[0]
+        county_history_series.append(
+            {
+                "fips": fips,
+                "county": first.county_label,
+                "state": first.state_code,
+                "values": [serialize_number(value, 5) for value in county_history["median_ppsf_yoy"]],
+            }
+        )
+    history_cap_lower = history["median_ppsf_yoy"].quantile(0.01)
+    history_cap_upper = history["median_ppsf_yoy"].quantile(0.99)
 
     return {
         "hazards": [{"key": h["key"], "label": h["label"]} for h in HAZARDS],
         "counties": counties,
-        "countyHistory": county_history_records,
+        "countyHistoryMonths": history_month_labels,
+        "countyHistorySeries": county_history_series,
         "ratingHistoriesByHazard": rating_histories,
         "summary": {
             "countyCount": int(df["fips"].nunique()),
             "medianAvgPpsfYoy": serialize_number(df["avg_median_ppsf_yoy"].median(), 5),
             "ppsfCapLower": serialize_number(cap_lower, 5),
             "ppsfCapUpper": serialize_number(cap_upper, 5),
+            "historyPpsfCapLower": serialize_number(history_cap_lower, 5),
+            "historyPpsfCapUpper": serialize_number(history_cap_upper, 5),
         },
     }
 
@@ -875,32 +882,31 @@ def build_county_playbook_data(
     county_fips = {str(county["fips"]).zfill(5) for county in counties}
     events = events.loc[events["fips"].isin(county_fips)].sort_values(["fips", "event_start_month"])
 
-    monthly_history_by_fips: dict[str, list[dict[str, object]]] = {}
-    for row in history.itertuples(index=False):
-        monthly_history_by_fips.setdefault(row.fips, []).append(
-            {
-                "month": row.month.strftime("%Y-%m"),
-                "value": serialize_number(row.median_ppsf_yoy, 5),
-            }
-        )
-    events_by_fips: dict[str, list[dict[str, object]]] = {}
+    history_months = pd.date_range(history["month"].min(), history["month"].max(), freq="MS")
+    history_month_labels = [month.strftime("%Y-%m") for month in history_months]
+    monthly_history_values_by_fips: dict[str, list[float | None]] = {}
+    for fips, county_history in history.groupby("fips", sort=False):
+        values = county_history.set_index("month")["median_ppsf_yoy"].reindex(history_months)
+        monthly_history_values_by_fips[fips] = [serialize_number(value, 5) for value in values]
+    events_by_fips: dict[str, list[list[object]]] = {}
     for row in events.itertuples(index=False):
         events_by_fips.setdefault(row.fips, []).append(
-            {
-                "eventKey": row.event_key,
-                "source": row.event_source,
-                "type": row.event_type,
-                "name": row.event_name,
-                "start": row.event_start_month.strftime("%Y-%m"),
-                "end": row.event_end_month.strftime("%Y-%m"),
-            }
+            [
+                row.event_key,
+                row.event_source,
+                row.event_type,
+                row.event_name,
+                row.event_start_month.strftime("%Y-%m"),
+                row.event_end_month.strftime("%Y-%m"),
+            ]
         )
 
     return {
         "available": True,
         "hazards": [{"key": hazard["key"], "label": hazard["label"]} for hazard in HAZARDS],
         "counties": counties,
-        "monthlyHistoryByFips": monthly_history_by_fips,
+        "monthlyHistoryMonths": history_month_labels,
+        "monthlyHistoryValuesByFips": monthly_history_values_by_fips,
         "eventsByFips": events_by_fips,
         "historyStart": history["month"].min().strftime("%Y-%m"),
         "historyEnd": history["month"].max().strftime("%Y-%m"),
@@ -1443,6 +1449,11 @@ def make_html(data: dict[str, object]) -> str:
     return HTML_TEMPLATE.replace("__PAYLOAD__", payload)
 
 
+def make_deferred_data_script(global_name: str, data: object) -> str:
+    payload = json.dumps(data, separators=(",", ":"), allow_nan=False)
+    return f"window.{global_name}={payload};\n"
+
+
 HTML_TEMPLATE = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -1584,8 +1595,12 @@ HTML_TEMPLATE = r"""<!doctype html>
     .sub, .note { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 0 0 8px; }
     .footnote { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 6px 0 0; font-style: italic; }
     .chart { width: 100%; height: 430px; display: block; overflow: hidden; }
+    .canvas-chart { position: relative; cursor: crosshair; }
+    .canvas-chart canvas, .canvas-chart > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .canvas-chart > svg { overflow: visible; pointer-events: none; }
     .chart.tall { height: 520px; }
     .chart.map-companion-line { height: 516px; }
+    .chart.rating-risk-line { height: 671px; }
     .chart.map-companion-map { height: 430px; }
     .chart.xtall { height: 620px; }
     .chart.compressing { transform-origin: left center; animation: compressLeft 360ms ease both; }
@@ -1628,6 +1643,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       .dek { font-size: 19px; line-height: 1.42; }
       .chart, .chart.tall, .chart.xtall { height: 360px; }
       .chart.map-companion-line { height: 384px; }
+      .chart.rating-risk-line { height: 499px; }
       .chart.map-companion-map { height: 320px; }
       .hazard-rating-grid { grid-template-columns: 1fr; }
       .hazard-rating-specific { grid-template-columns: 1fr; }
@@ -1652,7 +1668,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     <div class="panel" style="margin-top:12px;">
       <h3 id="t-scatter-title"></h3>
       <p class="sub" id="t-scatter-sub"></p>
-      <svg id="score-scatter" class="chart" style="height:340px;"></svg>
+      <div id="score-scatter" class="chart canvas-chart" style="height:340px;">
+        <canvas id="score-scatter-canvas" aria-label="Monthly Median PPSF YoY lines for U.S. counties"></canvas>
+        <svg id="score-scatter-axes" aria-hidden="true"></svg>
+      </div>
       <p class="footnote" id="t-scatter-fn1"></p>
       <p class="footnote" id="t-scatter-fn2"></p>
     </div>
@@ -1672,7 +1691,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       </div>
       <div class="viz-grid pricing-viz-grid">
         <div>
-          <svg id="rating-scatter" class="chart map-companion-line"></svg>
+          <svg id="rating-scatter" class="chart map-companion-line rating-risk-line"></svg>
         </div>
         <div class="map-with-legend">
           <svg id="rating-map" class="chart map-companion-map"></svg>
@@ -1936,8 +1955,18 @@ const fmtMoney = d3.format("$,.0f");
 const parsePriceMonth = d3.utcParse("%Y-%m-%d");
 const tooltip = d3.select("#tooltip");
 const countyByFips = new Map(DATA.priceRisk.counties.map(d => [d.fips, d]));
-const playbookCountyByFips = new Map((DATA.playbook?.counties || []).map(d => [d.fips, d]));
+let playbookCountyByFips = new Map();
+let scoreHistoryData = null;
+const deferredDataPromises = new Map();
 let ratingHazard = "overall";
+let scoreScatterState = null;
+let scoreScatterRendered = false;
+let scoreTooltipFrame = null;
+let scoreRenderGeneration = 0;
+let ratingSectionRendered = false;
+let eventSectionRendered = false;
+let featureSectionRendered = false;
+let playbookSectionRendered = false;
 // Event section state
 let selectedRisk = "Very Low";
 let riskTimer = null;
@@ -1952,6 +1981,23 @@ let playbookMapZoomed = false;
 let playbookZoomBehavior = null;
 let playbookMapTransform = d3.zoomIdentity;
 let playbookSelectedTransform = d3.zoomIdentity;
+
+function loadDeferredData(filename, globalName) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  if (deferredDataPromises.has(globalName)) return deferredDataPromises.get(globalName);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = new URL(filename, document.baseURI).href;
+    script.async = true;
+    script.onload = () => window[globalName]
+      ? resolve(window[globalName])
+      : reject(new Error(`Deferred data file did not define ${globalName}`));
+    script.onerror = () => reject(new Error(`Unable to load deferred data file: ${filename}`));
+    document.head.appendChild(script);
+  });
+  deferredDataPromises.set(globalName, promise);
+  return promise;
+}
 
 function hazardLabel(key) { return DATA.priceRisk.hazards.find(h => h.key === key)?.label || key; }
 function hazardCounty(county, key) { return county?.hazards?.[key] || {}; }
@@ -2018,35 +2064,114 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
 }
 
 function drawScoreScatter() {
-  let data = DATA.priceRisk.countyHistory.filter(d => d.ppsfYoy != null && d.riskRating != null);
-  data.forEach(d => { d.monthDate = parsePriceMonth(d.month); });
-  const allVals = data.map(d => d.ppsfYoy);
-  const sorted = [...allVals].filter(v => v != null && Number.isFinite(v)).sort(d3.ascending);
-  const p1 = d3.quantileSorted(sorted, .01);
-  const p99 = d3.quantileSorted(sorted, .99);
-  data = data.filter(d => d.ppsfYoy >= p1 && d.ppsfYoy <= p99);
-  const svg = d3.select("#score-scatter");
-  const width = svg.node().clientWidth || 960, height = svg.node().clientHeight || 340;
+  const container = document.querySelector("#score-scatter");
+  const canvas = document.querySelector("#score-scatter-canvas");
+  const series = scoreHistoryData?.series || [];
+  const months = (scoreHistoryData?.months || []).map(parsePriceMonth);
+  if (!container || !canvas || !series.length || !months.length) return;
+  const generation = ++scoreRenderGeneration;
+  delete canvas.dataset.rendered;
+  const width = container.clientWidth || 960, height = container.clientHeight || 340;
   const margin = {top: 18, right: 18, bottom: 46, left: 68};
-  svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
+  const p1 = DATA.priceRisk.summary.historyPpsfCapLower;
+  const p99 = DATA.priceRisk.summary.historyPpsfCapUpper;
   const yDomain = [p1, p99];
-  const x = d3.scaleUtc().domain(d3.extent(data, d => d.monthDate)).range([margin.left, width - margin.right]);
+  const x = d3.scaleUtc().domain(d3.extent(months)).range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain(yDomain).nice().range([height - margin.bottom, margin.top]);
+
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  const context = canvas.getContext("2d");
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const svg = d3.select("#score-scatter-axes");
+  svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
   const yTicks = sparsePctTicks(y.domain());
   svg.append("g").attr("class","grid").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickSize(-(width-margin.left-margin.right)).tickFormat(""));
   svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).ticks(d3.utcYear.every(2)).tickFormat(d3.utcFormat("%Y")));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxisPct));
   svg.append("text").attr("x",width/2).attr("y",height-8).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Month");
   svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Monthly Median PPSF YoY");
-  const line = d3.line().x(d => x(d.monthDate)).y(d => y(Math.max(p1, Math.min(p99, d.ppsfYoy))));
-  svg.append("g").selectAll("path").data(d3.groups(data, d => d.fips)).join("path")
-    .attr("class","line")
-    .attr("stroke", "#5b7a8a")
-    .attr("stroke-width", 1.1)
-    .attr("opacity", .12)
-    .attr("d", d => line(d[1].sort((a,b)=>d3.ascending(a.monthDate,b.monthDate))))
-    .on("mousemove", (event, d) => tooltip.style("display","block").style("left",`${event.clientX+12}px`).style("top",`${event.clientY+12}px`).html(`<strong>${countyDisplayName(d[1][0])}</strong>`))
-    .on("mouseleave", () => tooltip.style("display","none"));
+  scoreScatterState = {container, series, months, x, y, yDomain, margin, width, height, renderedCount: 0};
+  scoreScatterRendered = true;
+  const batchSize = 120;
+  let seriesIndex = 0;
+  function drawCountyBatch() {
+    if (generation !== scoreRenderGeneration) return;
+    const batchEnd = Math.min(series.length, seriesIndex + batchSize);
+    context.save();
+    context.beginPath();
+    context.rect(margin.left, margin.top, width - margin.left - margin.right, height - margin.top - margin.bottom);
+    context.clip();
+    context.beginPath();
+    for (; seriesIndex < batchEnd; seriesIndex += 1) {
+      const county = series[seriesIndex];
+      let started = false;
+      county.values.forEach((value, index) => {
+        if (value == null || !Number.isFinite(value) || !months[index]) {
+          started = false;
+          return;
+        }
+        const px = x(months[index]);
+        const py = y(capValue(value, yDomain));
+        if (started) context.lineTo(px, py);
+        else {
+          context.moveTo(px, py);
+          started = true;
+        }
+      });
+    }
+    context.strokeStyle = "rgba(91, 122, 138, 0.12)";
+    context.lineWidth = 1.1;
+    context.stroke();
+    context.restore();
+    scoreScatterState.renderedCount = batchEnd;
+    canvas.dataset.progress = String(batchEnd);
+    if (seriesIndex < series.length) requestAnimationFrame(drawCountyBatch);
+    else canvas.dataset.rendered = "true";
+  }
+  requestAnimationFrame(drawCountyBatch);
+}
+
+function initScoreScatter() {
+  const container = document.querySelector("#score-scatter");
+  if (!container) return;
+  container.addEventListener("mousemove", event => {
+    if (!scoreScatterState) return;
+    const clientX = event.clientX, clientY = event.clientY;
+    if (scoreTooltipFrame != null) cancelAnimationFrame(scoreTooltipFrame);
+    scoreTooltipFrame = requestAnimationFrame(() => {
+      scoreTooltipFrame = null;
+      const {series, months, x, y, yDomain, margin, width, height} = scoreScatterState;
+      const rect = container.getBoundingClientRect();
+      const px = clientX - rect.left, py = clientY - rect.top;
+      if (px < margin.left || px > width - margin.right || py < margin.top || py > height - margin.bottom) {
+        tooltip.style("display", "none");
+        return;
+      }
+      const monthIndex = d3.bisector(d => d).center(months, x.invert(px));
+      let nearest = null, nearestDistance = Infinity;
+      for (const county of series.slice(0, scoreScatterState.renderedCount)) {
+        const value = county.values[monthIndex];
+        if (value == null || !Number.isFinite(value)) continue;
+        const distance = Math.abs(y(capValue(value, yDomain)) - py);
+        if (distance < nearestDistance) {
+          nearest = county;
+          nearestDistance = distance;
+        }
+      }
+      if (!nearest || nearestDistance > 10) {
+        tooltip.style("display", "none");
+        return;
+      }
+      tooltip.style("display","block").style("left",`${clientX+12}px`).style("top",`${clientY+12}px`).html(`<strong>${countyDisplayName(nearest)}</strong>`);
+    });
+  });
+  container.addEventListener("mouseleave", () => tooltip.style("display", "none"));
 }
 
 function drawRatingScatter() {
@@ -2536,10 +2661,13 @@ function interpolateInternalHistory(source) {
 
 function drawPlaybookHistory(county) {
   const parseMonth = d3.utcParse("%Y-%m");
-  const observedHistory = ((DATA.playbook.monthlyHistoryByFips || {})[county.fips] || [])
-    .filter(d => d.value != null)
-    .map(d => ({...d, date: parseMonth(d.month)}))
-    .sort((a, b) => d3.ascending(a.date, b.date));
+  const historyMonths = DATA.playbook.monthlyHistoryMonths || [];
+  const historyValues = (DATA.playbook.monthlyHistoryValuesByFips || {})[county.fips] || [];
+  const observedHistory = historyMonths.map((month, index) => ({
+    month,
+    value: historyValues[index] ?? null,
+    date: parseMonth(month),
+  })).filter(d => d.value != null);
   const historyStart = parseMonth(DATA.playbook.historyStart);
   const historyEnd = parseMonth(DATA.playbook.historyEnd);
   const historyDomainEnd = d3.utcDay.offset(d3.utcMonth.offset(historyEnd, 1), -1);
@@ -2550,7 +2678,10 @@ function drawPlaybookHistory(county) {
   }));
   const observed = history.filter(d => d.value != null);
   const events = ((DATA.playbook.eventsByFips || {})[county.fips] || [])
-    .map(d => ({...d, startDate: parseMonth(d.start), endDate: parseMonth(d.end)}));
+    .map(d => ({
+      eventKey: d[0], source: d[1], type: d[2], name: d[3], start: d[4], end: d[5],
+      startDate: parseMonth(d[4]), endDate: parseMonth(d[5]),
+    }));
   const svg = d3.select("#playbook-ppsf-history");
   const width = svg.node().clientWidth || 1050;
   const height = svg.node().clientHeight || 430;
@@ -2814,22 +2945,67 @@ const observer = new IntersectionObserver(entries => {
 }, { threshold: .18 });
 document.querySelectorAll(".slide").forEach(el => observer.observe(el));
 initButtons();
-drawScoreScatter();
-drawRatingScatter();
-drawRatingMap();
-renderEventSection();
-drawFeatureHeatmaps();
-initPlaybook();
-startRiskTimer();
-window.addEventListener("resize", () => {
+initScoreScatter();
+function renderWhenNear(selector, render, rootMargin = "350px 0px") {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  const sectionObserver = new IntersectionObserver(entries => {
+    if (!entries.some(entry => entry.isIntersecting)) return;
+    Promise.resolve(render()).catch(error => {
+      console.error(error);
+      target.setAttribute("data-load-error", "true");
+    });
+    sectionObserver.disconnect();
+  }, {rootMargin});
+  sectionObserver.observe(target);
+}
+renderWhenNear("#score-scatter", async () => {
+  scoreHistoryData = await loadDeferredData(
+    "climate-risk-housing-county-history.js",
+    "CLIMATE_RISK_HOUSING_COUNTY_HISTORY"
+  );
   drawScoreScatter();
+});
+renderWhenNear("#pricing-grouping", () => {
   drawRatingScatter();
   drawRatingMap();
+  ratingSectionRendered = true;
+});
+renderWhenNear("#events", () => {
   renderEventSection();
+  startRiskTimer();
+  eventSectionRendered = true;
+});
+renderWhenNear("#features", () => {
   drawFeatureHeatmaps();
-  const playbookCounty = DATA.playbook?.counties?.find(c => c.fips === selectedCountyFips);
-  drawPlaybookMap(playbookCounty || null, playbookCounty ? playbookMapZoomed : false);
-  if (playbookCounty) drawPlaybookHistory(playbookCounty);
+  featureSectionRendered = true;
+});
+renderWhenNear("#playbook", async () => {
+  DATA.playbook = await loadDeferredData(
+    "climate-risk-housing-playbook.js",
+    "CLIMATE_RISK_HOUSING_PLAYBOOK"
+  );
+  playbookCountyByFips = new Map(DATA.playbook.counties.map(d => [d.fips, d]));
+  initPlaybook();
+  playbookSectionRendered = true;
+}, "1200px 0px");
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (scoreScatterRendered) drawScoreScatter();
+    if (ratingSectionRendered) {
+      drawRatingScatter();
+      drawRatingMap();
+    }
+    if (eventSectionRendered) renderEventSection();
+    if (featureSectionRendered) drawFeatureHeatmaps();
+    if (playbookSectionRendered) {
+      const playbookCounty = DATA.playbook?.counties?.find(c => c.fips === selectedCountyFips);
+      drawPlaybookMap(playbookCounty || null, playbookCounty ? playbookMapZoomed : false);
+      if (playbookCounty) drawPlaybookHistory(playbookCounty);
+    }
+  }, 150);
 });
 </script>
 </body>
@@ -2859,10 +3035,44 @@ def main() -> None:
         event_windows = build_event_windows(con, eligible_feature_fips_by_risk)
         playbook = build_county_playbook_data(con)
 
+    # The feature comparison displays only the two window-A example counties
+    # per risk group. Keep their details and discard thousands of unused county
+    # records before embedding the standalone page.
+    displayed_feature_fips: dict[str, set[str]] = {risk: set() for risk in RISK_ORDER}
+    for example in event_windows.get("windowA", {}).get("exampleCountyLines", []):
+        risk = example.get("riskRating")
+        if risk in displayed_feature_fips and example.get("fips"):
+            displayed_feature_fips[risk].add(str(example["fips"]).zfill(5))
+    for risk, county_bins in features.get("withinGroupFeatureBins", {}).items():
+        selected_fips = displayed_feature_fips.get(risk, set())
+        features["withinGroupFeatureBins"][risk] = {
+            fips: values for fips, values in county_bins.items() if str(fips).zfill(5) in selected_fips
+        }
+
     geojson = build_geojson({county["fips"] for county in playbook["counties"]})
-    data = {"priceRisk": price_risk, "eventWindows": event_windows, "features": features, "playbook": playbook, "geojson": geojson}
+    county_history = {
+        "months": price_risk.pop("countyHistoryMonths"),
+        "series": price_risk.pop("countyHistorySeries"),
+    }
+    data = {
+        "priceRisk": price_risk,
+        "eventWindows": event_windows,
+        "features": features,
+        "playbook": None,
+        "geojson": geojson,
+    }
     OUT_PATH.write_text(make_html(data), encoding="utf-8")
+    COUNTY_HISTORY_OUT_PATH.write_text(
+        make_deferred_data_script("CLIMATE_RISK_HOUSING_COUNTY_HISTORY", county_history),
+        encoding="utf-8",
+    )
+    PLAYBOOK_OUT_PATH.write_text(
+        make_deferred_data_script("CLIMATE_RISK_HOUSING_PLAYBOOK", playbook),
+        encoding="utf-8",
+    )
     print(f"Wrote {OUT_PATH}")
+    print(f"Wrote {COUNTY_HISTORY_OUT_PATH}")
+    print(f"Wrote {PLAYBOOK_OUT_PATH}")
 
 
 if __name__ == "__main__":
