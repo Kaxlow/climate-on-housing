@@ -4,6 +4,13 @@ This repository builds the infographic: [Are Climate Risks Priced Into Housing M
 
 The page is developed from climate and county data across the United States. Data is loaded into and read from a database in the form of `data/quoll.duckdb`. County boundaries come from `data/fipsgeo/us_counties_boundaries_shapefile.json`. After cleaning, preparing, and transforming the data, the analysis results are published in the form of a story describing how climate risk is relevant to homeowners across the country.
 
+## Methodology
+
+See [Climate Risk and Housing Methodology](docs/climate-risk-housing-methodology.md)
+for the data sources, risk and housing definitions, disaster event selection,
+event-window construction, within-risk-group feature analysis, assumptions, and
+limitations behind the infographic.
+
 ## Build
 
 Install the package once:

@@ -168,9 +168,6 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     df["risk_rating_clean"] = df["risk_rating"].map(rating_clean)
     cap_lower = df["avg_median_ppsf_yoy"].quantile(0.01)
     cap_upper = df["avg_median_ppsf_yoy"].quantile(0.99)
-    score_corr = df.dropna(subset=["risk_score"])[["risk_score", "avg_median_ppsf_yoy"]].corr(method="spearman").iloc[0, 1]
-    rating_numeric = df["risk_rating_clean"].map(RISK_NUMERIC)
-    rating_corr = pd.DataFrame({"rating": rating_numeric, "ppsf": df["avg_median_ppsf_yoy"]}).dropna().corr(method="spearman").iloc[0, 1]
     counties = []
     for row in df.itertuples(index=False):
         hazards = {}
@@ -186,30 +183,40 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                 "fips": row.fips,
                 "county": row.county_label if pd.notna(row.county_label) else f"{row.COUNTY}, {row.STATEABBRV}",
                 "state": row.state_code if pd.notna(row.state_code) else row.STATEABBRV,
-                "avgPpsfYoy": serialize_number(row.avg_median_ppsf_yoy, 5),
-                "avgPpsfYoyCapped": serialize_number(min(max(row.avg_median_ppsf_yoy, cap_lower), cap_upper), 5),
-                "ppsfYoyWasCapped": bool(row.avg_median_ppsf_yoy < cap_lower or row.avg_median_ppsf_yoy > cap_upper),
-                "observedMonths": int(row.observed_months),
                 "hazards": hazards,
             }
         )
     history = con.execute(
         """
+        WITH monthly AS (
+            SELECT
+                r.fips,
+                date_trunc('month', r.period_begin)::DATE AS month,
+                any_value(r.REGION) AS county_label,
+                any_value(r.STATE_CODE) AS state_code,
+                avg(CASE
+                    WHEN try_cast(replace(r.MEDIAN_PPSF_YOY, ',', '') AS DOUBLE) <= -888888000 THEN NULL
+                    ELSE try_cast(replace(r.MEDIAN_PPSF_YOY, ',', '') AS DOUBLE)
+                END) AS median_ppsf_yoy
+            FROM mart.redfin_county_monthly AS r
+            WHERE r.property_type = 'All Residential'
+              AND r.period_begin >= DATE '2016-01-01'
+              AND r.period_begin < DATE '2026-01-01'
+              AND r.fips IS NOT NULL
+            GROUP BY r.fips, date_trunc('month', r.period_begin)
+        ),
+        complete_counties AS (
+            SELECT fips
+            FROM monthly
+            GROUP BY fips
+            HAVING count(*) = 120
+               AND count(median_ppsf_yoy) = 120
+        )
         SELECT
-            r.fips,
-            date_part('year', r.period_begin)::INTEGER AS year,
-            any_value(r.REGION) AS county_label,
-            any_value(r.STATE_CODE) AS state_code,
-            avg(CASE
-                WHEN try_cast(replace(r.MEDIAN_PPSF_YOY, ',', '') AS DOUBLE) <= -888888000 THEN NULL
-                ELSE try_cast(replace(r.MEDIAN_PPSF_YOY, ',', '') AS DOUBLE)
-            END) AS median_ppsf_yoy
-        FROM mart.redfin_county_monthly AS r
-        WHERE r.property_type = 'All Residential'
-          AND r.period_begin >= DATE '2016-01-01'
-          AND r.period_begin < DATE '2026-01-01'
-          AND r.fips IS NOT NULL
-        GROUP BY r.fips, date_part('year', r.period_begin)
+            monthly.*
+        FROM monthly
+        INNER JOIN complete_counties USING (fips)
+        ORDER BY fips, month
         """
     ).df()
     history["fips"] = history["fips"].astype(str).str.zfill(5)
@@ -241,7 +248,7 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             group_col = "_hazard_rating"
 
         grouped = (
-            hazard_history.groupby([group_col, "year"], observed=False)["median_ppsf_yoy"]
+            hazard_history.groupby([group_col, "month"], observed=False)["median_ppsf_yoy"]
             .quantile([0.25, 0.5, 0.75])
             .unstack()
             .reset_index()
@@ -250,7 +257,7 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         rating_histories[hazard_key] = [
             {
                 "riskRating": row.riskRating,
-                "year": int(row.year),
+                "month": row.month.strftime("%Y-%m-%d"),
                 "q1": serialize_number(row.q1, 5),
                 "median": serialize_number(row.median, 5),
                 "q3": serialize_number(row.q3, 5),
@@ -265,7 +272,7 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             "fips": row.fips,
             "county": row.county_label,
             "state": row.state_code,
-            "year": int(row.year),
+            "month": row.month.strftime("%Y-%m-%d"),
             "ppsfYoy": serialize_number(row.median_ppsf_yoy, 5),
             "riskRating": row.riskRating,
         }
@@ -284,8 +291,6 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         "summary": {
             "countyCount": int(df["fips"].nunique()),
             "medianAvgPpsfYoy": serialize_number(df["avg_median_ppsf_yoy"].median(), 5),
-            "scoreSpearman": serialize_number(score_corr, 3),
-            "ratingSpearman": serialize_number(rating_corr, 3),
             "ppsfCapLower": serialize_number(cap_lower, 5),
             "ppsfCapUpper": serialize_number(cap_upper, 5),
         },
@@ -1784,9 +1789,9 @@ const TEXT = {
   // ---- Pricing section ----
   pricingH2: "To Begin: What Does Growth in Housing Markets Look Like Across the United States?",
   scatterTitle: "Median Price-Per-Square-Foot (PPSF) Year-Over-Year (YoY) by County",
-  scatterSub: "Each line represents a county's Median PPSF YoY over the last 10 years.",
+  scatterSub: "Each line represents a county's monthly Median PPSF YoY from 2016 through 2025.",
   scatterFootnote1: "* Outliers beyond the 1st–99th percentile are excluded.",
-  scatterFootnote2: "* County-year observations with fewer than 3 reported months are excluded.",
+  scatterFootnote2: "* Only counties with a valid observation in every month from January 2016 through December 2025 are included.",
   pricingScoreScatterTakeaway: "<span class=\"takeaway-section\">From county-level median house price growth over the last 10 years, there is significant variation and there doesn't seem to be a clear pattern.</span><span class=\"takeaway-section\">However, the impact of climate change is uneven across the country, so looking from a climate angle might reveal a more meaningful pattern.</span>",
   pricingGroupingSubtitle: "A Climate Perspective: What Does House Price Growth Look Like When Grouping Counties by Climate Risk?",
   pricingNriPlaceholder: "The FEMA National Risk Index (NRI) serves as a measure of climate-related risk exposure. It summarizes a county's expected annual loss, social vulnerability, and community resilience across natural hazards. Counties are assigned a risk rating along a scale from \"Very Low\" to \"Very High\".",
@@ -1794,7 +1799,7 @@ const TEXT = {
   pricingCardText: "House price growth of counties grouped by their FEMA National Risk Index (NRI) risk rating. Risk ratings are available for specific hazards and for overall climate risk.",
   hazardSidebarLabel: "Hazard type",
   pricingTakeaway: "<span class=\"takeaway-section\">A pattern now emerges: Counties with higher risk tend to show lower levels of house price growth.</span><span class=\"takeaway-section\">Housing markets are influenced by events across time. With respect to climate events, is there a shift in house price growth?</span>",
-  pricingSources: 'Sources: <a href="https://hazards.fema.gov/nri/" target="_blank" rel="noopener">FEMA National Risk Index</a>, local mart <code>data/quoll.duckdb: mart.nri_county_risk</code>; <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>, local mart <code>mart.redfin_county_monthly</code>. House prices use the average monthly <code>MEDIAN_PPSF_YOY</code> value in 2025.',
+  pricingSources: 'Sources: <a href="https://hazards.fema.gov/nri/" target="_blank" rel="noopener">FEMA National Risk Index</a>, local mart <code>data/quoll.duckdb: mart.nri_county_risk</code>; <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>, local mart <code>mart.redfin_county_monthly</code>. The charts use monthly <code>MEDIAN_PPSF_YOY</code> observations from January 2016 through December 2025 and include only counties with complete data throughout that period.',
 
   // ---- Events section ----
   eventsH2: "Observing Climate Events: What Happens to House Price Growth?",
@@ -1928,6 +1933,7 @@ const fmtShare = d3.format(".0%");
 const fmtAxisPct = value => Math.abs(value) >= 10 ? `${value > 0 ? "+" : ""}${d3.format(".2s")(value * 100)}%` : fmtPct(value);
 const fmtNum = d3.format(",.1f");
 const fmtMoney = d3.format("$,.0f");
+const parsePriceMonth = d3.utcParse("%Y-%m-%d");
 const tooltip = d3.select("#tooltip");
 const countyByFips = new Map(DATA.priceRisk.counties.map(d => [d.fips, d]));
 const playbookCountyByFips = new Map((DATA.playbook?.counties || []).map(d => [d.fips, d]));
@@ -2013,6 +2019,7 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
 
 function drawScoreScatter() {
   let data = DATA.priceRisk.countyHistory.filter(d => d.ppsfYoy != null && d.riskRating != null);
+  data.forEach(d => { d.monthDate = parsePriceMonth(d.month); });
   const allVals = data.map(d => d.ppsfYoy);
   const sorted = [...allVals].filter(v => v != null && Number.isFinite(v)).sort(d3.ascending);
   const p1 = d3.quantileSorted(sorted, .01);
@@ -2023,21 +2030,21 @@ function drawScoreScatter() {
   const margin = {top: 18, right: 18, bottom: 46, left: 68};
   svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
   const yDomain = [p1, p99];
-  const x = d3.scaleLinear().domain(d3.extent(data, d => d.year)).range([margin.left, width - margin.right]);
+  const x = d3.scaleUtc().domain(d3.extent(data, d => d.monthDate)).range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain(yDomain).nice().range([height - margin.bottom, margin.top]);
   const yTicks = sparsePctTicks(y.domain());
   svg.append("g").attr("class","grid").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickSize(-(width-margin.left-margin.right)).tickFormat(""));
-  svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(6));
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).ticks(d3.utcYear.every(2)).tickFormat(d3.utcFormat("%Y")));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxisPct));
-  svg.append("text").attr("x",width/2).attr("y",height-8).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Year");
-  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Annual average Median PPSF YoY");
-  const line = d3.line().x(d => x(d.year)).y(d => y(Math.max(p1, Math.min(p99, d.ppsfYoy))));
+  svg.append("text").attr("x",width/2).attr("y",height-8).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Month");
+  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Monthly Median PPSF YoY");
+  const line = d3.line().x(d => x(d.monthDate)).y(d => y(Math.max(p1, Math.min(p99, d.ppsfYoy))));
   svg.append("g").selectAll("path").data(d3.groups(data, d => d.fips)).join("path")
     .attr("class","line")
     .attr("stroke", "#5b7a8a")
     .attr("stroke-width", 1.1)
     .attr("opacity", .12)
-    .attr("d", d => line(d[1].sort((a,b)=>d3.ascending(a.year,b.year))))
+    .attr("d", d => line(d[1].sort((a,b)=>d3.ascending(a.monthDate,b.monthDate))))
     .on("mousemove", (event, d) => tooltip.style("display","block").style("left",`${event.clientX+12}px`).style("top",`${event.clientY+12}px`).html(`<strong>${countyDisplayName(d[1][0])}</strong>`))
     .on("mouseleave", () => tooltip.style("display","none"));
 }
@@ -2045,23 +2052,28 @@ function drawScoreScatter() {
 function drawRatingScatter() {
   const ratingHistory = DATA.priceRisk.ratingHistoriesByHazard[ratingHazard] || [];
   const data = ratingHistory.filter(d => d.median != null);
+  data.forEach(d => { d.monthDate = parsePriceMonth(d.month); });
   const svg = d3.select("#rating-scatter");
   const width = svg.node().clientWidth || 520, height = svg.node().clientHeight || 620;
   const margin = {top: 18, right: 100, bottom: 54, left: 68};
   svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
-  const yDomain = robustDomain(data.flatMap(d => [d.q1, d.median, d.q3]));
-  const x = d3.scaleLinear().domain(d3.extent(data, d => d.year)).range([margin.left, width - margin.right]);
+  const bandValues = data.flatMap(d => [d.q1, d.q3]).filter(v => v != null && Number.isFinite(v));
+  const bandExtent = bandValues.length ? d3.extent(bandValues) : [0, 1];
+  const bandSpan = bandExtent[1] - bandExtent[0];
+  const bandPadding = bandSpan > 0 ? bandSpan * 0.05 : 0.01;
+  const yDomain = [bandExtent[0] - bandPadding, bandExtent[1] + bandPadding];
+  const x = d3.scaleUtc().domain(d3.extent(data, d => d.monthDate)).range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain(yDomain).nice().range([height - margin.bottom, margin.top]);
   const yTicks = sparsePctTicks(y.domain());
   svg.append("g").attr("class","grid").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickSize(-(width-margin.left-margin.right)).tickFormat(""));
-  svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(6));
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).ticks(d3.utcYear.every(2)).tickFormat(d3.utcFormat("%Y")));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxisPct));
-  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Annual average Median PPSF YoY");
-  const area = d3.area().x(d => x(d.year)).y0(d => y(capValue(d.q1, yDomain))).y1(d => y(capValue(d.q3, yDomain)));
-  const line = d3.line().x(d => x(d.year)).y(d => y(capValue(d.median, yDomain)));
+  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Monthly Median PPSF YoY");
+  const area = d3.area().x(d => x(d.monthDate)).y0(d => y(capValue(d.q1, yDomain))).y1(d => y(capValue(d.q3, yDomain)));
+  const line = d3.line().x(d => x(d.monthDate)).y(d => y(capValue(d.median, yDomain)));
   const endLabels = [];
   for (const risk of RISK_ORDER) {
-    const rows = data.filter(d => d.riskRating === risk).sort((a,b)=>d3.ascending(a.year,b.year));
+    const rows = data.filter(d => d.riskRating === risk).sort((a,b)=>d3.ascending(a.monthDate,b.monthDate));
     if (!rows.length) continue;
     svg.append("path").datum(rows).attr("class","band").attr("fill",RISK_COLORS[risk]).attr("d",area);
     svg.append("path").datum(rows).attr("class","line").attr("stroke",RISK_COLORS[risk]).attr("d",line);
@@ -2082,10 +2094,10 @@ function drawRatingScatter() {
     }
   }
   for (const label of endLabels) {
-    const labelX = x(label.last.year) + 10;
+    const labelX = x(label.last.monthDate) + 10;
     const text = label.risk;
     svg.append("line")
-      .attr("x1", x(label.last.year) + 2).attr("x2", labelX - 3)
+      .attr("x1", x(label.last.monthDate) + 2).attr("x2", labelX - 3)
       .attr("y1", label.targetY).attr("y2", label.labelY)
       .attr("stroke", RISK_COLORS[label.risk]).attr("stroke-width", 1.2);
     svg.append("rect").attr("x", labelX - 3).attr("y", label.labelY - 10)
@@ -2336,6 +2348,7 @@ function drawFeatureHeatmaps() {
     ? (d.samplePosition.startsWith("Above") ? "above group median" : "higher trajectory")
     : (d.samplePosition.startsWith("Below") ? "below group median" : "lower trajectory");
   const exampleColor = d => isHigherExample(d) ? FEATURE_HIGHER_LINE_COLOR : FEATURE_LOWER_LINE_COLOR;
+  const exampleByFips = new Map(examples.map(example => [example.fips, example]));
 
   d3.select("#feature-line-legend").html([
     ...examples.map(d => `<span class="feature-line-legend-item"><span class="feature-line-key ${isHigherExample(d) ? "higher" : "lower"}" style="border-color:${exampleColor(d)}"></span>${d.county} (${exampleRole(d)})</span>`),
@@ -2358,15 +2371,22 @@ function drawFeatureHeatmaps() {
   // Highlight selected county on map
   drawMap("#feature-county-map",
     (county, fips) => {
-      const example = examples.find(item => item.fips === fips);
+      const example = exampleByFips.get(fips);
       return example ? exampleColor(example) : "#d8d0c4";
     },
     (county, fips) => {
-      const example = examples.find(item => item.fips === fips);
+      const example = exampleByFips.get(fips);
       return example ? `<strong>${countyDisplayName(example)}</strong>` : "";
     },
     null, null
   );
+  d3.select("#feature-county-map").selectAll("path.county")
+    .classed("feature-tooltip-county", d => exampleByFips.has(d.properties.fips))
+    .style("cursor", d => exampleByFips.has(d.properties.fips) ? "help" : "default")
+    .attr("aria-label", d => {
+      const example = exampleByFips.get(d.properties.fips);
+      return example ? countyDisplayName(example) : null;
+    });
   drawCountyFeaturePanelV2(examples);
 }
 
