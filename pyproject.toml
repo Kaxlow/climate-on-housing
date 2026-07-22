@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 build-climate-risk-housing = "housing_climate_risk.page_data.climate_risk_housing:main"
 build-database = "housing_climate_risk.cli.build_database:main"
+download-data = "housing_climate_risk.cli.download_data:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
