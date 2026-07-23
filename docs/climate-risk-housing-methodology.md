@@ -104,8 +104,16 @@ The event analysis combines:
 
 FEMA types Biological, Dam/Levee Break, Chemical, Terrorist, Other, and Toxic
 Substances are excluded from the intended climate and destructive-weather
-scope. A missing event end is set to its start; an end before the start causes
-the record to be removed. Dates are reduced to calendar months. Each
+scope. The raw FEMA declaration table preserves the source rows, while
+`mart.fema_disaster_declarations` is incident-level: declarations with the same
+county, incident type, title, start date, and end date are treated as one
+incident. When both emergency (`EM`) and major-disaster (`DR`) declarations
+describe that incident, the `DR` declaration is retained as its canonical
+record; the shared incident dates are unchanged. The mart also retains the
+declaration count and lists of associated disaster numbers and declaration
+types.
+A missing event end is set to its start; an end before the start causes the
+record to be removed. Dates are reduced to calendar months. Each
 county-source-event-start combination receives a unique key. The page retains
 events starting from January 2016 through December 2025.
 

@@ -49,7 +49,7 @@ def load_disaster_events(
         frames.append(
             con.execute(
                 f"""
-                SELECT DISTINCT
+                SELECT
                     'fema' AS event_source,
                     disasterNumber AS source_event_id,
                     fips,

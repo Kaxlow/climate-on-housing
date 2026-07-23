@@ -44,7 +44,9 @@ build-climate-risk-housing
 2. **Build DuckDB.** `build-database` runs
    `src/housing_climate_risk/cli/build_database.py`. It loads the retained files into
    the `raw` schema, records file and ACS metadata, creates county reference tables,
-   and materializes the normalized `mart` tables in `data/quoll.duckdb`. Use
+   and materializes the normalized `mart` tables in `data/quoll.duckdb`. The FEMA
+   declaration mart represents unique county-incidents while preserving the
+   declaration-level source rows in `raw`. Use
    `build-database --marts-only` when the raw tables are already current and only the
    reference and mart layers need rebuilding.
 

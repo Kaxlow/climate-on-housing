@@ -928,24 +928,71 @@ def _create_core_marts(con) -> None:
               AND parsed_incident_end_date >= parsed_incident_begin_date
               AND incidentType IS NOT NULL
             GROUP BY incidentType
+        ),
+        normalized_fema AS (
+            SELECT
+                lpad(fipsStateCode, 2, '0') || lpad(fipsCountyCode, 3, '0') AS normalized_fips,
+                coalesce(
+                    parsed_incident_end_date,
+                    parsed_incident_begin_date
+                        + CAST(round(duration.average_duration_days) AS BIGINT) * INTERVAL 1 DAY
+                ) AS normalized_incident_end_date,
+                parsed_fema.*
+            FROM parsed_fema
+            LEFT JOIN incident_type_duration AS duration
+                ON parsed_fema.incidentType = duration.incidentType
+            WHERE fipsStateCode IS NOT NULL
+              AND fipsCountyCode IS NOT NULL
+        ),
+        ranked_incidents AS (
+            SELECT
+                normalized_fema.*,
+                count(*) OVER incident AS declaration_count,
+                list_sort(list(DISTINCT disasterNumber) OVER incident) AS associated_disaster_numbers,
+                list_sort(list(DISTINCT declarationType) OVER incident) AS associated_declaration_types,
+                row_number() OVER (
+                    incident
+                    ORDER BY
+                        CASE declarationType
+                            WHEN 'DR' THEN 0
+                            WHEN 'EM' THEN 1
+                            ELSE 2
+                        END,
+                        try_cast(disasterNumber AS BIGINT) DESC,
+                        disasterNumber DESC
+                ) AS incident_declaration_rank
+            FROM normalized_fema
+            WINDOW incident AS (
+                PARTITION BY
+                    normalized_fips,
+                    incidentType,
+                    declarationTitle,
+                    parsed_incident_begin_date,
+                    normalized_incident_end_date
+            )
         )
         SELECT
-            lpad(fipsStateCode, 2, '0') || lpad(fipsCountyCode, 3, '0') AS fips,
+            normalized_fips AS fips,
             lpad(fipsStateCode, 2, '0') AS state_fips,
             try_cast(fyDeclared AS INTEGER) AS declared_year,
             try_cast(declarationDate AS TIMESTAMP) AS declaration_date,
             parsed_incident_begin_date AS incident_begin_date,
-            coalesce(
+            normalized_incident_end_date AS incident_end_date,
+            declaration_count,
+            associated_disaster_numbers,
+            associated_declaration_types,
+            ranked_incidents.* EXCLUDE (
+                normalized_fips,
+                normalized_incident_end_date,
+                parsed_incident_begin_date,
                 parsed_incident_end_date,
-                parsed_incident_begin_date
-                    + CAST(round(duration.average_duration_days) AS BIGINT) * INTERVAL 1 DAY
-            ) AS incident_end_date,
-            parsed_fema.* EXCLUDE (parsed_incident_begin_date, parsed_incident_end_date)
-        FROM parsed_fema
-        LEFT JOIN incident_type_duration AS duration
-            ON parsed_fema.incidentType = duration.incidentType
-        WHERE fipsStateCode IS NOT NULL
-          AND fipsCountyCode IS NOT NULL
+                declaration_count,
+                associated_disaster_numbers,
+                associated_declaration_types,
+                incident_declaration_rank
+            )
+        FROM ranked_incidents
+        WHERE incident_declaration_rank = 1
         """
     )
 
