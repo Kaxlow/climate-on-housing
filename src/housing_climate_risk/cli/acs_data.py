@@ -25,6 +25,7 @@ DEFAULT_TABLES = {
     "S2503": "Financial Characteristics",
     "S2506": "Financial Characteristics for Housing Units With a Mortgage",
     "S2507": "Financial Characteristics for Housing Units Without a Mortgage",
+    "B25103": "Mortgage Status by Median Real Estate Taxes Paid (Dollars)",
     "B25132": "Monthly Electricity Costs",
     "B25133": "Monthly Gas Costs",
     "B25134": "Annual Water and Sewer Costs",

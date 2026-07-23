@@ -940,7 +940,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         "year",
         "s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est",
         "s2503_owner_occupied_units_occupied_housing_units_monthly_housing_costs_median_est",
-        "s2506_owner_occupied_units_mortgage_real_estate_taxes_median_est",
+        "b25103_median_real_estate_taxes_paid_total_est",
         "dp04_selected_monthly_owner_costs_as_a_pct_of_household_income_housing_units_mortgage_est",
         "dp04_selected_monthly_owner_costs_as_a_pct_of_household_income_housing_units_mortgage_30_0_to_34_9_percent_est",
         "dp04_selected_monthly_owner_costs_as_a_pct_of_household_income_housing_units_mortgage_35_0_percent_or_more_est",
@@ -981,14 +981,6 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         "b25135_annual_other_fuel_costs_total_charged_for_other_fuels_less_than_dollars_250_est",
         "b25135_annual_other_fuel_costs_total_charged_for_other_fuels_dollars_250_to_dollars_749_est",
         "b25135_annual_other_fuel_costs_total_charged_for_other_fuels_dollars_750_or_more_est",
-        "s2506_owner_occupied_units_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
-        "s2506_owner_occupied_units_mortgage_real_estate_taxes_less_than_dollars_800_est",
-        "s2506_owner_occupied_units_mortgage_real_estate_taxes_dollars_800_to_dollars_1_499_est",
-        "s2506_owner_occupied_units_mortgage_real_estate_taxes_dollars_1_500_or_more_est",
-        "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
-        "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_less_than_dollars_800_est",
-        "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_dollars_800_to_dollars_1_499_est",
-        "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_dollars_1_500_or_more_est",
     ]
     insurance_cols = [
         f"b25141_homeowners_insurance_costs_by_mortgage_status_total_{status}_{suffix}_est"
@@ -1081,22 +1073,9 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             ]
         ],
     )
-    afford["estimated_annual_property_tax"] = weighted_bucket_average(
-        afford,
-        [
-            (f"{prefix}_{suffix}_est", midpoint)
-            for prefix in ["s2506_owner_occupied_units_mortgage_real_estate_taxes", "s2507_owner_occupied_units_no_mortgage_real_estate_taxes"]
-            for suffix, midpoint in [
-                ("less_than_dollars_800", 400),
-                ("dollars_800_to_dollars_1_499", 1150),
-                ("dollars_1_500_or_more", 2000),
-            ]
-        ],
-        zero_cols=[
-            "s2506_owner_occupied_units_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
-            "s2507_owner_occupied_units_no_mortgage_real_estate_taxes_no_real_estate_taxes_paid_est",
-        ],
-    )
+    afford["estimated_annual_property_tax"] = afford[
+        "b25103_median_real_estate_taxes_paid_total_est"
+    ]
     electricity = weighted_bucket_average(
         afford,
         [
@@ -1145,7 +1124,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     afford["estimated_annual_utilities"] = electricity + gas + water + other_fuel
     afford["income_median_household_usd"] = afford["s2503_owner_occupied_units_occupied_housing_units_household_income_past_12_months_median_household_income_est"]
     afford["insurance_homeowners_pct_income"] = afford["estimated_annual_home_insurance"] / afford["income_median_household_usd"].replace(0, np.nan) * 100
-    afford["property_taxes_pct_income"] = afford["s2506_owner_occupied_units_mortgage_real_estate_taxes_median_est"] / afford["income_median_household_usd"].replace(0, np.nan) * 100
+    afford["property_taxes_pct_income"] = afford["estimated_annual_property_tax"] / afford["income_median_household_usd"].replace(0, np.nan) * 100
     afford["utilities_pct_income"] = afford["estimated_annual_utilities"] / afford["income_median_household_usd"].replace(0, np.nan) * 100
     burdened_owner_households = sum(
         (
@@ -1836,7 +1815,7 @@ const TEXT = {
   featureSidebarLabel: "Risk Rating",
   featureCorrLabel: "County features most correlated with relative position within its risk group",
   featuresTakeaway: "<span class=\"takeaway-section\">Comparing counties with higher and lower house price growth levels within the same risk group, we can see that they have distinctly different features. A county's unique combination of features matter to its housing market growth in the face of climate risks.</span><span class=\"takeaway-section\">Given the significance of climate risk to housing markets, we can paint a picture of a county's climate risk that will be invaluable to homeowners.</span>",
-  featuresSources: "Sources: local marts <code>mart.acs_county_economic_annual</code>, <code>mart.acs_county_demographic_annual</code>, <code>mart.acs_county_affordability_annual</code>, <code>mart.ncei_county_weather_monthly</code>, and <code>mart.nri_county_risk</code>. Cost components are midpoint estimates from ACS cost buckets.",
+  featuresSources: "Sources: local marts <code>mart.acs_county_economic_annual</code>, <code>mart.acs_county_demographic_annual</code>, <code>mart.acs_county_affordability_annual</code>, <code>mart.ncei_county_weather_monthly</code>, and <code>mart.nri_county_risk</code>. Property tax is the ACS B25103 county median; other cost components are midpoint estimates from ACS cost buckets.",
 
   // ---- Playbook section ----
   playbookH2: "Climate Playbook: What to Know About Your County's Climate Exposure",
