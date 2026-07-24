@@ -646,15 +646,14 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
             CREATE TABLE mart.statsamerica_bea_per_capita_income_annual AS
             WITH county_rows AS (
                 SELECT
-                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
-                    lpad(Statefips, 2, '0') AS state_fips,
+                    lpad(trim(IBRC_GEO_ID), 5, '0') AS fips,
+                    substr(lpad(trim(IBRC_GEO_ID), 5, '0'), 1, 2) AS state_fips,
                     TRY_CAST(Year AS INTEGER) AS year,
                     Description AS county_name,
                     TRY_CAST("BEA Per Capita Personal Income" AS INTEGER)
                         AS per_capita_personal_income_dollars
                 FROM raw.statsamerica_bea_per_capita_income
-                WHERE Statefips IS NOT NULL
-                  AND Statefips != '0'
+                WHERE IBRC_GEO_ID IS NOT NULL
                   AND Countyfips IS NOT NULL
                   AND Countyfips != '000'
                   AND Year IS NOT NULL
@@ -692,16 +691,15 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
             CREATE TABLE mart.statsamerica_bea_personal_income_annual AS
             WITH county_rows AS (
                 SELECT
-                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
-                    lpad(Statefips, 2, '0') AS state_fips,
+                    lpad(trim(IBRC_GEO_ID), 5, '0') AS fips,
+                    substr(lpad(trim(IBRC_GEO_ID), 5, '0'), 1, 2) AS state_fips,
                     TRY_CAST(Year AS INTEGER) AS year,
                     Description AS county_name,
                     Linecode AS linecode,
                     -- Suppressed rows carry non-numeric Data; treat as NULL
                     CASE WHEN Disclosure = '0' THEN TRY_CAST(Data AS DOUBLE) ELSE NULL END AS data_value
                 FROM raw.statsamerica_bea_personal_income
-                WHERE Statefips IS NOT NULL
-                  AND Statefips != '0'
+                WHERE IBRC_GEO_ID IS NOT NULL
                   AND Countyfips IS NOT NULL
                   AND Countyfips != '000'
                   AND Year IS NOT NULL
@@ -762,8 +760,8 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
             CREATE TABLE mart.statsamerica_cew_county_sector_annual AS
             WITH county_rows AS (
                 SELECT
-                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
-                    lpad(Statefips, 2, '0') AS state_fips,
+                    lpad(trim(IBRC_GEO_ID), 5, '0') AS fips,
+                    substr(lpad(trim(IBRC_GEO_ID), 5, '0'), 1, 2) AS state_fips,
                     TRY_CAST(Year AS INTEGER) AS year,
                     Description AS county_name,
                     trim("NAICS Code") AS naics_code,
@@ -774,8 +772,7 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
                     TRY_CAST("Average Wage" AS DOUBLE) AS avg_annual_wage_dollars,
                     TRY_CAST("Average Weekly Wage" AS DOUBLE) AS avg_weekly_wage_dollars
                 FROM raw.statsamerica_cew_total_ownership
-                WHERE Statefips IS NOT NULL
-                  AND Statefips != '0'
+                WHERE IBRC_GEO_ID IS NOT NULL
                   AND Countyfips IS NOT NULL
                   AND Countyfips != '000'
                   AND Year IS NOT NULL
@@ -827,8 +824,8 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
             CREATE TABLE mart.statsamerica_cew_county_annual AS
             WITH county_rows AS (
                 SELECT
-                    lpad(Statefips, 2, '0') || lpad(Countyfips, 3, '0') AS fips,
-                    lpad(Statefips, 2, '0') AS state_fips,
+                    lpad(trim(IBRC_GEO_ID), 5, '0') AS fips,
+                    substr(lpad(trim(IBRC_GEO_ID), 5, '0'), 1, 2) AS state_fips,
                     TRY_CAST(Year AS INTEGER) AS year,
                     Description AS county_name,
                     TRY_CAST(Units AS DOUBLE) AS establishments,
@@ -837,8 +834,7 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
                     TRY_CAST("Average Wage" AS DOUBLE) AS avg_annual_wage_dollars,
                     TRY_CAST("Average Weekly Wage" AS DOUBLE) AS avg_weekly_wage_dollars
                 FROM raw.statsamerica_cew_total_ownership
-                WHERE Statefips IS NOT NULL
-                  AND Statefips != '0'
+                WHERE IBRC_GEO_ID IS NOT NULL
                   AND Countyfips IS NOT NULL
                   AND Countyfips != '000'
                   AND Year IS NOT NULL

@@ -11,6 +11,10 @@ for the data sources, risk and housing definitions, disaster event selection,
 event-window construction, within-risk-group feature analysis, assumptions, and
 limitations behind the infographic.
 
+See [County Relative Median PPSF YoY Modeling](docs/county-relative-ppsf-modeling.md)
+for the separate county-level Elastic Net and gradient-boosted tree comparison,
+cross-validation design, results, limitations, and downstream model contract.
+
 ## Build
 
 Install the package once:
@@ -24,6 +28,17 @@ Rebuild the infographic:
 ```powershell
 build-climate-risk-housing
 ```
+
+Train the separate county relative Median PPSF YoY models with:
+
+```powershell
+train-county-relative-ppsf --n-jobs 1
+```
+
+This modeling command writes four model artifacts and evaluation results to
+`output/models/county_relative_ppsf/`. High and Very High counties share one
+pooled model. The command does not modify the infographic; the page builder
+consumes the resulting feature-importance and county-modeling artifacts.
 
 This page-only command uses the existing `data/quoll.duckdb`. To rebuild both the
 database and infographic, run:
