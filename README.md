@@ -36,12 +36,11 @@ the ignored local receipt `data/download_receipt.yaml`. Provider metadata and
 expected schemas are defined in
 [`config/data_sources.yaml`](config/data_sources.yaml).
 
-The bootstrap reports three user-supplied inputs rather than downloading them:
+The bootstrap does not account for the following inputs which are either packaged with the repository or have to be supplied by the user as they are not publicly available:
 
-- `data/housing/Redfin-Housing-Market-By-County.csv` (required)
-- `data/fipsgeo/fips_master_v2.csv` (required)
-- `data/20260401_county_processed_data/county_processed_data.feather` (optional;
-  adds private insurance features)
+- `data/housing/Redfin-Housing-Market-By-County.csv` (to be supplied by user due to private nature)
+- `data/fipsgeo/fips_master_v2.csv` (comes packaged with repository)
+- `data/20260401_county_processed_data/county_processed_data.feather` (to be supplied by user due to private nature. optional; adds private insurance features)
 
 Set `CENSUS_API_KEY` before bootstrapping. The pipeline intentionally selects
 the latest available data. Annual versioned provider URLs are recorded where
