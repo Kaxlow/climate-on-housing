@@ -6,9 +6,14 @@ This document describes the data and analytical methods used to build **Which
 Way the Wind Blows: Climate Risk and U.S. Housing Markets**
 (`output/climate-risk-housing.html`). The production implementation is in:
 
+- `src/housing_climate_risk/cli/download_data.py`
 - `src/housing_climate_risk/cli/build_database.py`
+- `src/housing_climate_risk/cli/feature_marts.py`
+- `src/housing_climate_risk/cli/analysis_marts.py`
 - `src/housing_climate_risk/page_data/climate_risk_housing.py`
 - `src/housing_climate_risk/page_data/event_windows.py`
+- `src/housing_climate_risk/modeling/county_relative_ppsf/`
+- `config/data_sources.yaml`
 
 The page explores whether county housing-market performance varies with
 measured climate risk and around major disaster events. It is descriptive and
@@ -37,7 +42,7 @@ the fields that view requires, so sample sizes can differ between charts.
 | NCEI Climate at a Glance | County monthly weather measures |
 | U.S. Census Bureau American Community Survey | Economic, demographic, housing-cost, and affordability characteristics |
 | StatsAmerica and underlying BEA/CEW series | Income, employment, earnings, and population change |
-| Local county boundary GeoJSON | Interactive map geometry |
+| U.S. Census Bureau cartographic boundary files | County and state geometry used to derive the local interactive-map GeoJSON |
 
 Insurance premium and non-renewal fields are also materialized when their local
 inputs are available. The database records source-file metadata in `meta.files`
@@ -62,13 +67,18 @@ committed in `config/data_sources.yaml`. Mutable APIs and unversioned downloads
 can change after retrieval, so later runs may not exactly reproduce earlier
 results.
 
-The Redfin county extract and `fips_master_v2.csv` are required private inputs.
-The county processed Feather snapshot is optional and adds private insurance
-features. `download-data all` reports missing private inputs together at the end.
+The county FIPS master at `data/fipsgeo/fips_master_v2.csv` is committed with
+the repository. The Redfin county extract is a required user-supplied input for
+the housing marts and final page, but it is intentionally not distributed or
+downloaded by this project. The county processed Feather snapshot is optional;
+when absent, its private insurance premium and non-renewal features are not
+available. `download-data all` reports missing manual inputs together at the
+end.
 
 ## Database construction
 
-`build-database` creates `data/quoll.duckdb` in three analytical layers:
+`build-database` creates `data/quoll.duckdb` with five data layers, plus
+metadata:
 
 1. **Raw:** CSV and Feather extracts are loaded into `raw`, and source metadata
    is recorded. Census special-value codes and invalid negative values are
@@ -78,9 +88,18 @@ features. `download-data all` reports missing private inputs together at the end
 3. **Mart:** `mart` contains analysis-ready Redfin, NRI, FEMA, NOAA, NCEI, ACS,
    insurance, population, income, and employment tables. Common county/date
    keys are indexed.
+4. **Feature:** `feature` blends normalized variables into five domain marts:
+   county economic, demographic, climate, housing, and risk data.
+   `feature.catalog` is the authoritative inventory of feature definitions,
+   units, sources, and temporal grains.
+5. **Analysis:** `analysis` persists the canonical extreme-event cohort,
+   county-event-month housing windows, event-window configuration, and aggregate
+   summaries used by publication notebooks and downstream diagnostics.
 
-`build-database --marts-only` rebuilds reference and mart tables from existing
-raw tables. The page builder opens DuckDB read-only.
+`meta` records source-file and ACS-variable lineage. `build-database
+--marts-only` rebuilds the reference, mart, feature, and analysis layers from
+existing raw tables; it is not a clean-clone bootstrap. The page builder opens
+DuckDB read-only.
 
 ## Climate-risk definitions
 
@@ -113,6 +132,11 @@ county's monthly series. The risk-group chart displays the median and
 25th–75th percentile interval across eligible counties for every risk group and
 month.
 
+January 2016 through December 2025 is a fixed publication window, not a
+dynamically advancing endpoint. Although the acquisition command selects the
+latest provider data, downloading a newer release does not automatically extend
+these charts.
+
 ## Disaster event selection
 
 The event analysis combines:
@@ -136,6 +160,10 @@ record to be removed. Dates are reduced to calendar months. Each
 county-source-event-start combination receives a unique key. The page retains
 events starting from January 2016 through December 2025.
 
+The fixed dates above define the page view. The reusable `analysis` layer also
+persists complete-window summaries for post-event horizons of 12, 24, 36, 48,
+and 60 months when the available housing coverage permits them.
+
 ## Event-window analysis
 
 Events are matched to Redfin observations for the same county. Two windows are
@@ -143,11 +171,15 @@ built around median PPSF year-over-year change:
 
 - **Window A:** 12 months before the event start through its start month, then
   months 1–36 after the event end.
-- **Window B:** the same 12-month pre-event period, then months 1–60 after the
-  event end.
+- **Window B:** the same start-relative 12-month pre-event observations, then
+  months 1–60 measured after the event end.
 
-Month zero is the event start month. Positive months begin after the event end,
-negative months are counted from the event start.
+For both displayed windows, nonpositive months are counted relative to the event
+start and positive months begin after the event end. Window B is therefore
+described in the implementation as end-anchored for its post-event segment; it
+is not a single continuous month index around the event end. The raw join keeps
+up to 24 pre-start months so events spanning multiple months still supply the
+observations required by both display windows.
 
 For each window, only county-event trajectories with a non-null value at every required month
 are retained. This makes full lines comparable but favors counties and events
@@ -157,18 +189,24 @@ At each relative month, trajectories are grouped by overall NRI rating. The
 page reports their median and interquartile range. A county associated with
 multiple qualifying events can contribute multiple trajectories.
 
-To examine differences between counties in the same risk group, for each risk group, two example county lines that are algorithmically determined to be significantly distinct from one another are selected and their features are compared to illustrate the relationship between county features and house price growth.
+To illustrate within-group differences, the page compares two configured focus
+county-event lines for each risk group when those lines meet coverage and
+feature-eligibility requirements. Selection logic supplies eligible fallbacks
+when a configured example is unavailable. These examples are descriptive; no
+statistical test establishes that the paired lines are significantly different.
 
 ## Within-risk-group feature analysis
 
 This section explores which county characteristics accompany stronger or
-weaker housing growth among counties in the same overall risk group. Candidate
-features are drawn from ACS and StatsAmerica, alongside weather measures. ACS
-provides demographic, owner-cost, and affordability measures; StatsAmerica and
-its underlying BEA and CEW series provide income, employment, earnings, and
-migration measures. Features are primarily county averages over the latest ten
-years available in each mart. Some measures are constructed from related
-fields, such as weighted midpoints of ACS cost buckets.
+weaker housing growth among counties in the same overall risk group. Production
+features are supplied through the `feature` domain marts and the definitions in
+`feature.catalog`. Their underlying sources include ACS, StatsAmerica and its
+BEA/CEW series, NCEI weather, NRI risk, and Redfin housing. Optional private
+insurance extracts are materialized separately when present; the cataloged
+homeowners-insurance affordability measure is derived from ACS. Features are
+primarily county averages over the latest ten years available in each
+applicable mart. Some measures are constructed from related fields, such as
+weighted midpoints of ACS cost buckets.
 
 Exploratory data analysis is performed in two stages. First, ACS and
 StatsAmerica features are profiled separately to identify source-specific
@@ -178,15 +216,15 @@ bases, county FIPS codes, and aggregation periods are checked before features
 are combined. This source-level review prevents join or definition problems
 from being mistaken for substantive relationships.
 
-Second, the combined county feature matrix is reviewed because it is the
-dataset used for the within-risk-group analysis. This review checks join
-coverage and unmatched counties, row loss or duplication, missingness introduced
-by the merge, overlapping or contradictory measures across sources, feature
-distributions within each risk group, and pairwise correlations that may reveal
-redundancy. Descriptive relationships with housing growth are evaluated only
-after these checks. Thus, source datasets are not analyzed exclusively in
-isolation: separate profiling supports data validation, while the blended
-dataset is the basis for the final analytical EDA.
+Second, the domain marts are combined into the county feature matrix used for
+within-risk-group analysis and county-relative PPSF modeling. This review
+checks join coverage and unmatched counties, row loss or duplication,
+missingness introduced by the merge, overlapping or contradictory measures
+across sources, feature distributions within each risk group, and pairwise
+correlations that may reveal redundancy. Descriptive relationships with housing
+growth are evaluated only after these checks. Thus, source datasets are not
+analyzed exclusively in isolation: separate profiling supports data validation,
+while the blended dataset is the basis for the final analytical EDA.
 
 For complete county-event lines in the 12-month pre-event through 36-month
 post-event window:
@@ -209,6 +247,11 @@ correlation sample, so counties with several events can receive more weight.
 The feature search is exploratory; it has no multiple-testing adjustment or
 uncertainty intervals.
 
+The separate county-relative PPSF modeling workflow consumes the same cataloged
+feature contract and writes model artifacts under
+`output/models/county_relative_ppsf/`. Its feature importance is distinct from
+the descriptive Spearman ranking and contribution display described above.
+
 ## County Climate Playbook
 
 The lookup combines overall and hazard-specific NRI measures, monthly county
@@ -223,9 +266,17 @@ Geometry is simplified while preserving topology (with a larger tolerance for
 Alaska), and polygon orientation is normalized for browser rendering.
 
 `build-climate-risk-housing` queries the marts, constructs the analytical
-payloads, embeds filtered GeoJSON, and writes one self-contained HTML file. The
-output does not query DuckDB at runtime. D3 and Google Fonts are its external
-browser resources.
+payloads, and embeds filtered GeoJSON. It writes a three-file publication
+bundle:
+
+- `output/climate-risk-housing.html`
+- `output/climate-risk-housing-county-history.js`
+- `output/climate-risk-housing-playbook.js`
+
+The JavaScript files hold deferred county-history and Climate Playbook payloads
+and must remain beside the HTML file when it is opened or published. The output
+does not query DuckDB at runtime. D3 and Google Fonts are its external browser
+resources.
 
 ## Limitations
 
@@ -242,11 +293,23 @@ browser resources.
 - **County aggregation:** county summaries conceal neighborhood-level exposure
   and market variation.
 - **Risk measurement:** NRI is FEMA's modeled expected-risk summary, not a direct
-  measure of a particular event's local severity.
+  measure of a particular event's local severity. The current NRI snapshot is
+  also applied to historical housing and event periods, so it should not be read
+  as a contemporaneous historical risk rating.
 - **Year-over-year outcome:** adjacent monthly observations share information
   because each compares with the previous year.
 - **Exploratory feature ranking:** correlations are unadjusted, potentially
   confounded, and selected from many candidates.
+- **Illustrative examples:** configured county-event examples and fallback
+  selection are descriptive; their differences are not formal significance
+  findings.
+- **Private housing input:** the repository does not distribute Redfin county
+  data, so a clean clone cannot regenerate the housing marts or final page from
+  source.
+- **Optional insurance input:** insurance premium and non-renewal features are
+  unavailable when the private county Feather snapshot is not supplied.
+- **Fixed publication period:** housing histories and page events stop in
+  December 2025 even when the bootstrap retrieves newer public source data.
 - **Static extracts:** results can change when inputs are revised and rebuilt.
 
 ## Reproduction
@@ -255,26 +318,43 @@ From the repository root:
 
 ```powershell
 pip install -e .
+download-data all
 build-database
+train-county-relative-ppsf --n-jobs 1
 build-climate-risk-housing
 ```
 
-If raw database tables are already current:
+Set `CENSUS_API_KEY` before running the bootstrap. The committed FIPS master
+requires no manual retrieval. A full rebuild additionally requires the user to
+supply `data/housing/Redfin-Housing-Market-By-County.csv`; without it, the
+housing marts, model, and final page cannot be regenerated. The private
+`county_processed_data.feather` input is optional and only adds its insurance
+features.
+
+If an existing `data/quoll.duckdb` already contains current raw tables:
 
 ```powershell
 build-database --marts-only
+train-county-relative-ppsf --n-jobs 1
 build-climate-risk-housing
 ```
 
-The deliverable is written to `output/climate-risk-housing.html`. Reproduction
-requires running `download-data all` and supplying the private Redfin and county
-reference inputs reported by that command. The repository does not distribute
-provider extracts and selects the latest available public data. Provider
-revisions can therefore change future results; version-specific URLs and
-retrieval metadata are recorded where available.
+`--marts-only` cannot initialize a fresh clone because it depends on those
+existing raw tables. Retraining is necessary only when regenerating the model
+artifacts consumed by the page; the committed small model artifacts can
+otherwise be retained.
+
+Viewing or publishing the committed page does not require DuckDB or any source
+data. It requires the HTML file and both deferred JavaScript payloads listed
+above. Full analytical reproduction selects the latest available public data,
+so provider revisions can change future results. Version-specific URLs and
+retrieval metadata are recorded where available; exact historical reproduction
+is not guaranteed for mutable APIs or unversioned downloads.
 
 ## Maintenance
 
 This document describes the current implementation. Changes to date ranges,
-event filters, feature definitions, completeness rules, or aggregations should
-update this document in the same change.
+event filters, feature definitions, completeness rules, database-layer
+contracts, model inputs, source-manifest metadata, or aggregations should update
+this document in the same change. Publication changes must also keep the HTML
+and its two deferred JavaScript artifacts synchronized.
