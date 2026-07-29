@@ -193,51 +193,6 @@ def rating_clean(value: object) -> str | None:
     return RISK_MAP.get(str(value), str(value))
 
 
-def feature_bucket_labels(values: pd.Series, fmt: str, count: int = 5) -> tuple[pd.Series, list[str]]:
-    valid = pd.to_numeric(values, errors="coerce").dropna()
-    if valid.empty:
-        return pd.Series(pd.NA, index=values.index, dtype="object"), []
-    edges = valid.quantile(np.linspace(0, 1, count + 1)).to_numpy()
-    edges = np.unique(edges)
-    if len(edges) < 3:
-        label = f"All values ({format_bucket_value(valid.median(), fmt)})"
-        return pd.Series(label, index=values.index, dtype="object").where(values.notna()), [label]
-    labels = [f"B{i + 1}: {format_bucket_value(edges[i], fmt)} to {format_bucket_value(edges[i + 1], fmt)}" for i in range(len(edges) - 1)]
-    buckets = pd.cut(values, bins=edges, labels=labels, include_lowest=True, duplicates="drop")
-    return buckets.astype("object"), labels
-
-
-def format_bucket_value(value: float, fmt: str) -> str:
-    if pd.isna(value):
-        return "n/a"
-    if fmt == "currency":
-        return f"${value:,.0f}"
-    if fmt == "percent":
-        return f"{value:,.2f}%"
-    if fmt == "pct":
-        return f"{value * 100:,.2f}%"
-    if fmt == "signed_pct":
-        return f"{value * 100:+,.2f}%"
-    if fmt == "temperature_f":
-        return f"{value:,.1f} F"
-    if fmt == "inches":
-        return f"{value:,.2f} in"
-    return f"{value:,.1f}"
-
-
-def classify_bucket_position(bucket_order: int | None, bucket_count: int, corr: object) -> str:
-    if bucket_order is None or not bucket_count or pd.isna(corr) or float(corr) == 0:
-        return "neutral"
-    midpoint = (bucket_count - 1) / 2
-    if bucket_order == midpoint:
-        return "neutral"
-    higher_bin = bucket_order > midpoint
-    positive_corr = float(corr) > 0
-    if higher_bin == positive_corr:
-        return "higher"
-    return "lower"
-
-
 def weighted_bucket_average(frame: pd.DataFrame, buckets: list[tuple[str, float]], *, zero_cols: list[str] | None = None) -> pd.Series:
     total = pd.Series(0.0, index=frame.index)
     weighted = pd.Series(0.0, index=frame.index)
@@ -250,13 +205,6 @@ def weighted_bucket_average(frame: pd.DataFrame, buckets: list[tuple[str, float]
             total = total.add(values, fill_value=0)
             weighted = weighted.add(values * midpoint, fill_value=0)
     return weighted.where(total > 0) / total.where(total > 0)
-
-
-def mean_available(frame: pd.DataFrame, columns: list[str]) -> pd.Series:
-    available = [column for column in columns if column in frame.columns]
-    if not available:
-        return pd.Series(np.nan, index=frame.index)
-    return frame[available].apply(pd.to_numeric, errors="coerce").mean(axis=1, skipna=True)
 
 
 def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
@@ -1705,155 +1653,18 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         ("Climate", "Temperature", "avg_temperature_f", "temperature_f", "mart.ncei_county_weather_monthly"),
         ("Climate", "Precipitation", "precipitation_inches", "inches", "mart.ncei_county_weather_monthly"),
     ]
-    excluded_feature_labels = {
-        "Median PPSF YOY",
-        "Homeownership Cost Share",
-    }
     for _, _, column, _, _ in feature_defs:
         if column in features:
             features[column] = pd.to_numeric(features[column], errors="coerce")
 
-    candidate_feature_defs = [definition for definition in feature_defs if definition[1] not in excluded_feature_labels]
     feature_display_meta = {
         label: {"category": category, "column": column, "format": fmt, "source": source}
         for category, label, column, fmt, source in feature_defs
     }
-    # --- Option B: within-group feature correlations ---
-    # For each risk rating, Spearman correlation of each feature with the continuous
-    # NRI risk_score (0–100) restricted to counties in that tier. Uses the raw score
-    # rather than the integer riskValue so there is meaningful variance within each tier.
-    events_for_position = load_disaster_events(con)
-    events_for_position = events_for_position.loc[
-        events_for_position["event_start_month"].between(pd.Timestamp("2016-01-01"), pd.Timestamp("2025-12-01"))
-    ].copy()
-    housing_for_position = load_redfin_county_monthly(con)
-    housing_for_position.loc[pd.to_numeric(housing_for_position["median_ppsf_yoy"], errors="coerce").le(-888888000), "median_ppsf_yoy"] = np.nan
-    affected_for_position = build_affected_event_windows(
-        events_for_position,
-        housing_for_position,
-        pre_event_months=24,
-        post_event_months=60,
-    )
-    required_position_months = event_window_months(12, 36)
-    complete_position = filter_complete_event_window_lines(
-        affected_for_position,
-        x_col="event_window_month",
-        line_col="line_id",
-        metric_col="median_ppsf_yoy",
-        required_x_values=required_position_months,
-    ).copy()
-    complete_position = complete_position.loc[complete_position["event_window_month"].isin(required_position_months)].copy()
-    complete_position = complete_position.merge(nri[["fips", "riskRating"]], on="fips", how="left")
-    line_position = (
-        complete_position.dropna(subset=["riskRating", "median_ppsf_yoy"])
-        .groupby(["line_id", "fips", "riskRating"], as_index=False)["median_ppsf_yoy"]
-        .mean()
-        .rename(columns={"median_ppsf_yoy": "avg_ppsf_yoy"})
-    )
-    line_position["group_median_ppsf_yoy"] = line_position.groupby("riskRating", observed=False)["avg_ppsf_yoy"].transform("median")
-    line_position["relative_position"] = line_position["avg_ppsf_yoy"] - line_position["group_median_ppsf_yoy"]
-    position_analysis = line_position.merge(features, on="fips", how="inner", suffixes=("", "_feature"))
-
-    within_group_top_features: dict[str, list[dict]] = {}
-    within_group_feature_bins: dict[str, dict[str, dict[str, object]]] = {}
-    feature_lookup = {
-        label: {"category": category, "column": column, "format": fmt, "source": source}
-        for category, label, column, fmt, source in feature_defs
-    }
-    for rating in RISK_ORDER:
-        group = position_analysis[position_analysis["riskRating"] == rating].copy()
-        rating_corrs = []
-        for _, label, column, _, _ in candidate_feature_defs:
-            valid_group = group.dropna(subset=[column, "relative_position"])
-            if len(valid_group) < 10:
-                corr = None
-            else:
-                corr = serialize_number(
-                    valid_group[["relative_position", column]].corr(method="spearman").iloc[0, 1], 3
-                )
-            rating_corrs.append({"feature": label, "corr": corr})
-        selected_corrs = [item for item in rating_corrs if item["corr"] is not None]
-        selected_corrs = sorted(selected_corrs, key=lambda item: abs(item["corr"] or 0), reverse=True)[:10]
-        within_group_top_features[rating] = selected_corrs
-        within_group_feature_bins[rating] = {}
-        group_position_baseline = group["relative_position"].median()
-        for selected in selected_corrs:
-            label = selected["feature"]
-            meta = feature_lookup[label]
-            column = meta["column"]
-            valid_group = group.dropna(subset=[column, "relative_position"]).copy()
-            if valid_group.empty:
-                continue
-            valid_group["bucket"], bucket_order = feature_bucket_labels(valid_group[column], meta["format"])
-            valid_group = valid_group.dropna(subset=["bucket"]).copy()
-            county_feature_values = valid_group[["fips", column]].drop_duplicates("fips").copy()
-            county_feature_values["feature_percentile"] = (
-                county_feature_values[column]
-                .rank(method="average", pct=True, na_option="keep")
-                .mul(100)
-            )
-            valid_group = valid_group.merge(
-                county_feature_values[["fips", "feature_percentile"]],
-                on="fips",
-                how="left",
-            )
-            valid_group["feature_contribution"] = (
-                (valid_group["feature_percentile"] / 100 * 2 - 1) * float(selected["corr"])
-            )
-            bucket_summaries = (
-                valid_group.groupby("bucket", observed=False)
-                .agg(
-                    median_relative_position=("relative_position", "median"),
-                    median_avg_ppsf_yoy=("avg_ppsf_yoy", "median"),
-                    count=("line_id", "nunique"),
-                )
-                .reset_index()
-            )
-            bucket_summary_by_name = {}
-            for summary in bucket_summaries.itertuples(index=False):
-                bucket_order_index = bucket_order.index(str(summary.bucket)) if str(summary.bucket) in bucket_order else None
-                ppsf_association = classify_bucket_position(bucket_order_index, len(bucket_order), selected["corr"])
-                bucket_summary_by_name[str(summary.bucket)] = {
-                    "bucket": str(summary.bucket),
-                    "bucketOrder": bucket_order_index,
-                    "bucketCount": len(bucket_order),
-                    "medianRelativePosition": serialize_number(summary.median_relative_position, 5),
-                    "medianAvgPpsfYoy": serialize_number(summary.median_avg_ppsf_yoy, 5),
-                    "relativePpsfAssociation": ppsf_association,
-                    "ppsfAssociation": ppsf_association,
-                    "relativePpsfCorrelation": selected["corr"],
-                    "ppsfCorrelation": selected["corr"],
-                    "count": int(summary.count),
-                    "baselineRelativePosition": serialize_number(group_position_baseline, 5),
-                }
-            for row in valid_group[
-                ["fips", column, "bucket", "feature_percentile", "feature_contribution"]
-            ].drop_duplicates("fips").itertuples(index=False):
-                summary = bucket_summary_by_name.get(str(row.bucket))
-                if not summary:
-                    continue
-                within_group_feature_bins[rating].setdefault(str(row.fips), {})[label] = {
-                    "value": serialize_number(row[1], 4),
-                    "valuePercentile": serialize_number(row.feature_percentile, 2),
-                    "contribution": serialize_number(row.feature_contribution, 4),
-                    "bucket": str(row.bucket),
-                    "bucketOrder": summary["bucketOrder"],
-                    "bucketCount": summary["bucketCount"],
-                    "corr": selected["corr"],
-                    "relativePpsfAssociation": summary["relativePpsfAssociation"],
-                    "ppsfAssociation": summary["ppsfAssociation"],
-                    "relativePpsfCorrelation": summary["relativePpsfCorrelation"],
-                    "ppsfCorrelation": summary["ppsfCorrelation"],
-                    "medianRelativePosition": summary["medianRelativePosition"],
-                    "medianAvgPpsfYoy": summary["medianAvgPpsfYoy"],
-                    "baselineRelativePosition": summary["baselineRelativePosition"],
-                }
 
     return {
         "riskOrder": RISK_ORDER,
         "featureMeta": feature_display_meta,
-        "withinGroupTopFeatures": within_group_top_features,
-        "withinGroupFeatureBins": within_group_feature_bins,
     }
 
 
@@ -4068,36 +3879,32 @@ def main() -> None:
         model_features = build_model_feature_payload()
         eligible_feature_fips_by_risk: dict[str, set[str]] = {}
         for risk in RISK_ORDER:
-            top_labels = {
+            top_features = {
                 item["feature"]
-                for item in features.get("withinGroupTopFeatures", {}).get(risk, [])
+                for item in model_features.get("topFeaturesByRisk", {}).get(risk, [])
             }
-            county_bins = features.get("withinGroupFeatureBins", {}).get(risk, {})
             eligible_feature_fips_by_risk[risk] = {
                 str(fips)
-                for fips, values in county_bins.items()
-                if top_labels
+                for fips, profile in model_features.get("countyProfiles", {}).items()
+                if profile.get("riskRating") == risk
+                and top_features
                 and all(
-                    label in values and values[label].get("value") is not None
-                    for label in top_labels
+                    feature in profile.get("features", {})
+                    and profile["features"][feature].get("value") is not None
+                    for feature in top_features
                 )
             }
         event_windows = build_event_windows(con, eligible_feature_fips_by_risk)
         playbook = build_county_playbook_data(con)
 
-    # The feature comparison displays only the two window-A example counties
-    # per risk group. Keep their details and discard thousands of unused county
-    # records before embedding the standalone page.
+    # The feature comparison displays only the window-A example counties.
+    # Keep their model profiles and discard unused county records before
+    # embedding the page.
     displayed_feature_fips: dict[str, set[str]] = {risk: set() for risk in RISK_ORDER}
     for example in event_windows.get("windowA", {}).get("exampleCountyLines", []):
         risk = example.get("riskRating")
         if risk in displayed_feature_fips and example.get("fips"):
             displayed_feature_fips[risk].add(str(example["fips"]).zfill(5))
-    for risk, county_bins in features.get("withinGroupFeatureBins", {}).items():
-        selected_fips = displayed_feature_fips.get(risk, set())
-        features["withinGroupFeatureBins"][risk] = {
-            fips: values for fips, values in county_bins.items() if str(fips).zfill(5) in selected_fips
-        }
 
     state_geometries = load_state_geometries()
     geojson = build_geojson(
@@ -4105,16 +3912,12 @@ def main() -> None:
         state_geometries,
     )
     state_geojson = build_state_geojson(state_geometries)
-    focus_fips = {
-        specification["fips"]
-        for specifications in FEATURE_FOCUS_EVENTS.values()
-        for specification in specifications
-    }
+    displayed_fips = set().union(*displayed_feature_fips.values())
     features["modelTopFeaturesByRisk"] = model_features["topFeaturesByRisk"]
     features["modelCountyProfiles"] = {
         fips: profile
         for fips, profile in model_features["countyProfiles"].items()
-        if fips in focus_fips
+        if fips in displayed_fips
     }
     playbook["modelTopFeaturesByRisk"] = model_features["topFeaturesByRisk"]
     playbook["modelCountyProfiles"] = model_features["countyProfiles"]

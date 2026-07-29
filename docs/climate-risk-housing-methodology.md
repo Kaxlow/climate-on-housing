@@ -208,49 +208,52 @@ primarily county averages over the latest ten years available in each
 applicable mart. Some measures are constructed from related fields, such as
 weighted midpoints of ACS cost buckets.
 
-Exploratory data analysis is performed in two stages. First, ACS and
-StatsAmerica features are profiled separately to identify source-specific
-missingness, duplicate county-year records, outliers, geographic and temporal
-coverage, and changes in variable definitions. Units, denominators, dollar-year
-bases, county FIPS codes, and aggregation periods are checked before features
-are combined. This source-level review prevents join or definition problems
-from being mistaken for substantive relationships.
+The page's **Most Significant County Features** come from the separate
+county-relative PPSF modeling workflow. The modeling table has one row per
+county. Eligible counties have an NRI risk rating, a non-null target, and at
+least 60 valid monthly median PPSF year-over-year observations in the latest ten
+calendar years. For each county, the target is its median monthly PPSF
+year-over-year growth over that period minus the median of that county summary
+among eligible counties in the same NRI risk group.
 
-Second, the domain marts are combined into the county feature matrix used for
-within-risk-group analysis and county-relative PPSF modeling. This review
-checks join coverage and unmatched counties, row loss or duplication,
-missingness introduced by the merge, overlapping or contradictory measures
-across sources, feature distributions within each risk group, and pairwise
-correlations that may reveal redundancy. Descriptive relationships with housing
-growth are evaluated only after these checks. Thus, source datasets are not
-analyzed exclusively in isolation: separate profiling supports data validation,
-while the blended dataset is the basis for the final analytical EDA.
+Candidate predictors are the retained numeric fields in `feature.catalog`,
+aggregated at their native frequencies before the county-level join. Within
+each model population, predictors must meet coverage and variance requirements.
+Highly redundant predictors are pruned when their absolute pairwise Spearman
+correlation is at least 0.85. This correlation is between predictors for
+redundancy control; features are not ranked by their individual correlation
+with the PPSF target.
 
-For complete county-event lines in the 12-month pre-event through 36-month
-post-event window:
+Elastic Net and gradient-boosted tree regressions are compared using repeated
+nested cross-validation, and the model with the lowest mean absolute error is
+selected for each population. Very Low, Low, and Medium are modeled separately.
+High and Very High are pooled into one model with a Very High indicator and
+predictor interactions because the standalone Very High sample is small.
 
-1. Housing growth is averaged over the full line.
-2. The median line average is calculated within the risk group.
-3. A line's **relative position** equals its average minus that group median.
-4. Within each risk group, each feature's Spearman correlation with relative
-   position is calculated when at least ten observations are available.
-5. The ten features with the largest absolute correlations are shown.
+Importance is specific to the selected model:
 
-Feature values are divided into up to five within-group quantile buckets, and
-county feature percentiles are calculated within the group. The displayed
-feature contribution combines centered percentile with the correlation's
-direction and magnitude. It is a descriptive display score—not a regression
-coefficient, causal contribution, or model feature importance.
+- For Elastic Net, importance is the fitted coefficient in standardized
+  predictor and target units.
+- For a separately fitted gradient-boosted tree model, importance is the
+  model's unsigned impurity importance.
+- For the pooled High and Very High model, importance is calculated separately
+  for the two original risk groups by repeatedly permuting each base feature
+  within that group and measuring the mean increase in in-sample absolute
+  error. Negative mean increases are set to zero for ranking.
 
-County-event lines, rather than necessarily unique counties, form the
-correlation sample, so counties with several events can receive more weight.
-The feature search is exploratory; it has no multiple-testing adjustment or
-uncertainty intervals.
+For each risk group, the page orders features by absolute importance, retains
+the top ten, and scales their displayed bar lengths relative to the largest
+absolute importance in that group. The two example counties are then compared
+using the underlying aggregated value of each selected feature and its
+percentile among eligible counties in the same original risk group. Feature
+values are not binned, and those percentiles do not determine feature
+importance.
 
-The separate county-relative PPSF modeling workflow consumes the same cataloged
-feature contract and writes model artifacts under
-`output/models/county_relative_ppsf/`. Its feature importance is distinct from
-the descriptive Spearman ranking and contribution display described above.
+The model estimates predictive associations rather than causal effects.
+Elastic Net coefficients and tree- or permutation-based importance are not
+directly comparable effect sizes. Details of the target, validation design,
+model selection, and saved artifacts are in
+`docs/county-relative-ppsf-modeling.md`.
 
 ## County Climate Playbook
 
@@ -298,8 +301,10 @@ resources.
   as a contemporaneous historical risk rating.
 - **Year-over-year outcome:** adjacent monthly observations share information
   because each compares with the previous year.
-- **Exploratory feature ranking:** correlations are unadjusted, potentially
-  confounded, and selected from many candidates.
+- **Model-specific feature ranking:** importance depends on the selected model,
+  available predictors, preprocessing, and sample. Tree impurity importance can
+  favor continuous predictors, and pooled-group permutation importance is
+  measured in-sample. None of these rankings establishes a causal contribution.
 - **Illustrative examples:** configured county-event examples and fallback
   selection are descriptive; their differences are not formal significance
   findings.
