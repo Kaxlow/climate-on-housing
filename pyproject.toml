@@ -26,6 +26,14 @@ dependencies = [
     "statsmodels",
 ]
 
+[project.optional-dependencies]
+notebooks = [
+    "ipykernel",
+    "jupyterlab",
+    "nbclient",
+    "nbformat",
+]
+
 [project.scripts]
 build-climate-risk-housing = "housing_climate_risk.page_data.climate_risk_housing:main"
 build-database = "housing_climate_risk.cli.build_database:main"

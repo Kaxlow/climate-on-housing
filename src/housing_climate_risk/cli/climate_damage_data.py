@@ -3,15 +3,16 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import hashlib
 import json
 import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 
@@ -21,22 +22,21 @@ from housing_climate_risk.paths import DATA_DIR
 OUTPUT_DIR = DATA_DIR / "climate_damage"
 NOAA_INDEX_URL = "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
 FEMA_API = "https://www.fema.gov/api/open"
-
-WEATHER_INCIDENT_TYPES = [
-    "Coastal Storm",
-    "Drought",
-    "Fire",
-    "Flood",
-    "Freezing",
-    "Hurricane",
-    "Mud/Landslide",
-    "Severe Ice Storm",
-    "Severe Storm",
-    "Snowstorm",
-    "Tornado",
-    "Tropical Storm",
-    "Typhoon",
-    "Winter Storm",
+FEMA_WEB_DISASTER_SUMMARIES_URL = (
+    f"{FEMA_API}/v1/FemaWebDisasterSummaries"
+    "?$orderby=disasterNumber&$top=1000"
+)
+FIPS_MASTER_PATH = DATA_DIR / "fipsgeo" / "fips_master_v2.csv"
+MANIFEST_COLUMNS = [
+    "artifact",
+    "source",
+    "year",
+    "url",
+    "path",
+    "bytes",
+    "sha256",
+    "derived_from",
+    "downloaded_at",
 ]
 
 def _last_complete_calendar_year(today: date | None = None) -> int:
@@ -98,9 +98,39 @@ def _write_manifest(path: Path, rows: list[dict[str, Any]]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()), extrasaction="ignore")
+        writer = csv.DictWriter(file, fieldnames=MANIFEST_COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _manifest_row(
+    *,
+    artifact: Path,
+    output_dir: Path,
+    source: str,
+    url: str,
+    year: int | str = "",
+    derived_from: str = "",
+) -> dict[str, Any]:
+    return {
+        "artifact": artifact.name,
+        "source": source,
+        "year": year,
+        "url": url,
+        "path": str(artifact.relative_to(output_dir)),
+        "bytes": artifact.stat().st_size,
+        "sha256": _sha256(artifact),
+        "derived_from": derived_from,
+        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _download_file(url: str, path: Path, *, force: bool) -> tuple[Path, int]:
@@ -195,19 +225,138 @@ def _process_noaa(paths: list[Path], output_path: Path) -> Path:
     return output_path
 
 
+def _normalize_county_name(value: Any) -> str:
+    text = re.sub(r"[^A-Z0-9]+", " ", str(value).upper()).strip()
+    suffixes = (
+        " CITY AND BOROUGH",
+        " CENSUS AREA",
+        " MUNICIPALITY",
+        " BOROUGH",
+        " PARISH",
+        " COUNTY",
+        " CITY",
+    )
+    for suffix in suffixes:
+        if text.endswith(suffix):
+            text = text[: -len(suffix)].strip()
+            break
+    return re.sub(r"\s+", " ", text)
+
+
+def _zone_mapping_rows(noaa: pd.DataFrame, counties: pd.DataFrame) -> list[dict[str, Any]]:
+    zones = noaa.loc[noaa["cz_type"].eq("Z")].copy()
+    zones["total_damage"] = pd.to_numeric(zones["total_damage"], errors="coerce").fillna(0)
+    summaries = (
+        zones.groupby(["state", "state_fips", "cz_fips", "cz_name"], dropna=False)
+        .agg(
+            source_row_count=("cz_name", "size"),
+            source_total_damage=("total_damage", "sum"),
+            max_row_damage=("total_damage", "max"),
+        )
+        .reset_index()
+    )
+    county_lookup: dict[str, list[tuple[str, str, str]]] = {}
+    for county in counties.itertuples(index=False):
+        fips = str(county.fips).zfill(5)
+        county_lookup.setdefault(fips[:2], []).append(
+            (fips, str(county.county_name), _normalize_county_name(county.county_name))
+        )
+
+    prefixes = re.compile(
+        r"^(?:NORTH|SOUTH|EAST|WEST|CENTRAL|NORTHEAST|NORTHWEST|SOUTHEAST|SOUTHWEST|"
+        r"COASTAL|INTERIOR|UPPER|LOWER|EASTERN|WESTERN|NORTHERN|SOUTHERN)\s+"
+    )
+    rows: list[dict[str, Any]] = []
+    for zone in summaries.itertuples(index=False):
+        state_fips = str(zone.state_fips).zfill(2)
+        zone_name = _normalize_county_name(zone.cz_name)
+        candidates = county_lookup.get(state_fips, [])
+        matches: list[tuple[str, str, str, str]] = []
+
+        exact = [item for item in candidates if item[2] == zone_name]
+        if exact:
+            matches = [(fips, name, "exact_county_name", "high") for fips, name, _ in exact]
+        else:
+            stripped = prefixes.sub("", zone_name)
+            directional = [item for item in candidates if item[2] == stripped]
+            if directional:
+                matches = [
+                    (fips, name, "directional_or_coastal_prefix_stripped", "medium")
+                    for fips, name, _ in directional
+                ]
+            else:
+                contained = [
+                    item
+                    for item in candidates
+                    if len(item[2]) >= 4
+                    and re.search(rf"(?:^|\s){re.escape(item[2])}(?:$|\s)", zone_name)
+                ]
+                if len(contained) == 1:
+                    matches = [
+                        (contained[0][0], contained[0][1], "county_name_contained_in_zone", "low")
+                    ]
+                elif len(contained) > 1 and "COUNT" in str(zone.cz_name).upper():
+                    matches = [
+                        (fips, name, "multi_county_phrase", "medium")
+                        for fips, name, _ in contained
+                    ]
+
+        common = {
+            "state": zone.state,
+            "state_fips": state_fips,
+            "cz_fips": zone.cz_fips,
+            "cz_name": zone.cz_name,
+            "source_row_count": zone.source_row_count,
+            "source_total_damage": zone.source_total_damage,
+            "max_row_damage": zone.max_row_damage,
+        }
+        if matches:
+            for mapped_fips, mapped_name, method, confidence in matches:
+                rows.append(
+                    {
+                        **common,
+                        "mapped_fips": mapped_fips,
+                        "mapped_county_name": mapped_name,
+                        "mapping_method": method,
+                        "mapping_confidence": confidence,
+                        "mapping_note": "Deterministic normalized-name match generated from fips_master_v2.csv.",
+                    }
+                )
+        else:
+            rows.append(
+                {
+                    **common,
+                    "mapped_fips": "",
+                    "mapped_county_name": "",
+                    "mapping_method": "unmapped",
+                    "mapping_confidence": "none",
+                    "mapping_note": "No deterministic county-name match in the same state.",
+                }
+            )
+    return rows
+
+
+def _process_zone_county_mapping(
+    noaa_path: Path,
+    county_path: Path,
+    output_path: Path,
+) -> Path:
+    noaa = pd.read_csv(
+        noaa_path,
+        usecols=["state", "state_fips", "cz_type", "cz_fips", "cz_name", "total_damage"],
+        dtype={"state_fips": "string"},
+        low_memory=False,
+    )
+    counties = pd.read_csv(county_path, usecols=["fips", "county_name"], dtype=str)
+    rows = _zone_mapping_rows(noaa, counties)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+    return output_path
+
+
 def _fema_get(endpoint: str, params: dict[str, str], *, timeout: int = 180, retries: int = 8) -> dict[str, Any]:
     url = f"{FEMA_API}/{endpoint}?{urllib.parse.urlencode(params, safe=',() ')}"
     return json.loads(_request_text(url, timeout=timeout, retries=retries))
-
-
-def _fema_metadata_fields(dataset_name: str, version: int) -> set[str]:
-    params = {
-        "$select": "name",
-        "$filter": f"openFemaDataSet eq '{dataset_name}' and datasetVersion eq {version}",
-        "$top": "10000",
-    }
-    payload = _fema_get("v1/OpenFemaDataSetFields", params)
-    return {row["name"] for row in payload.get("OpenFemaDataSetFields", []) if row.get("name")}
 
 
 def _fema_fetch_all(endpoint: str, root_key: str, params: dict[str, str], *, page_size: int = 5000) -> pd.DataFrame:
@@ -227,120 +376,17 @@ def _fema_fetch_all(endpoint: str, root_key: str, params: dict[str, str], *, pag
     return pd.DataFrame(rows)
 
 
-def _openfema_filter(start_year: int, end_year: int) -> str:
-    start = f"{start_year}-01-01T00:00:00.000Z"
-    end = f"{end_year + 1}-01-01T00:00:00.000Z"
-    incidents = " or ".join(f"incidentType eq '{value}'" for value in WEATHER_INCIDENT_TYPES)
-    return f"declarationDate ge '{start}' and declarationDate lt '{end}' and ({incidents})"
-
-
-def _process_fema_declarations(start_year: int, end_year: int, output_dir: Path) -> pd.DataFrame:
-    fields = [
-        "disasterNumber",
-        "declarationDate",
-        "incidentBeginDate",
-        "incidentEndDate",
-        "incidentType",
-        "state",
-        "designatedArea",
-        "fipsStateCode",
-        "fipsCountyCode",
-        "declarationTitle",
-        "ihProgramDeclared",
-        "paProgramDeclared",
-        "hmProgramDeclared",
-    ]
-    df = _fema_fetch_all(
-        "v2/DisasterDeclarationsSummaries",
-        "DisasterDeclarationsSummaries",
-        {"$select": ",".join(fields), "$filter": _openfema_filter(start_year, end_year), "$orderby": "declarationDate"},
+def _download_fema_web_disaster_summaries(output_dir: Path) -> Path:
+    frame = _fema_fetch_all(
+        "v1/FemaWebDisasterSummaries",
+        "FemaWebDisasterSummaries",
+        {"$orderby": "disasterNumber"},
+        page_size=1000,
     )
-    if not df.empty:
-        df["county_fips"] = df["fipsStateCode"].astype(str).str.zfill(2) + df["fipsCountyCode"].astype(str).str.zfill(3)
-    path = output_dir / "fema_disaster_declarations_weather_county.csv"
-    df.to_csv(path, index=False)
-    return df
-
-
-def _or_chunks(values: Iterable[Any], field: str, chunk_size: int = 5) -> Iterable[str]:
-    items = [int(value) for value in sorted(set(values)) if pd.notna(value)]
-    for start in range(0, len(items), chunk_size):
-        yield "(" + " or ".join(f"{field} eq {value}" for value in items[start : start + chunk_size]) + ")"
-
-
-def _process_fema_ia(disaster_numbers: Iterable[Any], output_dir: Path) -> pd.DataFrame:
-    dataset = "IndividualsAndHouseholdsProgramValidRegistrations"
-    available = _fema_metadata_fields(dataset, 2)
-    wanted = [
-        "disasterNumber",
-        "damagedStateAbbreviation",
-        "damagedCounty",
-        "censusBlockId",
-        "ownRent",
-        "ihpAmount",
-        "haAmount",
-        "onaAmount",
-        "rpfvl",
-        "ppfvl",
-    ]
-    fields = [field for field in wanted if field in available]
-    frames = []
-    for filt in _or_chunks(disaster_numbers, "disasterNumber"):
-        frames.append(
-            _fema_fetch_all(
-                "v2/IndividualsAndHouseholdsProgramValidRegistrations",
-                "IndividualsAndHouseholdsProgramValidRegistrations",
-                {"$select": ",".join(fields), "$filter": filt},
-            )
-        )
-    raw = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=fields)
-    if raw.empty:
-        out = raw
-    else:
-        if "censusBlockId" in raw.columns:
-            raw["county_fips"] = raw["censusBlockId"].astype(str).str[:5]
-        amount_cols = [col for col in ["ihpAmount", "haAmount", "onaAmount", "rpfvl", "ppfvl"] if col in raw.columns]
-        for col in amount_cols:
-            raw[col] = pd.to_numeric(raw[col], errors="coerce").fillna(0)
-        group_cols = [col for col in ["disasterNumber", "county_fips", "damagedStateAbbreviation", "damagedCounty"] if col in raw.columns]
-        out = raw.groupby(group_cols, dropna=False).agg(valid_registrations=("disasterNumber", "size"), **{col: (col, "sum") for col in amount_cols}).reset_index()
-    path = output_dir / "fema_individual_assistance_county.csv"
-    out.to_csv(path, index=False)
-    return out
-
-
-def _process_fema_pa(start_year: int, end_year: int, output_dir: Path) -> pd.DataFrame:
-    dataset = "PublicAssistanceGrantAwardActivities"
-    available = _fema_metadata_fields(dataset, 2)
-    wanted = [
-        "disasterNumber",
-        "declarationDate",
-        "incidentType",
-        "state",
-        "county",
-        "applicantName",
-        "projectTitle",
-        "federalShareObligated",
-        "totalObligated",
-        "projectAmount",
-    ]
-    fields = [field for field in wanted if field in available]
-    raw = _fema_fetch_all(
-        "v2/PublicAssistanceGrantAwardActivities",
-        "PublicAssistanceGrantAwardActivities",
-        {"$select": ",".join(fields), "$filter": _openfema_filter(start_year, end_year)},
-    )
-    if raw.empty:
-        out = raw
-    else:
-        amount_cols = [col for col in ["federalShareObligated", "totalObligated", "projectAmount"] if col in raw.columns]
-        for col in amount_cols:
-            raw[col] = pd.to_numeric(raw[col], errors="coerce").fillna(0)
-        group_cols = [col for col in ["disasterNumber", "state", "county", "incidentType"] if col in raw.columns]
-        out = raw.groupby(group_cols, dropna=False).agg(project_records=("disasterNumber", "size"), **{col: (col, "sum") for col in amount_cols}).reset_index()
-    path = output_dir / "fema_public_assistance_county.csv"
-    out.to_csv(path, index=False)
-    return out
+    path = output_dir / "raw" / "fema_web_disaster_summaries" / "FemaWebDisasterSummaries.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
+    return path
 
 
 def estimate(start_year: int, end_year: int, output_dir: Path) -> Path:
@@ -348,7 +394,22 @@ def estimate(start_year: int, end_year: int, output_dir: Path) -> Path:
     noaa = _noaa_files(start_year, end_year)
     for year, (filename, size) in noaa.items():
         url = urllib.parse.urljoin(NOAA_INDEX_URL, filename)
-        rows.append({"source": "noaa_storm_events", "year": year, "url": url, "estimated_bytes": size})
+        rows.append(
+            {
+                "artifact": filename,
+                "source": "noaa_storm_events",
+                "year": year,
+                "url": url,
+                "bytes": size,
+            }
+        )
+    rows.append(
+        {
+            "artifact": "FemaWebDisasterSummaries.csv",
+            "source": "openfema",
+            "url": FEMA_WEB_DISASTER_SUMMARIES_URL,
+        }
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "climate_damage_download_estimate.csv"
     _write_manifest(path, rows)
@@ -358,7 +419,6 @@ def estimate(start_year: int, end_year: int, output_dir: Path) -> Path:
 def download(start_year: int, end_year: int, output_dir: Path, *, force: bool) -> None:
     raw_dir = output_dir / "raw"
     manifest_rows: list[dict[str, Any]] = []
-    started = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     noaa_paths = []
@@ -366,20 +426,155 @@ def download(start_year: int, end_year: int, output_dir: Path, *, force: bool) -
         url = urllib.parse.urljoin(NOAA_INDEX_URL, filename)
         path, size = _download_file(url, raw_dir / "noaa_storm_events" / filename, force=force)
         noaa_paths.append(path)
-        manifest_rows.append({"source": "noaa_storm_events", "year": year, "url": url, "path": str(path.relative_to(output_dir)), "bytes": size})
-    _process_noaa(noaa_paths, output_dir / "noaa_storm_events_county_damage.csv")
+        manifest_rows.append(
+            _manifest_row(
+                artifact=path,
+                output_dir=output_dir,
+                source="noaa_storm_events",
+                year=year,
+                url=url,
+            )
+        )
 
-    manifest_rows.append({"source": "download_run", "year": f"{start_year}-{end_year}", "url": "", "path": "", "bytes": "", "elapsed_seconds": round(time.time() - started, 2)})
+    noaa_output = _process_noaa(noaa_paths, output_dir / "noaa_storm_events_county_damage.csv")
+    noaa_urls = ";".join(row["url"] for row in manifest_rows)
+    manifest_rows.append(
+        _manifest_row(
+            artifact=noaa_output,
+            output_dir=output_dir,
+            source="noaa_storm_events",
+            year=f"{start_year}-{end_year}",
+            url=noaa_urls,
+            derived_from=";".join(str(path.relative_to(output_dir)) for path in noaa_paths),
+        )
+    )
+
+    zone_output = _process_zone_county_mapping(
+        noaa_output,
+        FIPS_MASTER_PATH,
+        output_dir / "noaa_storm_events_zone_county_mapping.csv",
+    )
+    manifest_rows.append(
+        _manifest_row(
+            artifact=zone_output,
+            output_dir=output_dir,
+            source="generated_noaa_zone_county_mapping",
+            year=f"{start_year}-{end_year}",
+            url=noaa_urls,
+            derived_from=(
+                f"{noaa_output.relative_to(output_dir)};"
+                f"{FIPS_MASTER_PATH.relative_to(DATA_DIR)}"
+            ),
+        )
+    )
+
+    fema_output = (
+        _download_fema_web_disaster_summaries(output_dir)
+        if force
+        or not (
+            output_dir
+            / "raw"
+            / "fema_web_disaster_summaries"
+            / "FemaWebDisasterSummaries.csv"
+        ).exists()
+        else output_dir
+        / "raw"
+        / "fema_web_disaster_summaries"
+        / "FemaWebDisasterSummaries.csv"
+    )
+    manifest_rows.append(
+        _manifest_row(
+            artifact=fema_output,
+            output_dir=output_dir,
+            source="openfema",
+            url=FEMA_WEB_DISASTER_SUMMARIES_URL,
+        )
+    )
     _write_manifest(output_dir / "climate_damage_source_manifest.csv", manifest_rows)
+
+
+def write_existing_manifest(output_dir: Path) -> Path:
+    """Backfill lineage for existing processed artifacts without downloading data."""
+    estimate_path = output_dir / "climate_damage_download_estimate.csv"
+    noaa_urls: list[str] = []
+    rows: list[dict[str, Any]] = []
+    raw_noaa_paths = sorted((output_dir / "raw" / "noaa_storm_events").glob("*.csv.gz"))
+    for artifact in raw_noaa_paths:
+        match = re.search(r"_d(\d{4})_c\d+\.csv\.gz$", artifact.name)
+        url = urllib.parse.urljoin(NOAA_INDEX_URL, artifact.name)
+        noaa_urls.append(url)
+        rows.append(
+            _manifest_row(
+                artifact=artifact,
+                output_dir=output_dir,
+                source="noaa_storm_events",
+                year=int(match.group(1)) if match else "",
+                url=url,
+            )
+        )
+    if estimate_path.exists():
+        with estimate_path.open(encoding="utf-8-sig", newline="") as file:
+            noaa_urls.extend(
+                row["url"]
+                for row in csv.DictReader(file)
+                if row.get("source") == "noaa_storm_events" and row.get("url")
+            )
+    upstream_noaa = ";".join(dict.fromkeys(noaa_urls)) or NOAA_INDEX_URL
+    candidates = [
+        (
+            output_dir / "noaa_storm_events_county_damage.csv",
+            "noaa_storm_events",
+            upstream_noaa,
+            "NOAA Storm Events annual detail CSV archives",
+        ),
+        (
+            output_dir / "noaa_storm_events_zone_county_mapping.csv",
+            "generated_noaa_zone_county_mapping",
+            upstream_noaa,
+            "noaa_storm_events_county_damage.csv;fipsgeo/fips_master_v2.csv",
+        ),
+        (
+            output_dir
+            / "raw"
+            / "fema_web_disaster_summaries"
+            / "FemaWebDisasterSummaries.csv",
+            "openfema",
+            FEMA_WEB_DISASTER_SUMMARIES_URL,
+            "",
+        ),
+    ]
+    rows.extend(
+        [
+            _manifest_row(
+                artifact=artifact,
+                output_dir=output_dir,
+                source=source,
+                url=url,
+                derived_from=derived_from,
+            )
+            for artifact, source, url, derived_from in candidates
+            if artifact.exists()
+        ]
+    )
+    path = output_dir / "climate_damage_source_manifest.csv"
+    _write_manifest(path, rows)
+    return path
 
 
 def parse_args() -> argparse.Namespace:
     start_year, end_year = _default_years()
-    parser = argparse.ArgumentParser(description="Download NOAA Storm Events county-level weather and climate damage data.")
+    parser = argparse.ArgumentParser(
+        description="Download NOAA Storm Events damage data and FEMA disaster financial summaries."
+    )
     parser.add_argument("--start-year", type=int, default=start_year)
     parser.add_argument("--end-year", type=int, default=end_year)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--estimate-only", action="store_true")
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Write lineage and hashes for existing processed artifacts without downloading.",
+    )
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
 
@@ -389,6 +584,10 @@ def main() -> None:
     if args.estimate_only:
         path = estimate(args.start_year, args.end_year, args.output_dir)
         print(f"Wrote estimate to {path}")
+        return
+    if args.manifest_only:
+        path = write_existing_manifest(args.output_dir)
+        print(f"Wrote manifest to {path}")
         return
     download(args.start_year, args.end_year, args.output_dir, force=args.force)
 

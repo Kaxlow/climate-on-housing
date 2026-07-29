@@ -1,111 +1,112 @@
 risk_group,model_group,model,feature,feature_group,feature_label,importance_type,importance,absolute_importance
-Very Low,Very Low,elastic_net,income_median_household_usd,Economic,Income,standardized_coefficient,-0.23375933466410054,0.23375933466410054
-Very Low,Very Low,elastic_net,net_migration_rate,Demographic,Net Migration Rate,standardized_coefficient,0.13082244692918735,0.13082244692918735
-Very Low,Very Low,elastic_net,inventory_yoy,Housing Market,Inventory YoY,standardized_coefficient,0.12031582930224974,0.12031582930224974
-Very Low,Very Low,elastic_net,age_65_plus_share,Demographic,Population Age 65 and Older,standardized_coefficient,-0.11160078935897134,0.11160078935897134
-Very Low,Very Low,elastic_net,housing_burden_30pct_plus_share,Economic,Cost-Burdened Households,standardized_coefficient,0.10092111745478458,0.10092111745478458
-Very Low,Very Low,elastic_net,no_broadband_internet_share,Demographic,No Broadband Internet Access,standardized_coefficient,-0.061453524259622624,0.061453524259622624
-Very Low,Very Low,elastic_net,property_taxes_pct_income,Economic,Property Taxes as Share of Income,standardized_coefficient,-0.05723520358876757,0.05723520358876757
-Very Low,Very Low,elastic_net,insurance_homeowners_pct_income,Economic,Insurance as Share of Income,standardized_coefficient,-0.05127223107207987,0.05127223107207987
-Very Low,Very Low,elastic_net,price_drops_yoy,Housing Market,Price Drops YoY,standardized_coefficient,0.04830717464038217,0.04830717464038217
-Very Low,Very Low,elastic_net,dividends_interest_rent_per_capita,Economic,"Dividends, Interest, and Rent per Capita",standardized_coefficient,0.04794719502988062,0.04794719502988062
-Very Low,Very Low,elastic_net,utilities_pct_income,Economic,Utilities as Share of Income,standardized_coefficient,0.04561902995011855,0.04561902995011855
-Very Low,Very Low,elastic_net,avg_sale_to_list_yoy,Housing Market,Average Sale-to-List YoY,standardized_coefficient,0.03700920752320326,0.03700920752320326
-Very Low,Very Low,elastic_net,unemployment_rate_pct,Economic,Unemployment,standardized_coefficient,-0.026631317254254765,0.026631317254254765
-Very Low,Very Low,elastic_net,homeownership_cost_pct_income,Economic,Homeownership Cost Share,standardized_coefficient,0.022728376043756826,0.022728376043756826
-Very Low,Very Low,elastic_net,homes_sold_yoy,Housing Market,Homes Sold YoY,standardized_coefficient,-0.021635328736392883,0.021635328736392883
-Very Low,Very Low,elastic_net,english_less_than_very_well_share,Demographic,Communication Barrier,standardized_coefficient,-0.017796578054624316,0.017796578054624316
-Very Low,Very Low,elastic_net,median_dom_yoy,Housing Market,Median Days on Market YoY,standardized_coefficient,-0.0128041541912052,0.0128041541912052
-Very Low,Very Low,elastic_net,new_listings_yoy,Housing Market,New Listings YoY,standardized_coefficient,0.012786948183040011,0.012786948183040011
-Very Low,Very Low,elastic_net,accom_food_wages_pct_total_wages,Economic,Accommodation and Food Wages Share,standardized_coefficient,0.00638447449461606,0.00638447449461606
-Very Low,Very Low,elastic_net,net_earnings_per_capita,Economic,Net Earnings per Capita,standardized_coefficient,-0.0030493546135006004,0.0030493546135006004
-Very Low,Very Low,elastic_net,transfer_receipts_per_capita,Economic,Transfer Receipts per Capita,standardized_coefficient,0.0,0.0
-Very Low,Very Low,elastic_net,disability_share,Demographic,Population with a Disability,standardized_coefficient,0.0,0.0
-Low,Low,gradient_boosted_trees,net_earnings_per_capita,Economic,Net Earnings per Capita,impurity_importance,0.20154277313754937,0.20154277313754937
-Low,Low,gradient_boosted_trees,net_migration_rate,Demographic,Net Migration Rate,impurity_importance,0.13443491735628513,0.13443491735628513
-Low,Low,gradient_boosted_trees,housing_burden_30pct_plus_share,Economic,Cost-Burdened Households,impurity_importance,0.08076844397394593,0.08076844397394593
-Low,Low,gradient_boosted_trees,avg_sale_to_list_yoy,Housing Market,Average Sale-to-List YoY,impurity_importance,0.07179023334757248,0.07179023334757248
-Low,Low,gradient_boosted_trees,utilities_pct_income,Economic,Utilities as Share of Income,impurity_importance,0.06238995001669826,0.06238995001669826
-Low,Low,gradient_boosted_trees,income_median_household_usd,Economic,Income,impurity_importance,0.05851514639827327,0.05851514639827327
-Low,Low,gradient_boosted_trees,accom_food_wages_pct_total_wages,Economic,Accommodation and Food Wages Share,impurity_importance,0.04876627259679495,0.04876627259679495
-Low,Low,gradient_boosted_trees,property_taxes_pct_income,Economic,Property Taxes as Share of Income,impurity_importance,0.0464465513571183,0.0464465513571183
-Low,Low,gradient_boosted_trees,insurance_homeowners_pct_income,Economic,Insurance as Share of Income,impurity_importance,0.046179824004455104,0.046179824004455104
-Low,Low,gradient_boosted_trees,dividends_interest_rent_per_capita,Economic,"Dividends, Interest, and Rent per Capita",impurity_importance,0.04283745766282906,0.04283745766282906
-Low,Low,gradient_boosted_trees,homeownership_cost_pct_income,Economic,Homeownership Cost Share,impurity_importance,0.036880811070263364,0.036880811070263364
-Low,Low,gradient_boosted_trees,price_drops_yoy,Housing Market,Price Drops YoY,impurity_importance,0.029323667679913165,0.029323667679913165
-Low,Low,gradient_boosted_trees,median_dom_yoy,Housing Market,Median Days on Market YoY,impurity_importance,0.02385443002688868,0.02385443002688868
-Low,Low,gradient_boosted_trees,age_65_plus_share,Demographic,Population Age 65 and Older,impurity_importance,0.02061941372032903,0.02061941372032903
-Low,Low,gradient_boosted_trees,new_listings_yoy,Housing Market,New Listings YoY,impurity_importance,0.01868290136194268,0.01868290136194268
-Low,Low,gradient_boosted_trees,no_broadband_internet_share,Demographic,No Broadband Internet Access,impurity_importance,0.01759761567586979,0.01759761567586979
-Low,Low,gradient_boosted_trees,inventory_yoy,Housing Market,Inventory YoY,impurity_importance,0.012486064619689369,0.012486064619689369
-Low,Low,gradient_boosted_trees,disability_share,Demographic,Population with a Disability,impurity_importance,0.011150506820947608,0.011150506820947608
-Low,Low,gradient_boosted_trees,transfer_receipts_per_capita,Economic,Transfer Receipts per Capita,impurity_importance,0.010427107414425424,0.010427107414425424
-Low,Low,gradient_boosted_trees,unemployment_rate_pct,Economic,Unemployment,impurity_importance,0.009116077085832898,0.009116077085832898
-Low,Low,gradient_boosted_trees,homes_sold_yoy,Housing Market,Homes Sold YoY,impurity_importance,0.008140312011722004,0.008140312011722004
-Low,Low,gradient_boosted_trees,english_less_than_very_well_share,Demographic,Communication Barrier,impurity_importance,0.008049522660654217,0.008049522660654217
-Medium,Medium,gradient_boosted_trees,net_earnings_per_capita,Economic,Net Earnings per Capita,impurity_importance,0.1468998750384698,0.1468998750384698
-Medium,Medium,gradient_boosted_trees,net_migration_rate,Demographic,Net Migration Rate,impurity_importance,0.11574156412566962,0.11574156412566962
-Medium,Medium,gradient_boosted_trees,avg_sale_to_list_yoy,Housing Market,Average Sale-to-List YoY,impurity_importance,0.1026176294615824,0.1026176294615824
-Medium,Medium,gradient_boosted_trees,income_median_household_usd,Economic,Income,impurity_importance,0.0792974529145975,0.0792974529145975
-Medium,Medium,gradient_boosted_trees,dividends_interest_rent_per_capita,Economic,"Dividends, Interest, and Rent per Capita",impurity_importance,0.07514801519641466,0.07514801519641466
-Medium,Medium,gradient_boosted_trees,homeownership_cost_pct_income,Economic,Homeownership Cost Share,impurity_importance,0.06895337564541401,0.06895337564541401
-Medium,Medium,gradient_boosted_trees,age_65_plus_share,Demographic,Population Age 65 and Older,impurity_importance,0.05939213097508554,0.05939213097508554
-Medium,Medium,gradient_boosted_trees,homes_sold_yoy,Housing Market,Homes Sold YoY,impurity_importance,0.04434948219789191,0.04434948219789191
-Medium,Medium,gradient_boosted_trees,english_less_than_very_well_share,Demographic,Communication Barrier,impurity_importance,0.04368569531042977,0.04368569531042977
-Medium,Medium,gradient_boosted_trees,median_dom_yoy,Housing Market,Median Days on Market YoY,impurity_importance,0.04132146964901872,0.04132146964901872
-Medium,Medium,gradient_boosted_trees,insurance_homeowners_pct_income,Economic,Insurance as Share of Income,impurity_importance,0.03889393664662204,0.03889393664662204
-Medium,Medium,gradient_boosted_trees,inventory_yoy,Housing Market,Inventory YoY,impurity_importance,0.03376753459263693,0.03376753459263693
-Medium,Medium,gradient_boosted_trees,transfer_receipts_per_capita,Economic,Transfer Receipts per Capita,impurity_importance,0.03192884420492373,0.03192884420492373
-Medium,Medium,gradient_boosted_trees,unemployment_rate_pct,Economic,Unemployment,impurity_importance,0.031099542544668603,0.031099542544668603
-Medium,Medium,gradient_boosted_trees,housing_burden_30pct_plus_share,Economic,Cost-Burdened Households,impurity_importance,0.020361156686092275,0.020361156686092275
-Medium,Medium,gradient_boosted_trees,accom_food_wages_pct_total_wages,Economic,Accommodation and Food Wages Share,impurity_importance,0.01901257612489717,0.01901257612489717
-Medium,Medium,gradient_boosted_trees,property_taxes_pct_income,Economic,Property Taxes as Share of Income,impurity_importance,0.014357239843970108,0.014357239843970108
-Medium,Medium,gradient_boosted_trees,disability_share,Demographic,Population with a Disability,impurity_importance,0.009486982196892481,0.009486982196892481
-Medium,Medium,gradient_boosted_trees,utilities_pct_income,Economic,Utilities as Share of Income,impurity_importance,0.008500282295903201,0.008500282295903201
-Medium,Medium,gradient_boosted_trees,no_broadband_internet_share,Demographic,No Broadband Internet Access,impurity_importance,0.006736598406913459,0.006736598406913459
-Medium,Medium,gradient_boosted_trees,new_listings_yoy,Housing Market,New Listings YoY,impurity_importance,0.005952360618022259,0.005952360618022259
-Medium,Medium,gradient_boosted_trees,price_drops_yoy,Housing Market,Price Drops YoY,impurity_importance,0.0024962553238838084,0.0024962553238838084
-High,High + Very High,gradient_boosted_trees,homes_sold_yoy,Housing Market,Homes Sold YoY,subgroup_permutation_mae,0.00348629535652999,0.00348629535652999
-High,High + Very High,gradient_boosted_trees,net_migration_rate,Demographic,Net Migration Rate,subgroup_permutation_mae,0.0027157179874404435,0.0027157179874404435
-High,High + Very High,gradient_boosted_trees,new_listings_yoy,Housing Market,New Listings YoY,subgroup_permutation_mae,0.0020193363335413135,0.0020193363335413135
-High,High + Very High,gradient_boosted_trees,income_median_household_usd,Economic,Income,subgroup_permutation_mae,0.0017647938054995032,0.0017647938054995032
-High,High + Very High,gradient_boosted_trees,dividends_interest_rent_per_capita,Economic,"Dividends, Interest, and Rent per Capita",subgroup_permutation_mae,0.001630793599514921,0.001630793599514921
-High,High + Very High,gradient_boosted_trees,avg_sale_to_list_yoy,Housing Market,Average Sale-to-List YoY,subgroup_permutation_mae,0.0013469915161105819,0.0013469915161105819
-High,High + Very High,gradient_boosted_trees,housing_burden_30pct_plus_share,Economic,Cost-Burdened Households,subgroup_permutation_mae,0.0013390820876553185,0.0013390820876553185
-High,High + Very High,gradient_boosted_trees,net_earnings_per_capita,Economic,Net Earnings per Capita,subgroup_permutation_mae,0.0013238280049030066,0.0013238280049030066
-High,High + Very High,gradient_boosted_trees,utilities_pct_income,Economic,Utilities as Share of Income,subgroup_permutation_mae,0.001133769530298605,0.001133769530298605
-High,High + Very High,gradient_boosted_trees,no_broadband_internet_share,Demographic,No Broadband Internet Access,subgroup_permutation_mae,0.0007694251711583084,0.0007694251711583084
-High,High + Very High,gradient_boosted_trees,transfer_receipts_per_capita,Economic,Transfer Receipts per Capita,subgroup_permutation_mae,0.0007664340027625196,0.0007664340027625196
-High,High + Very High,gradient_boosted_trees,disability_share,Demographic,Population with a Disability,subgroup_permutation_mae,0.0007242950244677563,0.0007242950244677563
-High,High + Very High,gradient_boosted_trees,median_dom_yoy,Housing Market,Median Days on Market YoY,subgroup_permutation_mae,0.0007230282775869412,0.0007230282775869412
-High,High + Very High,gradient_boosted_trees,english_less_than_very_well_share,Demographic,Communication Barrier,subgroup_permutation_mae,0.0006856872680434432,0.0006856872680434432
-High,High + Very High,gradient_boosted_trees,price_drops_yoy,Housing Market,Price Drops YoY,subgroup_permutation_mae,0.0006289087164129403,0.0006289087164129403
-High,High + Very High,gradient_boosted_trees,property_taxes_pct_income,Economic,Property Taxes as Share of Income,subgroup_permutation_mae,0.0005603177153477903,0.0005603177153477903
-High,High + Very High,gradient_boosted_trees,accom_food_wages_pct_total_wages,Economic,Accommodation and Food Wages Share,subgroup_permutation_mae,0.0005035886972453523,0.0005035886972453523
-High,High + Very High,gradient_boosted_trees,homeownership_cost_pct_income,Economic,Homeownership Cost Share,subgroup_permutation_mae,0.0004942694286879408,0.0004942694286879408
-High,High + Very High,gradient_boosted_trees,inventory_yoy,Housing Market,Inventory YoY,subgroup_permutation_mae,0.0004798232252462368,0.0004798232252462368
-High,High + Very High,gradient_boosted_trees,insurance_homeowners_pct_income,Economic,Insurance as Share of Income,subgroup_permutation_mae,0.0004402941655167115,0.0004402941655167115
-High,High + Very High,gradient_boosted_trees,unemployment_rate_pct,Economic,Unemployment,subgroup_permutation_mae,0.00024313894929788715,0.00024313894929788715
-High,High + Very High,gradient_boosted_trees,age_65_plus_share,Demographic,Population Age 65 and Older,subgroup_permutation_mae,0.00015107977847830204,0.00015107977847830204
-Very High,High + Very High,gradient_boosted_trees,net_migration_rate,Demographic,Net Migration Rate,subgroup_permutation_mae,0.0027494576179273264,0.0027494576179273264
-Very High,High + Very High,gradient_boosted_trees,homes_sold_yoy,Housing Market,Homes Sold YoY,subgroup_permutation_mae,0.002276427297868792,0.002276427297868792
-Very High,High + Very High,gradient_boosted_trees,new_listings_yoy,Housing Market,New Listings YoY,subgroup_permutation_mae,0.0021350550842970948,0.0021350550842970948
-Very High,High + Very High,gradient_boosted_trees,english_less_than_very_well_share,Demographic,Communication Barrier,subgroup_permutation_mae,0.001399225827059985,0.001399225827059985
-Very High,High + Very High,gradient_boosted_trees,income_median_household_usd,Economic,Income,subgroup_permutation_mae,0.0010597606477422835,0.0010597606477422835
-Very High,High + Very High,gradient_boosted_trees,transfer_receipts_per_capita,Economic,Transfer Receipts per Capita,subgroup_permutation_mae,0.0010264801118206944,0.0010264801118206944
-Very High,High + Very High,gradient_boosted_trees,housing_burden_30pct_plus_share,Economic,Cost-Burdened Households,subgroup_permutation_mae,0.0006410869647686083,0.0006410869647686083
-Very High,High + Very High,gradient_boosted_trees,accom_food_wages_pct_total_wages,Economic,Accommodation and Food Wages Share,subgroup_permutation_mae,0.0006102980449275723,0.0006102980449275723
-Very High,High + Very High,gradient_boosted_trees,median_dom_yoy,Housing Market,Median Days on Market YoY,subgroup_permutation_mae,0.0005887136992628366,0.0005887136992628366
-Very High,High + Very High,gradient_boosted_trees,inventory_yoy,Housing Market,Inventory YoY,subgroup_permutation_mae,0.0005789328070959326,0.0005789328070959326
-Very High,High + Very High,gradient_boosted_trees,disability_share,Demographic,Population with a Disability,subgroup_permutation_mae,0.0005291376352542185,0.0005291376352542185
-Very High,High + Very High,gradient_boosted_trees,price_drops_yoy,Housing Market,Price Drops YoY,subgroup_permutation_mae,0.0005265034878031325,0.0005265034878031325
-Very High,High + Very High,gradient_boosted_trees,utilities_pct_income,Economic,Utilities as Share of Income,subgroup_permutation_mae,0.0005135803113936292,0.0005135803113936292
-Very High,High + Very High,gradient_boosted_trees,avg_sale_to_list_yoy,Housing Market,Average Sale-to-List YoY,subgroup_permutation_mae,0.000489975187356997,0.000489975187356997
-Very High,High + Very High,gradient_boosted_trees,homeownership_cost_pct_income,Economic,Homeownership Cost Share,subgroup_permutation_mae,0.0004717331424540127,0.0004717331424540127
-Very High,High + Very High,gradient_boosted_trees,no_broadband_internet_share,Demographic,No Broadband Internet Access,subgroup_permutation_mae,0.00045749954847375333,0.00045749954847375333
-Very High,High + Very High,gradient_boosted_trees,insurance_homeowners_pct_income,Economic,Insurance as Share of Income,subgroup_permutation_mae,0.000450952301291648,0.000450952301291648
-Very High,High + Very High,gradient_boosted_trees,dividends_interest_rent_per_capita,Economic,"Dividends, Interest, and Rent per Capita",subgroup_permutation_mae,0.0004411684839067902,0.0004411684839067902
-Very High,High + Very High,gradient_boosted_trees,unemployment_rate_pct,Economic,Unemployment,subgroup_permutation_mae,0.00038770102012531185,0.00038770102012531185
-Very High,High + Very High,gradient_boosted_trees,net_earnings_per_capita,Economic,Net Earnings per Capita,subgroup_permutation_mae,0.00034540804832484126,0.00034540804832484126
-Very High,High + Very High,gradient_boosted_trees,property_taxes_pct_income,Economic,Property Taxes as Share of Income,subgroup_permutation_mae,0.00034336173214260114,0.00034336173214260114
-Very High,High + Very High,gradient_boosted_trees,age_65_plus_share,Demographic,Population Age 65 and Older,subgroup_permutation_mae,0.00019610369868936736,0.00019610369868936736
+Very Low,Very Low,elastic_net,utilities_pct_income,Economic and affordability,Utilities Share of Income,standardized_coefficient,0.16724254659212984,0.16724254659212984
+Very Low,Very Low,elastic_net,net_migration_rate_pct,Demographic,Net Migration Rate,standardized_coefficient,0.14496680583909127,0.14496680583909127
+Very Low,Very Low,elastic_net,inventory_yoy,Housing market,Inventory Yoy,standardized_coefficient,0.1176796351268931,0.1176796351268931
+Very Low,Very Low,elastic_net,average_annual_wage_usd,Economic and affordability,Average Annual Wage Usd,standardized_coefficient,-0.10975266830025708,0.10975266830025708
+Very Low,Very Low,elastic_net,age_65_plus_pct,Demographic,Age >= 65 Years,standardized_coefficient,-0.10666105163083292,0.10666105163083292
+Very Low,Very Low,elastic_net,extreme_event_count,Climate and hazard,Combined Extreme Event Count,standardized_coefficient,-0.09994273998240966,0.09994273998240966
+Very Low,Very Low,elastic_net,earnings_by_place_of_work_per_capita_usd,Economic and affordability,Earnings by Place of Work per Capita,standardized_coefficient,0.08625765450622538,0.08625765450622538
+Very Low,Very Low,elastic_net,homeowners_insurance_pct_income,Economic and affordability,Homeowners Insurance Share of Income,standardized_coefficient,-0.08487123921264549,0.08487123921264549
+Very Low,Very Low,elastic_net,owner_cost_burden_30pct_plus_pct,Economic and affordability,Cost-Burdened Households,standardized_coefficient,0.06204593856874293,0.06204593856874293
+Very Low,Very Low,elastic_net,avg_sale_to_list_yoy,Housing market,Avg Sale To List Yoy,standardized_coefficient,0.046201545819405006,0.046201545819405006
+Very Low,Very Low,elastic_net,transfer_receipts_per_capita_usd,Economic and affordability,Transfer Receipts per Capita,standardized_coefficient,0.04096400046715132,0.04096400046715132
+Very Low,Very Low,elastic_net,precipitation_inches,Climate and hazard,Precipitation,standardized_coefficient,0.032531016755033865,0.032531016755033865
+Very Low,Very Low,elastic_net,total_population,Demographic,Total Population,standardized_coefficient,-0.027949721458960262,0.027949721458960262
+Very Low,Very Low,elastic_net,property_taxes_pct_income,Economic and affordability,Property Taxes Share of Income,standardized_coefficient,-0.02121920022976378,0.02121920022976378
+Very Low,Very Low,elastic_net,homes_sold_yoy,Housing market,Homes Sold Yoy,standardized_coefficient,-0.02007468051164248,0.02007468051164248
+Very Low,Very Low,elastic_net,dividends_interest_rent_per_capita_usd,Economic and affordability,"Dividends, Interest, and Rent per Capita",standardized_coefficient,0.01705005539702811,0.01705005539702811
+Very Low,Very Low,elastic_net,avg_temperature_f,Climate and hazard,Temperature,standardized_coefficient,0.007165363988151945,0.007165363988151945
+Very Low,Very Low,elastic_net,unemployment_rate_pct,Economic and affordability,Unemployment,standardized_coefficient,0.007144773211317916,0.007144773211317916
+Very Low,Very Low,elastic_net,disability_pct,Demographic,Disability Status,standardized_coefficient,-0.002387864895408115,0.002387864895408115
+Very Low,Very Low,elastic_net,median_dom_yoy,Housing market,Median Dom Yoy,standardized_coefficient,0.002214336118205878,0.002214336118205878
+Very Low,Very Low,elastic_net,no_broadband_pct,Demographic,No Internet Access,standardized_coefficient,-0.0,0.0
+Very Low,Very Low,elastic_net,communication_barrier_pct,Demographic,Communication Barrier,standardized_coefficient,-0.0,0.0
+Low,Low,gradient_boosted_trees,owner_cost_burden_30pct_plus_pct,Economic and affordability,Cost-Burdened Households,impurity_importance,0.14210740438697106,0.14210740438697106
+Low,Low,gradient_boosted_trees,net_migration_rate_pct,Demographic,Net Migration Rate,impurity_importance,0.09723932840194513,0.09723932840194513
+Low,Low,gradient_boosted_trees,dividends_interest_rent_per_capita_usd,Economic and affordability,"Dividends, Interest, and Rent per Capita",impurity_importance,0.09324347210394675,0.09324347210394675
+Low,Low,gradient_boosted_trees,avg_sale_to_list_yoy,Housing market,Avg Sale To List Yoy,impurity_importance,0.08659145717510221,0.08659145717510221
+Low,Low,gradient_boosted_trees,average_annual_wage_usd,Economic and affordability,Average Annual Wage Usd,impurity_importance,0.07760308823277004,0.07760308823277004
+Low,Low,gradient_boosted_trees,total_population,Demographic,Total Population,impurity_importance,0.05743406711687503,0.05743406711687503
+Low,Low,gradient_boosted_trees,homeowners_insurance_pct_income,Economic and affordability,Homeowners Insurance Share of Income,impurity_importance,0.04919633103682552,0.04919633103682552
+Low,Low,gradient_boosted_trees,disability_pct,Demographic,Disability Status,impurity_importance,0.04712722860432001,0.04712722860432001
+Low,Low,gradient_boosted_trees,utilities_pct_income,Economic and affordability,Utilities Share of Income,impurity_importance,0.04597650276040875,0.04597650276040875
+Low,Low,gradient_boosted_trees,earnings_by_place_of_work_per_capita_usd,Economic and affordability,Earnings by Place of Work per Capita,impurity_importance,0.04102299953307734,0.04102299953307734
+Low,Low,gradient_boosted_trees,property_taxes_pct_income,Economic and affordability,Property Taxes Share of Income,impurity_importance,0.037488419889170066,0.037488419889170066
+Low,Low,gradient_boosted_trees,avg_temperature_f,Climate and hazard,Temperature,impurity_importance,0.03400921169064327,0.03400921169064327
+Low,Low,gradient_boosted_trees,median_dom_yoy,Housing market,Median Dom Yoy,impurity_importance,0.03329570786876228,0.03329570786876228
+Low,Low,gradient_boosted_trees,communication_barrier_pct,Demographic,Communication Barrier,impurity_importance,0.02928181691673777,0.02928181691673777
+Low,Low,gradient_boosted_trees,precipitation_inches,Climate and hazard,Precipitation,impurity_importance,0.02717332012455309,0.02717332012455309
+Low,Low,gradient_boosted_trees,age_65_plus_pct,Demographic,Age >= 65 Years,impurity_importance,0.022001012945246905,0.022001012945246905
+Low,Low,gradient_boosted_trees,unemployment_rate_pct,Economic and affordability,Unemployment,impurity_importance,0.01848751126538906,0.01848751126538906
+Low,Low,gradient_boosted_trees,inventory_yoy,Housing market,Inventory Yoy,impurity_importance,0.015686973966814188,0.015686973966814188
+Low,Low,gradient_boosted_trees,no_broadband_pct,Demographic,No Internet Access,impurity_importance,0.015031197244982513,0.015031197244982513
+Low,Low,gradient_boosted_trees,transfer_receipts_per_capita_usd,Economic and affordability,Transfer Receipts per Capita,impurity_importance,0.01182238887757765,0.01182238887757765
+Low,Low,gradient_boosted_trees,homes_sold_yoy,Housing market,Homes Sold Yoy,impurity_importance,0.00934500976957694,0.00934500976957694
+Low,Low,gradient_boosted_trees,extreme_event_count,Climate and hazard,Combined Extreme Event Count,impurity_importance,0.008835550088304276,0.008835550088304276
+Medium,Medium,gradient_boosted_trees,age_65_plus_pct,Demographic,Age >= 65 Years,impurity_importance,0.08678200072669179,0.08678200072669179
+Medium,Medium,gradient_boosted_trees,net_migration_rate_pct,Demographic,Net Migration Rate,impurity_importance,0.07881896754135331,0.07881896754135331
+Medium,Medium,gradient_boosted_trees,avg_sale_to_list_yoy,Housing market,Avg Sale To List Yoy,impurity_importance,0.07739280309908743,0.07739280309908743
+Medium,Medium,gradient_boosted_trees,average_annual_wage_usd,Economic and affordability,Average Annual Wage Usd,impurity_importance,0.07308689907413297,0.07308689907413297
+Medium,Medium,gradient_boosted_trees,dividends_interest_rent_per_capita_usd,Economic and affordability,"Dividends, Interest, and Rent per Capita",impurity_importance,0.07227958952374018,0.07227958952374018
+Medium,Medium,gradient_boosted_trees,owner_cost_burden_30pct_plus_pct,Economic and affordability,Cost-Burdened Households,impurity_importance,0.07193870951749845,0.07193870951749845
+Medium,Medium,gradient_boosted_trees,homeowners_insurance_pct_income,Economic and affordability,Homeowners Insurance Share of Income,impurity_importance,0.07040113617434676,0.07040113617434676
+Medium,Medium,gradient_boosted_trees,unemployment_rate_pct,Economic and affordability,Unemployment,impurity_importance,0.05173276603253206,0.05173276603253206
+Medium,Medium,gradient_boosted_trees,homes_sold_yoy,Housing market,Homes Sold Yoy,impurity_importance,0.04965761707033494,0.04965761707033494
+Medium,Medium,gradient_boosted_trees,median_dom_yoy,Housing market,Median Dom Yoy,impurity_importance,0.04439550678609407,0.04439550678609407
+Medium,Medium,gradient_boosted_trees,property_taxes_pct_income,Economic and affordability,Property Taxes Share of Income,impurity_importance,0.04387030558628301,0.04387030558628301
+Medium,Medium,gradient_boosted_trees,disability_pct,Demographic,Disability Status,impurity_importance,0.041955523852531644,0.041955523852531644
+Medium,Medium,gradient_boosted_trees,transfer_receipts_per_capita_usd,Economic and affordability,Transfer Receipts per Capita,impurity_importance,0.03644841245663973,0.03644841245663973
+Medium,Medium,gradient_boosted_trees,inventory_yoy,Housing market,Inventory Yoy,impurity_importance,0.035985985103836736,0.035985985103836736
+Medium,Medium,gradient_boosted_trees,communication_barrier_pct,Demographic,Communication Barrier,impurity_importance,0.03562837053544673,0.03562837053544673
+Medium,Medium,gradient_boosted_trees,precipitation_inches,Climate and hazard,Precipitation,impurity_importance,0.02843606478513405,0.02843606478513405
+Medium,Medium,gradient_boosted_trees,earnings_by_place_of_work_per_capita_usd,Economic and affordability,Earnings by Place of Work per Capita,impurity_importance,0.027278576184208675,0.027278576184208675
+Medium,Medium,gradient_boosted_trees,utilities_pct_income,Economic and affordability,Utilities Share of Income,impurity_importance,0.02387597115009409,0.02387597115009409
+Medium,Medium,gradient_boosted_trees,extreme_event_count,Climate and hazard,Combined Extreme Event Count,impurity_importance,0.020469035367164514,0.020469035367164514
+Medium,Medium,gradient_boosted_trees,total_population,Demographic,Total Population,impurity_importance,0.019813693960019467,0.019813693960019467
+Medium,Medium,gradient_boosted_trees,avg_temperature_f,Climate and hazard,Temperature,impurity_importance,0.009752065472829408,0.009752065472829408
+High,High + Very High,gradient_boosted_trees,homes_sold_yoy,Housing market,Homes Sold Yoy,subgroup_permutation_mae,0.004275030324022395,0.004275030324022395
+High,High + Very High,gradient_boosted_trees,avg_sale_to_list_yoy,Housing market,Avg Sale To List Yoy,subgroup_permutation_mae,0.002638091673795762,0.002638091673795762
+High,High + Very High,gradient_boosted_trees,net_migration_rate_pct,Demographic,Net Migration Rate,subgroup_permutation_mae,0.0024808612346543467,0.0024808612346543467
+High,High + Very High,gradient_boosted_trees,inventory_yoy,Housing market,Inventory Yoy,subgroup_permutation_mae,0.0014490770529625833,0.0014490770529625833
+High,High + Very High,gradient_boosted_trees,utilities_pct_income,Economic and affordability,Utilities Share of Income,subgroup_permutation_mae,0.0013277937586346235,0.0013277937586346235
+High,High + Very High,gradient_boosted_trees,dividends_interest_rent_per_capita_usd,Economic and affordability,"Dividends, Interest, and Rent per Capita",subgroup_permutation_mae,0.0011684596254473143,0.0011684596254473143
+High,High + Very High,gradient_boosted_trees,earnings_by_place_of_work_per_capita_usd,Economic and affordability,Earnings by Place of Work per Capita,subgroup_permutation_mae,0.0011114972227104826,0.0011114972227104826
+High,High + Very High,gradient_boosted_trees,new_listings_yoy,Housing market,New Listings Yoy,subgroup_permutation_mae,0.0011065868686317096,0.0011065868686317096
+High,High + Very High,gradient_boosted_trees,owner_cost_burden_30pct_plus_pct,Economic and affordability,Cost-Burdened Households,subgroup_permutation_mae,0.0010623718006652968,0.0010623718006652968
+High,High + Very High,gradient_boosted_trees,disability_pct,Demographic,Disability Status,subgroup_permutation_mae,0.000924942512106307,0.000924942512106307
+High,High + Very High,gradient_boosted_trees,median_dom_yoy,Housing market,Median Dom Yoy,subgroup_permutation_mae,0.0007655682897126754,0.0007655682897126754
+High,High + Very High,gradient_boosted_trees,transfer_receipts_per_capita_usd,Economic and affordability,Transfer Receipts per Capita,subgroup_permutation_mae,0.0007462755963258512,0.0007462755963258512
+High,High + Very High,gradient_boosted_trees,average_annual_wage_usd,Economic and affordability,Average Annual Wage Usd,subgroup_permutation_mae,0.000737330012531732,0.000737330012531732
+High,High + Very High,gradient_boosted_trees,precipitation_inches,Climate and hazard,Precipitation,subgroup_permutation_mae,0.0006486600540113124,0.0006486600540113124
+High,High + Very High,gradient_boosted_trees,property_taxes_pct_income,Economic and affordability,Property Taxes Share of Income,subgroup_permutation_mae,0.0006293078649859164,0.0006293078649859164
+High,High + Very High,gradient_boosted_trees,total_population,Demographic,Total Population,subgroup_permutation_mae,0.0005362298466168134,0.0005362298466168134
+High,High + Very High,gradient_boosted_trees,communication_barrier_pct,Demographic,Communication Barrier,subgroup_permutation_mae,0.00042474420602165553,0.00042474420602165553
+High,High + Very High,gradient_boosted_trees,homeowners_insurance_pct_income,Economic and affordability,Homeowners Insurance Share of Income,subgroup_permutation_mae,0.0004058961465177663,0.0004058961465177663
+High,High + Very High,gradient_boosted_trees,unemployment_rate_pct,Economic and affordability,Unemployment,subgroup_permutation_mae,0.0003810362792818156,0.0003810362792818156
+High,High + Very High,gradient_boosted_trees,no_broadband_pct,Demographic,No Internet Access,subgroup_permutation_mae,0.00029257700725155626,0.00029257700725155626
+High,High + Very High,gradient_boosted_trees,extreme_event_count,Climate and hazard,Combined Extreme Event Count,subgroup_permutation_mae,0.0002259832178938455,0.0002259832178938455
+High,High + Very High,gradient_boosted_trees,avg_temperature_f,Climate and hazard,Temperature,subgroup_permutation_mae,0.00017144883597836668,0.00017144883597836668
+High,High + Very High,gradient_boosted_trees,age_65_plus_pct,Demographic,Age >= 65 Years,subgroup_permutation_mae,0.0001448324629945441,0.0001448324629945441
+Very High,High + Very High,gradient_boosted_trees,homes_sold_yoy,Housing market,Homes Sold Yoy,subgroup_permutation_mae,0.003066663725405864,0.003066663725405864
+Very High,High + Very High,gradient_boosted_trees,net_migration_rate_pct,Demographic,Net Migration Rate,subgroup_permutation_mae,0.002822253520139912,0.002822253520139912
+Very High,High + Very High,gradient_boosted_trees,inventory_yoy,Housing market,Inventory Yoy,subgroup_permutation_mae,0.001591900985958203,0.001591900985958203
+Very High,High + Very High,gradient_boosted_trees,avg_sale_to_list_yoy,Housing market,Avg Sale To List Yoy,subgroup_permutation_mae,0.001248475671316454,0.001248475671316454
+Very High,High + Very High,gradient_boosted_trees,transfer_receipts_per_capita_usd,Economic and affordability,Transfer Receipts per Capita,subgroup_permutation_mae,0.0012312141951973652,0.0012312141951973652
+Very High,High + Very High,gradient_boosted_trees,disability_pct,Demographic,Disability Status,subgroup_permutation_mae,0.0011253531433376529,0.0011253531433376529
+Very High,High + Very High,gradient_boosted_trees,utilities_pct_income,Economic and affordability,Utilities Share of Income,subgroup_permutation_mae,0.0010616995849263608,0.0010616995849263608
+Very High,High + Very High,gradient_boosted_trees,new_listings_yoy,Housing market,New Listings Yoy,subgroup_permutation_mae,0.0010520381888199596,0.0010520381888199596
+Very High,High + Very High,gradient_boosted_trees,communication_barrier_pct,Demographic,Communication Barrier,subgroup_permutation_mae,0.000716182072810201,0.000716182072810201
+Very High,High + Very High,gradient_boosted_trees,average_annual_wage_usd,Economic and affordability,Average Annual Wage Usd,subgroup_permutation_mae,0.0007073384122543972,0.0007073384122543972
+Very High,High + Very High,gradient_boosted_trees,earnings_by_place_of_work_per_capita_usd,Economic and affordability,Earnings by Place of Work per Capita,subgroup_permutation_mae,0.0006417786052466841,0.0006417786052466841
+Very High,High + Very High,gradient_boosted_trees,property_taxes_pct_income,Economic and affordability,Property Taxes Share of Income,subgroup_permutation_mae,0.0006047273055734144,0.0006047273055734144
+Very High,High + Very High,gradient_boosted_trees,median_dom_yoy,Housing market,Median Dom Yoy,subgroup_permutation_mae,0.0005576805983139938,0.0005576805983139938
+Very High,High + Very High,gradient_boosted_trees,homeowners_insurance_pct_income,Economic and affordability,Homeowners Insurance Share of Income,subgroup_permutation_mae,0.0005186277036461262,0.0005186277036461262
+Very High,High + Very High,gradient_boosted_trees,dividends_interest_rent_per_capita_usd,Economic and affordability,"Dividends, Interest, and Rent per Capita",subgroup_permutation_mae,0.0004954274353616358,0.0004954274353616358
+Very High,High + Very High,gradient_boosted_trees,owner_cost_burden_30pct_plus_pct,Economic and affordability,Cost-Burdened Households,subgroup_permutation_mae,0.00048511759993645254,0.00048511759993645254
+Very High,High + Very High,gradient_boosted_trees,total_population,Demographic,Total Population,subgroup_permutation_mae,0.0004444308428269364,0.0004444308428269364
+Very High,High + Very High,gradient_boosted_trees,age_65_plus_pct,Demographic,Age >= 65 Years,subgroup_permutation_mae,0.0003398968567564308,0.0003398968567564308
+Very High,High + Very High,gradient_boosted_trees,unemployment_rate_pct,Economic and affordability,Unemployment,subgroup_permutation_mae,0.00022081279019647667,0.00022081279019647667
+Very High,High + Very High,gradient_boosted_trees,extreme_event_count,Climate and hazard,Combined Extreme Event Count,subgroup_permutation_mae,0.00018812158446652343,0.00018812158446652343
+Very High,High + Very High,gradient_boosted_trees,no_broadband_pct,Demographic,No Internet Access,subgroup_permutation_mae,0.0001320867715539498,0.0001320867715539498
+Very High,High + Very High,gradient_boosted_trees,precipitation_inches,Climate and hazard,Precipitation,subgroup_permutation_mae,2.3130272364864715e-05,2.3130272364864715e-05
+Very High,High + Very High,gradient_boosted_trees,avg_temperature_f,Climate and hazard,Temperature,subgroup_permutation_mae,-5.3072182792202005e-05,0.0

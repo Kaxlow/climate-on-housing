@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-outer-splits", type=int, default=5)
     parser.add_argument("--inner-splits", type=int, default=3)
     parser.add_argument("--gradient-search-iterations", type=int, default=12)
+    parser.add_argument("--maximum-absolute-correlation", type=float, default=0.85)
     parser.add_argument("--n-jobs", type=int, default=-1)
     return parser
 
@@ -46,6 +47,7 @@ def main() -> None:
         max_outer_splits=args.max_outer_splits,
         inner_splits=args.inner_splits,
         gradient_search_iterations=args.gradient_search_iterations,
+        maximum_absolute_correlation=args.maximum_absolute_correlation,
         n_jobs=args.n_jobs,
     )
     manifest = train_all_risk_groups(dataset, config)

@@ -23,6 +23,30 @@ Install the package once:
 pip install -e .
 ```
 
+Populate the local data workspace from the latest available provider releases:
+
+```powershell
+download-data all
+```
+
+This command creates the required directories; downloads Census ACS and
+boundaries, FEMA NRI and disaster declarations, NOAA, and StatsAmerica inputs;
+builds derived NOAA county mappings; validates filenames and schemas; and writes
+the ignored local receipt `data/download_receipt.yaml`. Provider metadata and
+expected schemas are defined in
+[`config/data_sources.yaml`](config/data_sources.yaml).
+
+The bootstrap reports three user-supplied inputs rather than downloading them:
+
+- `data/housing/Redfin-Housing-Market-By-County.csv` (required)
+- `data/fipsgeo/fips_master_v2.csv` (required)
+- `data/20260401_county_processed_data/county_processed_data.feather` (optional;
+  adds private insurance features)
+
+Set `CENSUS_API_KEY` before bootstrapping. The pipeline intentionally selects
+the latest available data. Annual versioned provider URLs are recorded where
+available; mutable APIs and unversioned downloads can change future results.
+
 Rebuild the infographic:
 
 ```powershell
@@ -50,7 +74,8 @@ build-climate-risk-housing
 
 ## Infographic Pipeline
 
-1. **Retain source data.** Provider extracts under `data/` supply county identifiers,
+1. **Acquire source data.** Run `download-data all` to populate the ignored local
+   `data/` workspace. Provider extracts supply county identifiers,
    Redfin housing history, FEMA National Risk Index ratings, FEMA and NOAA events,
    NCEI weather, ACS characteristics, and StatsAmerica economic and migration data.
    Notebooks and utilities under `scripts/` support cleaning, validation, and EDA;
@@ -59,7 +84,9 @@ build-climate-risk-housing
 2. **Build DuckDB.** `build-database` runs
    `src/housing_climate_risk/cli/build_database.py`. It loads the retained files into
    the `raw` schema, records file and ACS metadata, creates county reference tables,
-   and materializes the normalized `mart` tables in `data/quoll.duckdb`. The FEMA
+   materializes normalized provider tables in `mart`, blends domain variables into
+   the `feature` schema, and persists event-window inputs and summaries in the
+   `analysis` schema in `data/quoll.duckdb`. The FEMA
    declaration mart represents unique county-incidents while preserving the
    declaration-level source rows in `raw`. Use
    `build-database --marts-only` when the raw tables are already current and only the
@@ -70,11 +97,12 @@ build-climate-risk-housing
    read-only mode. The builder creates the county price/risk histories, risk-group
    feature comparisons, and Climate Playbook data directly from the marts.
 
-4. **Construct event windows.** During the page build, helpers in
+4. **Construct event windows.** Shared production helpers in
    `src/housing_climate_risk/page_data/event_windows.py` combine FEMA declarations and
    qualifying NOAA events with monthly Redfin observations. They align each county's
    housing history from 12 months before event start through the configured post-event
-   horizons, then retain complete observations for the grouped plots.
+   horizons, then retain complete observations for grouped plots. The database build
+   persists the publication-notebook cohort and aggregate diagnostics under `analysis`.
 
 5. **Attach geography.** The builder reads
    `data/fipsgeo/us_counties_boundaries_shapefile.json`, keeps the counties represented
@@ -87,3 +115,21 @@ build-climate-risk-housing
    `output/climate-risk-housing-playbook.js`. Keep all three files together when
    publishing or opening the page. The page queries no database at runtime; D3 and
    Google Fonts remain external browser resources.
+
+## Notebooks
+
+Publication notebooks are documented in
+[notebooks/README.md](notebooks/README.md). They follow the same pipeline layers:
+
+- `01_data_quality` audits provider data in `raw`.
+- `02_feature_exploration` examines blended domain marts in `feature`.
+- `03_event_window` examines persisted event-window marts in `analysis`.
+
+Regenerate the executed notebooks with:
+
+```powershell
+pip install -e ".[notebooks]"
+python -m ipykernel install --prefix .jupyter-kernels --name quoll-intelligence --display-name "Quoll Intelligence"
+build-database --marts-only
+python notebooks/build_notebooks.py --execute
+```

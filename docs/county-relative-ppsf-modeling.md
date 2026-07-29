@@ -4,8 +4,7 @@
 
 This component predicts a county's relative position within its FEMA National
 Risk Index (NRI) risk group in terms of Median Price-Per-Square-Foot (PPSF)
-year-over-year growth. It is implemented independently from the infographic so
-the modeling contract can be evaluated before any page integration.
+year-over-year growth.
 
 The component compares Elastic Net with gradient-boosted regression trees and
 selects the model with the lowest repeated nested cross-validation mean absolute
@@ -28,15 +27,16 @@ county feature causes housing-price growth to change.
 
 ### High + Very High Interaction Design
 
-The pooled model receives 23 input columns: the 22 base county predictors plus
+The pooled model receives the catalog-selected base county predictors plus
 `is_very_high`, which equals one for Very High counties and zero for High
-counties. After fold-local median imputation, the pipeline appends 22
-predictor-by-`is_very_high` interaction terms. The estimator therefore sees 45
-engineered inputs:
+counties. After fold-local median imputation, the pipeline appends one
+predictor-by-`is_very_high` interaction for every selected base predictor.
+The exact input count is recorded in the model manifest because catalog
+retention and correlation pruning can change it.
 
-1. 22 shared main effects.
+1. Catalog-selected shared main effects.
 2. One Very High sample indicator.
-3. 22 interaction effects that permit each predictor's relationship with the
+3. One interaction per base predictor, permitting each predictor's relationship with the
    target to differ for Very High counties.
 
 The transformation occurs inside the fitted pipeline after imputation, so
@@ -100,25 +100,29 @@ eligibility rule. The target itself is never included as a predictor.
 
 ## Predictors
 
-The 22 candidate predictors follow the curated definitions in
-`county_nri_feature_correlations.ipynb`:
+`feature.catalog` is the authoritative candidate-feature list. Dataset
+construction reads rows where `retained = true` and aggregates their corresponding
+numeric `feature.*` columns over the latest ten calendar years.
 
-- Economic and affordability: income, insurance share, property-tax share,
-  utility share, cost-burdened households, homeownership cost share,
-  unemployment, BEA income components, and accommodation/food wage share.
-- Demographic: net migration, age 65 and older, disability, communication
-  barrier, and lack of broadband.
-- Housing market: average sale-to-list YoY, homes sold YoY, inventory YoY, new
-  listings YoY, median days on market YoY, and price drops YoY.
+Three retained fields have technical model roles and are not predictors:
 
-Annual and monthly predictors are averaged over their source table's latest 10
-calendar years. Insurance and utility costs are estimated with the same
-published bucket-midpoint method used by the notebook and page builder.
+- `median_ppsf_yoy` is the prediction target.
+- `housing_market_index` contains the PPSF target and would leak it.
+- `risk_rating` is the categorical grouping field.
 
-Within each model population, a feature is retained when it has at least three
-valid values and at least 50% non-null coverage, with more than one unique value.
-Missing retained values are median-imputed inside each training fold. This
-prevents validation-fold values from affecting preprocessing.
+Within each model population, candidates must have at least three valid values,
+the configured minimum non-null coverage, and more than one unique value.
+Candidates are then considered in deterministic catalog order; a feature is
+excluded when the absolute value of its Spearman correlation with an already
+selected feature is at least 0.85. The saved `feature_coverage.csv` records the
+retained partner and signed observed correlation for every such exclusion.
+Missing selected values are median-imputed inside each training fold, preventing
+validation-fold values from affecting preprocessing.
+
+Requested replacement features—combined event count, the three ownership-cost
+shares, and the three BEA income components—are considered first during
+correlation pruning. This ensures an older context feature is removed when it
+is redundant with the replacement it was meant to supersede.
 
 ## Candidate Models
 
@@ -181,10 +185,10 @@ three inner folds, and the pooled High + Very High population.
 
 | Model population | Selected model | MAE (pp) | RMSE (pp) | R² | Spearman | Baseline MAE (pp) | MAE improvement |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Very Low | Elastic Net | 2.731 | 3.877 | 0.053 | 0.310 | 2.894 | 5.6% |
-| Low | Gradient-boosted trees | 1.686 | 2.453 | 0.206 | 0.513 | 2.007 | 16.0% |
-| Medium | Gradient-boosted trees | 1.221 | 1.587 | 0.260 | 0.530 | 1.442 | 15.4% |
-| High + Very High | Gradient-boosted trees | 1.172 | 1.475 | 0.212 | 0.430 | 1.336 | 12.3% |
+| Very Low | Elastic Net | 2.764 | 3.908 | 0.048 | 0.310 | 2.906 | 4.9% |
+| Low | Gradient-boosted trees | 1.690 | 2.500 | 0.180 | 0.511 | 2.013 | 16.1% |
+| Medium | Gradient-boosted trees | 1.257 | 1.643 | 0.210 | 0.486 | 1.442 | 12.8% |
+| High + Very High | Gradient-boosted trees | 1.181 | 1.496 | 0.188 | 0.446 | 1.324 | 10.8% |
 
 `pp` means percentage points of Median PPSF YoY.
 

@@ -1,0 +1,133 @@
+schema_version: 1
+policy:
+  update_strategy: latest_available
+  runtime_receipt: data/download_receipt.yaml
+  note: >
+    Mutable APIs and provider "latest" downloads can change after retrieval.
+    The runtime receipt records the resolved URL, provider version when exposed,
+    and UTC retrieval timestamp. Exact reproduction is only expected for
+    version-specific URLs or user-retained private inputs.
+
+sources:
+  fema_nri_counties:
+    source_page_or_api: https://hazards.fema.gov/nri/data-resources
+    destination: data/fema/NRI_Table_Counties.csv
+    version_or_date_range: Latest published county release; NRI_VER is recorded after download
+    expected_columns: [STATE, STATEABBRV, STATEFIPS, COUNTY, COUNTYFIPS, STCOFIPS, RISK_SCORE, RISK_RATNG, NRI_VER]
+    api_credentials_required: false
+    provider_terms_or_attribution: National Risk Index, Federal Emergency Management Agency (FEMA)
+    exact_historical_reproduction: conditional
+    exact_reproduction_note: Exact when FEMA resolves the download to a versioned archive URL; otherwise the current release can change
+
+  fema_disaster_declarations:
+    source_page_or_api: https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries
+    destination: data/fema/FEMA_Disaster_Declarations.csv
+    version_or_date_range: Complete API history available at retrieval time
+    expected_columns: [femaDeclarationString, disasterNumber, state, declarationType, declarationDate, incidentType, incidentBeginDate, fipsStateCode, fipsCountyCode, designatedArea, lastRefresh]
+    api_credentials_required: false
+    provider_terms_or_attribution: OpenFEMA, Federal Emergency Management Agency; cite the dataset and retrieval date
+    exact_historical_reproduction: false
+    exact_reproduction_note: OpenFEMA records can be added or revised; the retrieval timestamp and provider rundate are recorded
+
+  fema_web_disaster_summaries:
+    source_page_or_api: https://www.fema.gov/api/open/v1/FemaWebDisasterSummaries
+    destination: data/climate_damage/raw/fema_web_disaster_summaries/FemaWebDisasterSummaries.csv
+    version_or_date_range: Complete API history available at retrieval time
+    expected_columns: [disasterNumber]
+    api_credentials_required: false
+    provider_terms_or_attribution: OpenFEMA, Federal Emergency Management Agency; cite the dataset and retrieval date
+    exact_historical_reproduction: false
+    exact_reproduction_note: OpenFEMA records can be added or revised
+
+  census_cartographic_boundaries:
+    source_page_or_api: https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html
+    destination:
+      - data/fipsgeo/census_county_boundaries/census_county_boundaries.shp
+      - data/fipsgeo/census_state_boundaries/census_state_boundaries.shp
+      - data/fipsgeo/us_counties_boundaries_shapefile.json
+    version_or_date_range: Latest available annual vintage, national 1:20,000,000 county and state files
+    expected_columns: [STATEFP, GEOID, NAME, geometry]
+    api_credentials_required: false
+    provider_terms_or_attribution: U.S. Census Bureau cartographic boundary files
+    exact_historical_reproduction: true
+    exact_reproduction_note: The downloader resolves and records annual vintage-specific Census URLs
+
+  census_acs:
+    source_page_or_api: https://api.census.gov/data.html
+    destination: data/acs/
+    version_or_date_range: Latest configured ACS 5-year releases through the latest available complete year
+    expected_columns: [year, state, county]
+    api_credentials_required: true
+    provider_terms_or_attribution: U.S. Census Bureau American Community Survey
+    exact_historical_reproduction: true
+    exact_reproduction_note: ACS API URLs include a release year
+
+  noaa_storm_events:
+    source_page_or_api: https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/
+    destination: data/climate_damage/
+    version_or_date_range: Latest ten complete calendar years
+    expected_columns: [event_id, state_fips, cz_type, cz_fips, event_type, total_damage]
+    api_credentials_required: false
+    provider_terms_or_attribution: NOAA National Centers for Environmental Information Storm Events Database
+    exact_historical_reproduction: true
+    exact_reproduction_note: Resolved annual NOAA filenames contain data-year and creation-version identifiers
+
+  noaa_ncei_county_weather:
+    source_page_or_api: https://www.ncei.noaa.gov/pub/data/cirs/climdiv/
+    destination: data/climate/ncei_climate_at_a_glance_county_monthly.csv
+    version_or_date_range: Latest ten complete calendar years
+    expected_columns: [fips, parameter, year_month, date, value, source_url, fetched_at]
+    api_credentials_required: false
+    provider_terms_or_attribution: NOAA National Centers for Environmental Information Climate at a Glance
+    exact_historical_reproduction: false
+    exact_reproduction_note: Provider files may be revised; source URLs and retrieval timestamps are recorded in the output
+
+  statsamerica_bea_cew:
+    source_page_or_api: https://www.statsamerica.org/downloads/default.aspx
+    destination: data/statsamerica/
+    version_or_date_range: Latest provider ZIP contents at retrieval time
+    expected_columns: [Statefips, Countyfips, Year]
+    api_credentials_required: false
+    provider_terms_or_attribution: StatsAmerica; underlying BEA and BLS sources should also be cited
+    exact_historical_reproduction: false
+    exact_reproduction_note: Unversioned provider download URLs can change
+
+  statsamerica_population_components:
+    source_page_or_api: https://www.statsamerica.org/downloads/default.aspx
+    destination: data/statsamerica/Components of Population Change - U.S., States, and Counties.csv
+    version_or_date_range: Latest provider ZIP contents at retrieval time
+    expected_columns: [Statefips, Countyfips, Year, Births, Deaths, Net International Migration, Net Domestic Migration]
+    api_credentials_required: false
+    provider_terms_or_attribution: StatsAmerica; underlying U.S. Census Bureau population estimates should also be cited
+    exact_historical_reproduction: false
+    exact_reproduction_note: The unversioned provider download URL can change
+
+  redfin_housing_private:
+    source_page_or_api: Private user-supplied extract; public context at https://www.redfin.com/news/data-center/
+    destination: data/housing/Redfin-Housing-Market-By-County.csv
+    version_or_date_range: User-supplied latest available extract
+    expected_columns: [REGION, REGION_TYPE, PERIOD_BEGIN, PERIOD_END, PROPERTY_TYPE, MEDIAN_SALE_PRICE, MEDIAN_PPSF]
+    api_credentials_required: false
+    provider_terms_or_attribution: Redfin Data Center; verify redistribution rights before publishing the extract
+    exact_historical_reproduction: conditional
+    exact_reproduction_note: Exact only when the user retains the original private extract
+
+  fips_master_private:
+    source_page_or_api: Private user-supplied county reference
+    destination: data/fipsgeo/fips_master_v2.csv
+    version_or_date_range: User-supplied current reference
+    expected_columns: [fips, county_name, state, state_long, msa_code, msa_name, msa_type, csa_code, csa_name]
+    api_credentials_required: false
+    provider_terms_or_attribution: User-supplied reference; document original provenance before redistribution
+    exact_historical_reproduction: conditional
+    exact_reproduction_note: Exact only when the user retains the original private file
+
+  county_processed_private:
+    source_page_or_api: Private user-supplied processed county features
+    destination: data/20260401_county_processed_data/county_processed_data.feather
+    version_or_date_range: User-supplied processed snapshot
+    expected_columns: [fips, county_name, state, insurance_premiums_14_to_24, insurance_non_renewal_rates]
+    api_credentials_required: false
+    provider_terms_or_attribution: Mixed private derived sources; document and clear redistribution rights before publishing
+    exact_historical_reproduction: conditional
+    exact_reproduction_note: Exact only when the user retains the original private file

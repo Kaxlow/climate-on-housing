@@ -20,7 +20,7 @@ from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
-from .data import DatasetBuildResult, FEATURE_COLUMNS, FEATURE_META, RISK_ORDER
+from .data import DatasetBuildResult, RISK_ORDER
 
 
 MODEL_NAMES = ["elastic_net", "gradient_boosted_trees"]
@@ -44,6 +44,7 @@ class TrainingConfig:
     inner_splits: int = 3
     gradient_search_iterations: int = 12
     minimum_feature_coverage: float = 0.20
+    maximum_absolute_correlation: float = 0.85
     n_jobs: int = -1
 
 
@@ -75,11 +76,16 @@ def _inner_split_count(training_count: int, maximum: int) -> int:
     return min(maximum, max(2, training_count // 4))
 
 
-def _available_features(frame: pd.DataFrame, minimum_coverage: float) -> tuple[list[str], list[dict[str, object]]]:
+def _available_features(
+    frame: pd.DataFrame,
+    feature_columns: list[str],
+    feature_meta: dict[str, tuple[str, str]],
+    minimum_coverage: float,
+) -> tuple[list[str], list[dict[str, object]]]:
     minimum_non_null = max(3, math.ceil(len(frame) * minimum_coverage))
     selected: list[str] = []
     coverage_rows: list[dict[str, object]] = []
-    for feature in FEATURE_COLUMNS:
+    for feature in feature_columns:
         values = pd.to_numeric(frame[feature], errors="coerce")
         non_null = int(values.notna().sum())
         unique = int(values.dropna().nunique())
@@ -93,8 +99,8 @@ def _available_features(frame: pd.DataFrame, minimum_coverage: float) -> tuple[l
         coverage_rows.append(
             {
                 "feature": feature,
-                "feature_group": FEATURE_META[feature][0],
-                "feature_label": FEATURE_META[feature][1],
+                "feature_group": feature_meta[feature][0],
+                "feature_label": feature_meta[feature][1],
                 "non_null_count": non_null,
                 "non_null_fraction": non_null / len(frame),
                 "unique_non_null_values": unique,
@@ -103,6 +109,36 @@ def _available_features(frame: pd.DataFrame, minimum_coverage: float) -> tuple[l
             }
         )
     return selected, coverage_rows
+
+
+def _prune_high_correlations(
+    frame: pd.DataFrame,
+    features: list[str],
+    *,
+    threshold: float,
+) -> tuple[list[str], dict[str, str]]:
+    """Keep the first catalog feature from each highly correlated pair."""
+    selected: list[str] = []
+    exclusions: dict[str, str] = {}
+    correlations = frame[features].corr(method="spearman", min_periods=3)
+    for feature in features:
+        conflict = next(
+            (
+                kept
+                for kept in selected
+                if pd.notna(correlations.loc[feature, kept])
+                and abs(correlations.loc[feature, kept]) >= threshold
+            ),
+            None,
+        )
+        if conflict is None:
+            selected.append(feature)
+        else:
+            exclusions[feature] = (
+                f"high_absolute_correlation_with:{conflict}:"
+                f"{correlations.loc[feature, conflict]:.6f}"
+            )
+    return selected, exclusions
 
 
 def _expand_group_interactions(values: np.ndarray) -> np.ndarray:
@@ -396,6 +432,7 @@ def _feature_importance(
     features: list[str],
     risk_group: str,
     model_name: str,
+    feature_meta: dict[str, tuple[str, str]],
 ) -> pd.DataFrame:
     if model_name == "elastic_net":
         transformed = estimator.named_steps["regressor"]
@@ -410,8 +447,8 @@ def _feature_importance(
             "risk_group": risk_group,
             "model": model_name,
             "feature": features,
-            "feature_group": [FEATURE_META[feature][0] for feature in features],
-            "feature_label": [FEATURE_META[feature][1] for feature in features],
+            "feature_group": [feature_meta[feature][0] for feature in features],
+            "feature_label": [feature_meta[feature][1] for feature in features],
             "importance_type": importance_type,
             "importance": values,
             "absolute_importance": np.abs(values),
@@ -426,6 +463,7 @@ def _subgroup_permutation_importance(
     base_features: list[str],
     risk_group: str,
     model_name: str,
+    feature_meta: dict[str, tuple[str, str]],
     *,
     random_state: int,
     repeats: int = 20,
@@ -452,8 +490,8 @@ def _subgroup_permutation_importance(
                 "model_group": "High + Very High",
                 "model": model_name,
                 "feature": feature,
-                "feature_group": FEATURE_META[feature][0],
-                "feature_label": FEATURE_META[feature][1],
+                "feature_group": feature_meta[feature][0],
+                "feature_label": feature_meta[feature][1],
                 "importance_type": "subgroup_permutation_mae",
                 "importance": raw_importance,
                 "absolute_importance": max(0.0, raw_importance),
@@ -533,6 +571,11 @@ def train_all_risk_groups(
     all_coverage: list[dict[str, object]] = []
     group_features: dict[str, list[str]] = {}
     group_base_features: dict[str, list[str]] = {}
+    feature_columns = list(dataset.metadata["feature_columns"])
+    feature_meta = {
+        key: tuple(value)
+        for key, value in dataset.metadata["feature_meta"].items()
+    }
 
     for model_group, risk_groups in MODEL_GROUP_MEMBERS.items():
         group_frame = dataset.frame.loc[
@@ -540,8 +583,19 @@ def train_all_risk_groups(
         ].copy()
         base_features, coverage = _available_features(
             group_frame,
+            feature_columns,
+            feature_meta,
             config.minimum_feature_coverage,
         )
+        base_features, correlation_exclusions = _prune_high_correlations(
+            group_frame,
+            base_features,
+            threshold=config.maximum_absolute_correlation,
+        )
+        for row in coverage:
+            if row["feature"] in correlation_exclusions:
+                row["included"] = False
+                row["exclusion_reason"] = correlation_exclusions[row["feature"]]
         if not base_features:
             raise ValueError(f"No usable features for {model_group}")
         add_group_interactions = len(risk_groups) > 1
@@ -655,6 +709,7 @@ def train_all_risk_groups(
                         base_features,
                         risk_group,
                         model_name,
+                        feature_meta,
                         random_state=config.random_state + risk_offset,
                     )
                 )
@@ -664,6 +719,7 @@ def train_all_risk_groups(
                 features,
                 model_group,
                 model_name,
+                feature_meta,
             ).rename(columns={"risk_group": "model_group"})
             for risk_group in risk_groups:
                 risk_importance = model_importance.copy()
@@ -686,6 +742,7 @@ def train_all_risk_groups(
             "target": TARGET_COLUMN,
             "target_definition": dataset.metadata["target_definition"],
             "best_parameters": _json_safe(final_search.best_params_),
+            "maximum_absolute_correlation": config.maximum_absolute_correlation,
         }
         model_path = models_dir / f"{_risk_slug(model_group)}.joblib"
         joblib.dump(artifact, model_path)

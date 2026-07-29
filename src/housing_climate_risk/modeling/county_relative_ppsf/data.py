@@ -17,31 +17,20 @@ RISK_MAP = {
     "Very High": "Very High",
 }
 
-FEATURE_META = {
-    "income_median_household_usd": ("Economic", "Income"),
-    "insurance_homeowners_pct_income": ("Economic", "Insurance as Share of Income"),
-    "property_taxes_pct_income": ("Economic", "Property Taxes as Share of Income"),
-    "utilities_pct_income": ("Economic", "Utilities as Share of Income"),
-    "housing_burden_30pct_plus_share": ("Economic", "Cost-Burdened Households"),
-    "homeownership_cost_pct_income": ("Economic", "Homeownership Cost Share"),
-    "unemployment_rate_pct": ("Economic", "Unemployment"),
-    "net_earnings_per_capita": ("Economic", "Net Earnings per Capita"),
-    "dividends_interest_rent_per_capita": ("Economic", "Dividends, Interest, and Rent per Capita"),
-    "transfer_receipts_per_capita": ("Economic", "Transfer Receipts per Capita"),
-    "accom_food_wages_pct_total_wages": ("Economic", "Accommodation and Food Wages Share"),
-    "net_migration_rate": ("Demographic", "Net Migration Rate"),
-    "age_65_plus_share": ("Demographic", "Population Age 65 and Older"),
-    "disability_share": ("Demographic", "Population with a Disability"),
-    "english_less_than_very_well_share": ("Demographic", "Communication Barrier"),
-    "no_broadband_internet_share": ("Demographic", "No Broadband Internet Access"),
-    "avg_sale_to_list_yoy": ("Housing Market", "Average Sale-to-List YoY"),
-    "homes_sold_yoy": ("Housing Market", "Homes Sold YoY"),
-    "inventory_yoy": ("Housing Market", "Inventory YoY"),
-    "new_listings_yoy": ("Housing Market", "New Listings YoY"),
-    "median_dom_yoy": ("Housing Market", "Median Days on Market YoY"),
-    "price_drops_yoy": ("Housing Market", "Price Drops YoY"),
+MODEL_ROLE_EXCLUSIONS = {
+    "median_ppsf_yoy": "prediction_target",
+    "housing_market_index": "contains_prediction_target",
+    "risk_rating": "categorical_grouping_field",
 }
-FEATURE_COLUMNS = list(FEATURE_META)
+MODEL_FEATURE_PRIORITY = (
+    "extreme_event_count",
+    "homeowners_insurance_pct_income",
+    "property_taxes_pct_income",
+    "utilities_pct_income",
+    "earnings_by_place_of_work_per_capita_usd",
+    "dividends_interest_rent_per_capita_usd",
+    "transfer_receipts_per_capita_usd",
+)
 
 ELECTRICITY_BINS = [
     ("b25132_monthly_electricity_costs_total_charged_for_electricity_less_than_dollars_50_est", 25),
@@ -260,6 +249,100 @@ def _clean_redfin_expression(column: str) -> str:
     return f"CASE WHEN {numeric} <= -888888000 THEN NULL ELSE {numeric} END"
 
 
+def _catalog_model_features(
+    con: duckdb.DuckDBPyConnection,
+) -> tuple[pd.DataFrame, list[str], dict[str, tuple[str, str]]]:
+    """Return numeric model candidates from the authoritative retained catalog."""
+    catalog = con.execute(
+        """
+        SELECT feature_table, feature_name, category, definition, unit,
+               temporal_grain, infographic_use
+        FROM feature.catalog
+        WHERE retained
+          AND feature_table IS NOT NULL
+        ORDER BY feature_table, feature_name
+        """
+    ).df()
+    catalog["model_exclusion_reason"] = catalog["feature_name"].map(
+        MODEL_ROLE_EXCLUSIONS
+    )
+    candidates = catalog.loc[catalog["model_exclusion_reason"].isna()].copy()
+    priority = {
+        feature: index for index, feature in enumerate(MODEL_FEATURE_PRIORITY)
+    }
+    candidates["_model_priority"] = candidates["feature_name"].map(priority).fillna(
+        len(priority)
+    )
+    candidates = candidates.sort_values(
+        ["_model_priority", "feature_table", "feature_name"]
+    )
+    feature_columns: list[str] = []
+    feature_meta: dict[str, tuple[str, str]] = {}
+    for row in candidates.itertuples(index=False):
+        schema = con.execute(
+            f"DESCRIBE feature.{_quote_ident(row.feature_table)}"
+        ).df().set_index("column_name")
+        column_type = str(schema.loc[row.feature_name, "column_type"]).upper()
+        if not any(
+            token in column_type
+            for token in ("INT", "DOUBLE", "FLOAT", "DECIMAL", "REAL")
+        ):
+            catalog.loc[
+                catalog["feature_name"].eq(row.feature_name),
+                "model_exclusion_reason",
+            ] = "non_numeric"
+            continue
+        label = (
+            str(row.infographic_use).split(":", 1)[1].strip()
+            if pd.notna(row.infographic_use) and ":" in str(row.infographic_use)
+            else str(row.feature_name).replace("_", " ").title()
+        )
+        feature_columns.append(row.feature_name)
+        feature_meta[row.feature_name] = (str(row.category), label)
+    return catalog, feature_columns, feature_meta
+
+
+def _aggregate_catalog_table(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    columns: list[str],
+) -> pd.DataFrame:
+    select_parts = [
+        f"avg(try_cast({_quote_ident(column)} AS DOUBLE)) AS {_quote_ident(column)}"
+        for column in columns
+    ]
+    schema_columns = set(
+        con.execute(f"DESCRIBE feature.{_quote_ident(table)}")
+        .df()["column_name"]
+        .tolist()
+    )
+    if "year" in schema_columns:
+        time_filter = (
+            f"AND year >= (SELECT max(year) - 9 FROM feature.{_quote_ident(table)})"
+        )
+    elif "climate_month" in schema_columns:
+        time_filter = (
+            "AND extract(year FROM climate_month) >= "
+            f"(SELECT max(extract(year FROM climate_month)) - 9 FROM feature.{_quote_ident(table)})"
+        )
+    elif "housing_month" in schema_columns:
+        time_filter = (
+            "AND extract(year FROM housing_month) >= "
+            f"(SELECT max(extract(year FROM housing_month)) - 9 FROM feature.{_quote_ident(table)})"
+        )
+    else:
+        time_filter = ""
+    return con.execute(
+        f"""
+        SELECT lpad(fips, 5, '0') AS fips, {", ".join(select_parts)}
+        FROM feature.{_quote_ident(table)}
+        WHERE fips IS NOT NULL
+          {time_filter}
+        GROUP BY fips
+        """
+    ).df()
+
+
 def _build_housing_features_and_target(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     source_columns = {
         "AVG_SALE_TO_LIST_YOY": "avg_sale_to_list_yoy",
@@ -303,10 +386,25 @@ def build_county_modeling_dataset(
     minimum_housing_months: int = 60,
 ) -> DatasetBuildResult:
     """Build one modeling observation per county from the DuckDB marts."""
-    housing = _build_housing_features_and_target(con)
-    affordability = _build_affordability_features(con)
-    economic = _build_economic_features(con)
-    demographic = _build_demographic_features(con)
+    catalog, feature_columns, feature_meta = _catalog_model_features(con)
+    housing = con.execute(
+        """
+        SELECT
+            lpad(fips, 5, '0') AS fips,
+            any_value(county_name) AS county,
+            any_value(state_code) AS state,
+            median(median_ppsf_yoy) AS county_median_ppsf_yoy,
+            count(median_ppsf_yoy) AS observed_housing_months
+        FROM feature.county_housing_monthly
+        WHERE fips IS NOT NULL
+          AND housing_month IS NOT NULL
+          AND extract(year FROM housing_month) >= (
+              SELECT max(extract(year FROM housing_month)) - 9
+              FROM feature.county_housing_monthly
+          )
+        GROUP BY fips
+        """
+    ).df()
     nri = con.execute(
         """
         SELECT
@@ -321,7 +419,18 @@ def build_county_modeling_dataset(
     ).df()
 
     frame = housing.merge(nri, on="fips", how="inner")
-    for features in [affordability, economic, demographic]:
+    catalog_candidates = catalog.loc[
+        catalog["feature_name"].isin(feature_columns)
+    ]
+    for table, rows in catalog_candidates.groupby("feature_table", sort=True):
+        columns = [
+            column
+            for column in rows["feature_name"].tolist()
+            if not (table == "county_risk" and column == "risk_score")
+        ]
+        if not columns:
+            continue
+        features = _aggregate_catalog_table(con, str(table), columns)
         frame = frame.merge(features, on="fips", how="left")
     frame["risk_group"] = frame["risk_rating"].map(RISK_MAP)
     frame["county"] = frame["county"].fillna(frame["nri_county"])
@@ -331,8 +440,12 @@ def build_county_modeling_dataset(
         & frame["county_median_ppsf_yoy"].notna()
         & frame["observed_housing_months"].ge(minimum_housing_months)
     ].copy()
-    frame[FEATURE_COLUMNS] = frame[FEATURE_COLUMNS].apply(pd.to_numeric, errors="coerce")
-    frame[FEATURE_COLUMNS] = frame[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan)
+    frame[feature_columns] = frame[feature_columns].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    frame[feature_columns] = frame[feature_columns].replace(
+        [np.inf, -np.inf], np.nan
+    )
 
     group_stats = (
         frame.groupby("risk_group", observed=False)["county_median_ppsf_yoy"]
@@ -351,7 +464,7 @@ def build_county_modeling_dataset(
     frame["relative_median_ppsf_yoy_iqr"] = (
         frame["relative_median_ppsf_yoy"] / group_iqr.replace(0, np.nan)
     )
-    frame["feature_non_null_count"] = frame[FEATURE_COLUMNS].notna().sum(axis=1)
+    frame["feature_non_null_count"] = frame[feature_columns].notna().sum(axis=1)
     frame = frame.sort_values(["risk_group", "fips"]).drop_duplicates("fips", keep="first")
 
     housing_range = con.execute(
@@ -376,7 +489,15 @@ def build_county_modeling_dataset(
         "housing_period_start": str(housing_range[0]),
         "housing_period_end": str(housing_range[1]),
         "county_count": int(frame["fips"].nunique()),
-        "feature_count": len(FEATURE_COLUMNS),
+        "feature_count": len(feature_columns),
+        "feature_columns": feature_columns,
+        "feature_meta": feature_meta,
+        "catalog_model_exclusions": {
+            row.feature_name: row.model_exclusion_reason
+            for row in catalog.loc[
+                catalog["model_exclusion_reason"].notna()
+            ].itertuples(index=False)
+        },
         "risk_group_counts": {
             group: int((frame["risk_group"] == group).sum()) for group in RISK_ORDER
         },

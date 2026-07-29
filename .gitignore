@@ -9,6 +9,7 @@ data/fipsgeo/**
 !data/fipsgeo/fips_master_v2.csv
 .vscode/
 .pytest_cache/
+.ipynb_checkpoints/
 *.py[cod]
 .env
 .env.*
@@ -17,3 +18,10 @@ src/__pycache__/
 __pycache__/
 .playwright-mcp/
 test-results/
+output/**
+!output/
+!output/climate-risk-housing.html
+!output/climate-risk-housing-county-history.js
+!output/climate-risk-housing-playbook.js
+!output/models/
+!output/models/**

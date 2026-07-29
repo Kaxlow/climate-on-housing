@@ -19,12 +19,21 @@ from housing_climate_risk.page_data.event_windows import (
 ROOT = Path(__file__).resolve().parents[3]
 DB_PATH = ROOT / "data" / "quoll.duckdb"
 COUNTIES_PATH = ROOT / "data" / "fipsgeo" / "us_counties_boundaries_shapefile.json"
-STATES_PATH = (
+_STABLE_STATES_PATH = (
     ROOT
     / "data"
     / "fipsgeo"
-    / "cb_2024_us_state_20m"
-    / "cb_2024_us_state_20m.shp"
+    / "census_state_boundaries"
+    / "census_state_boundaries.shp"
+)
+_LEGACY_STATE_PATHS = sorted(
+    (ROOT / "data" / "fipsgeo").glob("cb_*_us_state_20m/cb_*_us_state_20m.shp"),
+    reverse=True,
+)
+STATES_PATH = (
+    _STABLE_STATES_PATH
+    if _STABLE_STATES_PATH.exists() or not _LEGACY_STATE_PATHS
+    else _LEGACY_STATE_PATHS[0]
 )
 MODEL_OUTPUT_DIR = ROOT / "output" / "models" / "county_relative_ppsf"
 OUT_PATH = ROOT / "output" / "climate-risk-housing.html"
@@ -122,6 +131,29 @@ FEATURE_FOCUS_EVENTS = {
     ],
 }
 MODEL_FEATURE_FORMATS = {
+    "median_household_income_usd": "currency",
+    "median_home_value_usd": "currency",
+    "median_gross_rent_usd_month": "currency",
+    "median_owner_costs_mortgage_usd_month": "currency",
+    "median_property_taxes_usd_year": "currency",
+    "per_capita_personal_income_usd": "currency",
+    "net_earnings_per_capita_usd": "currency",
+    "earnings_by_place_of_work_per_capita_usd": "currency",
+    "dividends_interest_rent_per_capita_usd": "currency",
+    "transfer_receipts_per_capita_usd": "currency",
+    "average_annual_wage_usd": "currency",
+    "housing_cost_pct_income": "percent",
+    "homeowners_insurance_pct_income": "percent",
+    "owner_cost_burden_30pct_plus_pct": "percent",
+    "unemployment_rate_pct": "percent",
+    "age_65_plus_pct": "percent",
+    "communication_barrier_pct": "percent",
+    "disability_pct": "percent",
+    "net_migration_rate_pct": "percent",
+    "no_broadband_pct": "percent",
+    "avg_temperature_f": "temperature_f",
+    "precipitation_inches": "inches",
+    "extreme_event_count": "number",
     "income_median_household_usd": "currency",
     "insurance_homeowners_pct_income": "percent",
     "property_taxes_pct_income": "percent",
@@ -132,7 +164,6 @@ MODEL_FEATURE_FORMATS = {
     "net_earnings_per_capita": "currency",
     "dividends_interest_rent_per_capita": "currency",
     "transfer_receipts_per_capita": "currency",
-    "accom_food_wages_pct_total_wages": "percent",
     "net_migration_rate": "signed_pct",
     "age_65_plus_share": "percent",
     "disability_share": "percent",
@@ -413,7 +444,7 @@ def load_state_geometries() -> dict[str, tuple[str, object]]:
     if not STATES_PATH.exists():
         raise FileNotFoundError(
             f"State boundary shapefile is required at {STATES_PATH}. "
-            "Download the Census cb_2024_us_state_20m package before rebuilding."
+            "Run `download-data census-boundaries` before rebuilding."
         )
 
     import geopandas as gpd
@@ -1607,39 +1638,16 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     )
     bea_features = con.execute(
         """
-        WITH bea AS (
-          SELECT
-            lpad(fips, 5, '0') AS fips,
-            avg(net_earnings_by_place_of_residence_thousands * 1000.0 / nullif(population, 0)) AS net_earnings_per_capita,
-            avg(dividends_interest_rent_thousands * 1000.0 / nullif(population, 0)) AS dividends_interest_rent_per_capita,
-            avg(transfer_receipts_thousands * 1000.0 / nullif(population, 0)) AS transfer_receipts_per_capita
-          FROM mart.statsamerica_bea_personal_income_annual
-          WHERE fips IS NOT NULL
-            AND year >= (SELECT max(year) FROM mart.statsamerica_bea_personal_income_annual) - 9
-            AND population > 0
-          GROUP BY fips
-        ),
-        cew AS (
-          SELECT
-            lpad(s.fips, 5, '0') AS fips,
-            avg(s.total_wages_dollars / nullif(t.total_wages_dollars, 0) * 100) AS accom_food_wages_pct_total_wages
-          FROM mart.statsamerica_cew_county_sector_annual s
-          JOIN mart.statsamerica_cew_county_annual t
-            ON lpad(s.fips, 5, '0') = lpad(t.fips, 5, '0')
-           AND s.year = t.year
-          WHERE s.naics_code = '72'
-            AND s.year >= (SELECT max(year) FROM mart.statsamerica_cew_county_sector_annual) - 9
-            AND t.total_wages_dollars > 0
-          GROUP BY s.fips
-        )
         SELECT
-          coalesce(bea.fips, cew.fips) AS fips,
-          net_earnings_per_capita,
-          dividends_interest_rent_per_capita,
-          transfer_receipts_per_capita,
-          accom_food_wages_pct_total_wages
-        FROM bea
-        FULL OUTER JOIN cew ON bea.fips = cew.fips
+          lpad(fips, 5, '0') AS fips,
+          avg(net_earnings_by_place_of_residence_thousands * 1000.0 / nullif(population, 0)) AS net_earnings_per_capita,
+          avg(dividends_interest_rent_thousands * 1000.0 / nullif(population, 0)) AS dividends_interest_rent_per_capita,
+          avg(transfer_receipts_thousands * 1000.0 / nullif(population, 0)) AS transfer_receipts_per_capita
+        FROM mart.statsamerica_bea_personal_income_annual
+        WHERE fips IS NOT NULL
+          AND year >= (SELECT max(year) FROM mart.statsamerica_bea_personal_income_annual) - 9
+          AND population > 0
+        GROUP BY fips
         """
     ).df()
     if not bea_features.empty:
@@ -1682,7 +1690,6 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         ("Economic", "Net Earnings per Capita", "net_earnings_per_capita", "currency", "mart.statsamerica_bea_personal_income_annual"),
         ("Economic", "Dividends/Interest/Rent per Capita", "dividends_interest_rent_per_capita", "currency", "mart.statsamerica_bea_personal_income_annual"),
         ("Economic", "Transfer Receipts per Capita", "transfer_receipts_per_capita", "currency", "mart.statsamerica_bea_personal_income_annual"),
-        ("Economic", "Accom. & Food Wages Share of Total Wages", "accom_food_wages_pct_total_wages", "percent", "mart.statsamerica_cew_county_sector_annual"),
         ("Demographic", "Net Migration Rate", "net_migration_rate", "signed_pct", "mart.statsamerica_population_components_annual"),
         ("Demographic", "Age >= 65 Years", "dp05_total_population_65_plus_pct", "percent", "mart.acs_county_demographic_annual"),
         ("Demographic", "Disability Status", "dp02_disability_status_of_the_civilian_noninstitutionalized_population_total_civilian_noninstitutionalized_population_with_a_disability_pct", "percent", "mart.acs_county_demographic_annual"),
@@ -1701,7 +1708,6 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     excluded_feature_labels = {
         "Median PPSF YOY",
         "Homeownership Cost Share",
-        "Accom. & Food Wages Share of Total Wages",
     }
     for _, _, column, _, _ in feature_defs:
         if column in features:
@@ -3128,13 +3134,8 @@ function drawModelFeatureImportance() {
     (left, right) =>
       (right.relativeImportance || 0) - (left.relativeImportance || 0)
   );
-  const usesSubgroupPermutation = features.some(
-    feature => feature.importanceType === "subgroup_permutation_mae"
-  );
   d3.select("#model-feature-summary").text(
-    usesSubgroupPermutation
-      ? `Top ${features.length} pooled-model features for ${selectedFeatureRisk} counties, ranked by their within-group permutation effect on model error.`
-      : `Top ${features.length} model features for counties in the ${selectedFeatureRisk} risk group, ranked by absolute importance.`
+    `Top ${features.length} model features for ${selectedFeatureRisk} Risk counties, ranked by relative importance.`
   );
   d3.select("#feature-importance-chart").html(features.map(feature => `
     <div class="importance-row">

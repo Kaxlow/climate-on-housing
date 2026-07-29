@@ -41,11 +41,30 @@ the fields that view requires, so sample sizes can differ between charts.
 
 Insurance premium and non-renewal fields are also materialized when their local
 inputs are available. The database records source-file metadata in `meta.files`
-and ACS variable mappings in `meta.acs_variable_features`.
+and ACS variable mappings in `meta.acs_variable_features`. File metadata
+includes the upstream source URL and a SHA-256 content hash. Climate-damage
+lineage is also retained in
+`data/climate_damage/climate_damage_source_manifest.csv`.
 
-The page uses retained extracts under `data/` rather than fetching live data.
-It therefore reflects the source versions present when the database was last
-rebuilt.
+The repository excludes provider data. Populate the ignored local `data/`
+workspace from the latest available provider releases with:
+
+```powershell
+download-data all
+```
+
+The bootstrap downloads Census, FEMA, NOAA, and StatsAmerica inputs; selects the
+latest annual vintage when a provider exposes versioned files; derives the NOAA
+forecast-zone-to-county crosswalk; and validates required filenames and schemas.
+It writes resolved URLs, provider versions, and UTC retrieval timestamps to the
+ignored local `data/download_receipt.yaml`. Metadata and expected schemas are
+committed in `config/data_sources.yaml`. Mutable APIs and unversioned downloads
+can change after retrieval, so later runs may not exactly reproduce earlier
+results.
+
+The Redfin county extract and `fips_master_v2.csv` are required private inputs.
+The county processed Feather snapshot is optional and adds private insurance
+features. `download-data all` reports missing private inputs together at the end.
 
 ## Database construction
 
@@ -144,10 +163,30 @@ To examine differences between counties in the same risk group, for each risk gr
 
 This section explores which county characteristics accompany stronger or
 weaker housing growth among counties in the same overall risk group. Candidate
-features cover economics, migration and demographics, owner costs and
-affordability, and weather. They are primarily county averages over the latest
-ten years available in each mart. Some measures are constructed from related
+features are drawn from ACS and StatsAmerica, alongside weather measures. ACS
+provides demographic, owner-cost, and affordability measures; StatsAmerica and
+its underlying BEA and CEW series provide income, employment, earnings, and
+migration measures. Features are primarily county averages over the latest ten
+years available in each mart. Some measures are constructed from related
 fields, such as weighted midpoints of ACS cost buckets.
+
+Exploratory data analysis is performed in two stages. First, ACS and
+StatsAmerica features are profiled separately to identify source-specific
+missingness, duplicate county-year records, outliers, geographic and temporal
+coverage, and changes in variable definitions. Units, denominators, dollar-year
+bases, county FIPS codes, and aggregation periods are checked before features
+are combined. This source-level review prevents join or definition problems
+from being mistaken for substantive relationships.
+
+Second, the combined county feature matrix is reviewed because it is the
+dataset used for the within-risk-group analysis. This review checks join
+coverage and unmatched counties, row loss or duplication, missingness introduced
+by the merge, overlapping or contradictory measures across sources, feature
+distributions within each risk group, and pairwise correlations that may reveal
+redundancy. Descriptive relationships with housing growth are evaluated only
+after these checks. Thus, source datasets are not analyzed exclusively in
+isolation: separate profiling supports data validation, while the blended
+dataset is the basis for the final analytical EDA.
 
 For complete county-event lines in the 12-month pre-event through 36-month
 post-event window:
@@ -227,9 +266,12 @@ build-database --marts-only
 build-climate-risk-housing
 ```
 
-The deliverable is written to `output/climate-risk-housing.html`.
-Reproduction requires the retained files under `data/`; the repository alone
-may not suffice if large or licensed inputs are distributed separately.
+The deliverable is written to `output/climate-risk-housing.html`. Reproduction
+requires running `download-data all` and supplying the private Redfin and county
+reference inputs reported by that command. The repository does not distribute
+provider extracts and selects the latest available public data. Provider
+revisions can therefore change future results; version-specific URLs and
+retrieval metadata are recorded where available.
 
 ## Maintenance
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import re
@@ -9,10 +10,21 @@ from pathlib import Path
 
 import pandas as pd
 
-from housing_climate_risk.paths import ACS_DIR, CLIMATE_DAMAGE_DIR, CLIMATE_DIR, DATA_DIR, FEMA_DIR, FIPSGEO_DIR, HOUSING_DIR
+from housing_climate_risk.cli.analysis_marts import create_analysis_marts
+from housing_climate_risk.cli.feature_marts import create_feature_marts
 
-
+ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = ROOT / "data"
+ACS_DIR = DATA_DIR / "acs"
+CLIMATE_DAMAGE_DIR = DATA_DIR / "climate_damage"
+CLIMATE_DIR = DATA_DIR / "climate"
+FEMA_DIR = DATA_DIR / "fema"
+FIPSGEO_DIR = DATA_DIR / "fipsgeo"
+HOUSING_DIR = DATA_DIR / "housing"
 DATABASE_PATH = DATA_DIR / "quoll.duckdb"
+COUNTY_PROCESSED_DATA_PATH = (
+    DATA_DIR / "20260401_county_processed_data" / "county_processed_data.feather"
+)
 STATSAMERICA_DIR = DATA_DIR / "statsamerica"
 
 
@@ -34,6 +46,16 @@ RAW_FILES = {
     "statsamerica_cew_total_ownership": STATSAMERICA_DIR / "CEW - US, States, Counties - Total Ownership.csv",
 }
 
+RAW_SOURCE_URLS = {
+    "redfin_housing_market_by_county": "https://www.redfin.com/news/data-center/",
+    "nri_table_counties": "https://hazards.fema.gov/nri/data-resources",
+    "fema_disaster_declarations": "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries",
+    "fema_web_disaster_summaries": "https://www.fema.gov/api/open/v1/FemaWebDisasterSummaries",
+    "noaa_storm_events_county_damage": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
+    "noaa_storm_events_zone_county_mapping": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
+    "ncei_climate_at_a_glance_county_monthly": "https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/",
+}
+
 
 ACS_DATA_PATTERNS = {
     "economic": [r"_dp03_"],
@@ -43,7 +65,9 @@ ACS_DATA_PATTERNS = {
 
 
 ACS_KEY_COLUMNS = {"year", "state", "county"}
+ACS_EXCLUDED_FEATURE_COLUMNS = {"median_owner_costs_pct_income"}
 ACS_VARIABLE_RE = re.compile(r"^[A-Z]+\d+(?:_C\d+)?_\d+(?:E|M|PE|PM)$")
+ACS_NORMALIZED_VARIABLE_RE = re.compile(r"^[a-z]+\d+(?:_c\d+)?_\d+_(?:est|moe|pct|pct_moe)$")
 ACS_SPECIAL_NUMERIC_VALUES = {-222222222, -333333333, -555555555, -666666666, -888888888, -999999999}
 NEGATIVE_ALLOWED_COLUMN_TOKENS = (
     "anomaly",
@@ -180,7 +204,33 @@ def _normalized_column_key(column: str) -> str:
 
 
 def _is_acs_measure_column(column: str) -> bool:
-    return ACS_VARIABLE_RE.match(str(column)) is not None
+    return (
+        ACS_VARIABLE_RE.match(str(column)) is not None
+        or ACS_NORMALIZED_VARIABLE_RE.match(str(column)) is not None
+    )
+
+
+def _acs_raw_column_name(column: str) -> str:
+    """Normalize a Census API variable ID without discarding its provenance."""
+    match = re.fullmatch(r"([A-Z]+\d+(?:_C\d+)?)_(\d+)(E|M|PE|PM)", str(column))
+    if not match:
+        return str(column)
+    group, sequence, statistic = match.groups()
+    statistic_name = {"E": "est", "M": "moe", "PE": "pct", "PM": "pct_moe"}[statistic]
+    return f"{group.lower()}_{sequence}_{statistic_name}"
+
+
+def _acs_source_variable(column: str, variable_lookup: dict[str, dict[str, str]]) -> str | None:
+    """Resolve either an original or normalized raw column to its Census variable ID."""
+    if column in variable_lookup:
+        return column
+    match = re.fullmatch(r"([a-z]+\d+(?:_c\d+)?)_(\d+)_(est|moe|pct|pct_moe)", str(column))
+    if not match:
+        return None
+    group, sequence, statistic_name = match.groups()
+    statistic = {"est": "E", "moe": "M", "pct": "PE", "pct_moe": "PM"}[statistic_name]
+    variable = f"{group.upper()}_{sequence}{statistic}"
+    return variable if variable in variable_lookup else None
 
 
 def _allows_negative_values(table_name: str, column: str) -> bool:
@@ -221,17 +271,24 @@ def _should_null_negative_values(table_name: str, column: str) -> bool:
     return any(token in column_key for token in NONNEGATIVE_COLUMN_TOKENS)
 
 
-def _clean_negative_values_select_sql(*, table_name: str, columns: list[str], source_alias: str = "source") -> str:
+def _clean_negative_values_select_sql(
+    *,
+    table_name: str,
+    columns: list[str],
+    source_alias: str = "source",
+    output_aliases: dict[str, str] | None = None,
+) -> str:
     select_columns = []
     for column in columns:
         qualified_column = f"{_quote_ident(source_alias)}.{_quote_ident(column)}"
+        output_column = (output_aliases or {}).get(column, column)
         if _should_null_negative_values(table_name, column):
             numeric_expr = f"try_cast(replace(trim({qualified_column}), ',', '') AS DOUBLE)"
             select_columns.append(
-                f"CASE WHEN {numeric_expr} < 0 THEN NULL ELSE {qualified_column} END AS {_quote_ident(column)}"
+                f"CASE WHEN {numeric_expr} < 0 THEN NULL ELSE {qualified_column} END AS {_quote_ident(output_column)}"
             )
         else:
-            select_columns.append(f"{qualified_column} AS {_quote_ident(column)}")
+            select_columns.append(f"{qualified_column} AS {_quote_ident(output_column)}")
     return ",\n            ".join(select_columns)
 
 
@@ -245,6 +302,33 @@ def _null_negative_values_in_frame(df: pd.DataFrame, *, table_name: str) -> pd.D
     return out
 
 
+def _file_sha256(source_path: Path) -> str:
+    digest = hashlib.sha256()
+    with source_path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _manifest_source_url(source_path: Path) -> str | None:
+    try:
+        relative_path = source_path.resolve().relative_to(CLIMATE_DAMAGE_DIR.resolve())
+    except ValueError:
+        return None
+    manifest_path = CLIMATE_DAMAGE_DIR / "climate_damage_source_manifest.csv"
+    if not manifest_path.exists():
+        return None
+    with manifest_path.open(encoding="utf-8-sig", newline="") as file:
+        rows = csv.DictReader(file)
+        matches = [
+            row.get("url", "").strip()
+            for row in rows
+            if Path(row.get("path", "")).as_posix() == relative_path.as_posix()
+            and row.get("url", "").strip()
+        ]
+    return ";".join(dict.fromkeys(matches)) or None
+
+
 def _register_file_metadata(con, *, table_schema: str, table_name: str, source_path: Path) -> None:
     columns = _column_names(con, table_schema, table_name)
     row_count = con.execute(f"SELECT count(*) FROM {_table(table_schema, table_name)}").fetchone()[0]
@@ -254,6 +338,7 @@ def _register_file_metadata(con, *, table_schema: str, table_name: str, source_p
         if resolved_source_path.is_relative_to(DATA_DIR)
         else str(resolved_source_path.parent)
     )
+    source_url = _manifest_source_url(source_path) or RAW_SOURCE_URLS.get(table_name)
     con.execute(
         """
         INSERT INTO meta.files (
@@ -264,9 +349,11 @@ def _register_file_metadata(con, *, table_schema: str, table_name: str, source_p
             source_path,
             loaded_at,
             row_count,
-            detected_columns
+            detected_columns,
+            upstream_source_url,
+            content_sha256
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             table_schema,
@@ -277,15 +364,22 @@ def _register_file_metadata(con, *, table_schema: str, table_name: str, source_p
             datetime.now(timezone.utc).isoformat(),
             row_count,
             json.dumps(columns),
+            source_url,
+            _file_sha256(source_path),
         ],
     )
 
 
-def _load_csv_raw(con, *, table_name: str, source_path: Path) -> None:
+def _load_csv_raw(con, *, table_name: str, source_path: Path, normalize_acs_columns: bool = False) -> None:
     if not source_path.exists():
         raise FileNotFoundError(source_path)
     columns = _read_csv_column_names(con, source_path)
-    cleaned_select = _clean_negative_values_select_sql(table_name=table_name, columns=columns)
+    output_aliases = {column: _acs_raw_column_name(column) for column in columns} if normalize_acs_columns else None
+    cleaned_select = _clean_negative_values_select_sql(
+        table_name=table_name,
+        columns=columns,
+        output_aliases=output_aliases,
+    )
     con.execute(f"DROP TABLE IF EXISTS {_table('raw', table_name)}")
     con.execute(
         f"""
@@ -327,7 +421,7 @@ def _json_or_scalar(value):
 def _load_raw(con) -> dict[str, list[str]]:
     loaded: dict[str, list[str]] = {"acs": []}
     for table_name, source_path in RAW_FILES.items():
-        _load_csv_raw(con, table_name=table_name, source_path=source_path)
+        _load_csv_raw(con, table_name=table_name, source_path=source_path, normalize_acs_columns=True)
         loaded[table_name] = [str(source_path)]
 
     for source_path in sorted(ACS_DIR.glob("*.csv")):
@@ -335,7 +429,11 @@ def _load_raw(con) -> dict[str, list[str]]:
         _load_csv_raw(con, table_name=table_name, source_path=source_path)
         loaded["acs"].append(table_name)
 
-    _load_feather_raw(con, table_name="county_processed_data", source_path=DATA_DIR / "county_processed_data.feather")
+    _load_feather_raw(
+        con,
+        table_name="county_processed_data",
+        source_path=COUNTY_PROCESSED_DATA_PATH,
+    )
     return loaded
 
 
@@ -352,7 +450,9 @@ def _create_meta(con) -> None:
             source_path VARCHAR,
             loaded_at VARCHAR,
             row_count BIGINT,
-            detected_columns JSON
+            detected_columns JSON,
+            upstream_source_url VARCHAR,
+            content_sha256 VARCHAR
         )
         """
     )
@@ -412,6 +512,12 @@ def _acs_label_parts(label: str) -> list[str]:
         raw_part = raw_part.strip()
         if raw_part.lower() in stat_words:
             continue
+        raw_part = re.sub(
+            r"^(?:percent margin of error|margin of error|percent estimate|estimate|percent)\s+",
+            "",
+            raw_part,
+            flags=re.IGNORECASE,
+        )
         part = _clean_acs_label(raw_part)
         if not part or part in stat_words:
             continue
@@ -445,6 +551,8 @@ def _acs_stat_suffix(variable: str, label: str) -> str:
 
 def _acs_feature_name(variable: str, label: str, group: str, concept: str = "") -> str:
     parts = _acs_label_parts(label)
+    if str(group).upper() == "DP02" and parts and parts[0] == "educational_attainment":
+        parts = [part for part in parts if part != "population_25_plus"]
     if _concept_is_specific(concept) and (not parts or parts == ["total"] or parts[0] == "total"):
         concept_part = _clean_acs_label(concept)
         parts = [concept_part, *[part for part in parts if part != concept_part]]
@@ -492,12 +600,14 @@ def _build_acs_variable_lookup() -> dict[str, dict[str, str]]:
         return {}
 
     variables_df = pd.concat(frames, ignore_index=True)
-    variables_df["year_sort"] = pd.to_numeric(variables_df["year"], errors="coerce").fillna(0)
-    variables_df = variables_df.sort_values(["variable", "year_sort"], ascending=[True, False])
-    variables_df = variables_df.drop_duplicates(subset=["variable"], keep="first")
+    variables_df["year_sort"] = pd.to_numeric(variables_df["year"], errors="coerce").fillna(0).astype(int)
+    variables_df = variables_df.sort_values(
+        ["variable", "year_sort", "dictionary_file"],
+        ascending=[True, False, False],
+    )
+    variables_df = variables_df.drop_duplicates(subset=["variable", "year_sort"], keep="first")
 
     lookup: dict[str, dict[str, str]] = {}
-    used_features: dict[str, str] = {}
     for row in variables_df.to_dict("records"):
         variable = str(row["variable"])
         feature = _acs_feature_name(
@@ -506,12 +616,9 @@ def _build_acs_variable_lookup() -> dict[str, dict[str, str]]:
             str(row.get("group", "")),
             str(row.get("concept", "")),
         )
-        if feature in used_features and used_features[feature] != variable:
-            digest = hashlib.sha1(variable.encode("utf-8")).hexdigest()[:8]
-            suffix = f"_v{digest}"
-            feature = f"{feature[: 140 - len(suffix)]}{suffix}"
-        used_features[feature] = variable
-        lookup[variable] = {
+        year = int(row["year_sort"])
+        year_entry = {
+            "year": year,
             "feature_name": feature,
             "label": str(row.get("label", "")),
             "concept": str(row.get("concept", "")),
@@ -519,35 +626,56 @@ def _build_acs_variable_lookup() -> dict[str, dict[str, str]]:
             "group": str(row.get("group", "")),
             "dictionary_file": str(row.get("dictionary_file", "")),
         }
+        variable_entry = lookup.setdefault(variable, {"by_year": {}})
+        variable_entry["by_year"][year] = year_entry
+        if year >= int(variable_entry.get("year", -1)):
+            variable_entry.update(year_entry)
     return lookup
 
 
 def _create_acs_variable_features(con, acs_table_names: list[str], variable_lookup: dict[str, dict[str, str]]) -> None:
     rows = []
     for table_name in acs_table_names:
-        for column in _column_names(con, "raw", table_name):
-            if column not in variable_lookup:
+        raw_columns = _column_names(con, "raw", table_name)
+        if "year" not in {column.lower() for column in raw_columns}:
+            continue
+        table_years = {
+            int(row[0])
+            for row in con.execute(
+                f"SELECT DISTINCT try_cast(year AS INTEGER) FROM {_table('raw', table_name)} WHERE year IS NOT NULL"
+            ).fetchall()
+            if row[0] is not None
+        }
+        for column in raw_columns:
+            variable = _acs_source_variable(column, variable_lookup)
+            if variable is None:
                 continue
-            row = variable_lookup[column]
-            rows.append(
-                {
-                    "source_table": table_name,
-                    "variable": column,
-                    "feature_name": row["feature_name"],
-                    "label": row["label"],
-                    "concept": row["concept"],
-                    "predicate_type": row["predicate_type"],
-                    "group": row["group"],
-                    "dictionary_file": row["dictionary_file"],
-                }
-            )
+            for year, row in variable_lookup[variable]["by_year"].items():
+                if year not in table_years:
+                    continue
+                rows.append(
+                    {
+                        "source_table": table_name,
+                        "year": year,
+                        "variable": variable,
+                        "raw_column": column,
+                        "feature_name": row["feature_name"],
+                        "label": row["label"],
+                        "concept": row["concept"],
+                        "predicate_type": row["predicate_type"],
+                        "group": row["group"],
+                        "dictionary_file": row["dictionary_file"],
+                    }
+                )
 
     con.execute("DROP TABLE IF EXISTS meta.acs_variable_features")
     feature_df = pd.DataFrame(
         rows,
         columns=[
             "source_table",
+            "year",
             "variable",
+            "raw_column",
             "feature_name",
             "label",
             "concept",
@@ -924,71 +1052,24 @@ def _create_core_marts(con) -> None:
               AND parsed_incident_end_date >= parsed_incident_begin_date
               AND incidentType IS NOT NULL
             GROUP BY incidentType
-        ),
-        normalized_fema AS (
-            SELECT
-                lpad(fipsStateCode, 2, '0') || lpad(fipsCountyCode, 3, '0') AS normalized_fips,
-                coalesce(
-                    parsed_incident_end_date,
-                    parsed_incident_begin_date
-                        + CAST(round(duration.average_duration_days) AS BIGINT) * INTERVAL 1 DAY
-                ) AS normalized_incident_end_date,
-                parsed_fema.*
-            FROM parsed_fema
-            LEFT JOIN incident_type_duration AS duration
-                ON parsed_fema.incidentType = duration.incidentType
-            WHERE fipsStateCode IS NOT NULL
-              AND fipsCountyCode IS NOT NULL
-        ),
-        ranked_incidents AS (
-            SELECT
-                normalized_fema.*,
-                count(*) OVER incident AS declaration_count,
-                list_sort(list(DISTINCT disasterNumber) OVER incident) AS associated_disaster_numbers,
-                list_sort(list(DISTINCT declarationType) OVER incident) AS associated_declaration_types,
-                row_number() OVER (
-                    incident
-                    ORDER BY
-                        CASE declarationType
-                            WHEN 'DR' THEN 0
-                            WHEN 'EM' THEN 1
-                            ELSE 2
-                        END,
-                        try_cast(disasterNumber AS BIGINT) DESC,
-                        disasterNumber DESC
-                ) AS incident_declaration_rank
-            FROM normalized_fema
-            WINDOW incident AS (
-                PARTITION BY
-                    normalized_fips,
-                    incidentType,
-                    declarationTitle,
-                    parsed_incident_begin_date,
-                    normalized_incident_end_date
-            )
         )
         SELECT
-            normalized_fips AS fips,
+            lpad(fipsStateCode, 2, '0') || lpad(fipsCountyCode, 3, '0') AS fips,
             lpad(fipsStateCode, 2, '0') AS state_fips,
             try_cast(fyDeclared AS INTEGER) AS declared_year,
             try_cast(declarationDate AS TIMESTAMP) AS declaration_date,
             parsed_incident_begin_date AS incident_begin_date,
-            normalized_incident_end_date AS incident_end_date,
-            declaration_count,
-            associated_disaster_numbers,
-            associated_declaration_types,
-            ranked_incidents.* EXCLUDE (
-                normalized_fips,
-                normalized_incident_end_date,
-                parsed_incident_begin_date,
+            coalesce(
                 parsed_incident_end_date,
-                declaration_count,
-                associated_disaster_numbers,
-                associated_declaration_types,
-                incident_declaration_rank
-            )
-        FROM ranked_incidents
-        WHERE incident_declaration_rank = 1
+                parsed_incident_begin_date
+                    + CAST(round(duration.average_duration_days) AS BIGINT) * INTERVAL 1 DAY
+            ) AS incident_end_date,
+            parsed_fema.* EXCLUDE (parsed_incident_begin_date, parsed_incident_end_date)
+        FROM parsed_fema
+        LEFT JOIN incident_type_duration AS duration
+            ON parsed_fema.incidentType = duration.incidentType
+        WHERE fipsStateCode IS NOT NULL
+          AND fipsCountyCode IS NOT NULL
         """
     )
 
@@ -1186,7 +1267,7 @@ def _create_core_marts(con) -> None:
     # Load insurance premiums from county_processed_data feather file
     # The JSON in DuckDB has numpy arrays stored as strings, so we parse in Python
     con.execute("DROP TABLE IF EXISTS mart.insurance_premiums_annual")
-    county_processed_path = DATA_DIR / "county_processed_data.feather"
+    county_processed_path = COUNTY_PROCESSED_DATA_PATH
     if county_processed_path.exists():
         import pandas as pd
         county_df = pd.read_feather(county_processed_path)
@@ -1396,18 +1477,85 @@ def _acs_category(table_name: str) -> str | None:
     return None
 
 
-def _acs_feature_aliases(con, table_name: str, variable_lookup: dict[str, dict[str, str]]) -> list[tuple[str, str]]:
+def _duplicate_acs_percent_columns(
+    con,
+    table_name: str,
+    variable_lookup: dict[str, dict[str, str]],
+) -> set[str]:
+    """Return raw Census PE columns that add no information beyond paired E columns."""
+    raw_columns = _column_names(con, "raw", table_name)
+    columns_by_variable = {
+        variable: column
+        for column in raw_columns
+        if (variable := _acs_source_variable(column, variable_lookup)) is not None
+    }
+    candidates: list[tuple[str, str]] = []
+    for variable, percent_column in columns_by_variable.items():
+        if not re.fullmatch(r"[A-Z]+\d+(?:_C\d+)?_\d+PE", variable):
+            continue
+        estimate_variable = f"{variable[:-2]}E"
+        estimate_column = columns_by_variable.get(estimate_variable)
+        if estimate_column is not None:
+            candidates.append((percent_column, estimate_column))
+
+    duplicate_columns: set[str] = set()
+    special_values = ", ".join(str(value) for value in sorted(ACS_SPECIAL_NUMERIC_VALUES))
+    for chunk_start in range(0, len(candidates), 100):
+        chunk = candidates[chunk_start : chunk_start + 100]
+        expressions = []
+        for index, (percent_column, estimate_column) in enumerate(chunk):
+            percent_value = (
+                f"try_cast(replace(cast({_quote_ident(percent_column)} AS VARCHAR), ',', '') AS DOUBLE)"
+            )
+            estimate_value = (
+                f"try_cast(replace(cast({_quote_ident(estimate_column)} AS VARCHAR), ',', '') AS DOUBLE)"
+            )
+            valid_percent = f"{percent_value} IS NOT NULL AND {percent_value} NOT IN ({special_values})"
+            expressions.extend(
+                [
+                    f"count(*) FILTER (WHERE {valid_percent}) AS valid_{index}",
+                    (
+                        "count(*) FILTER (WHERE "
+                        f"{valid_percent} AND {percent_value} IS DISTINCT FROM {estimate_value}"
+                        f") AS different_{index}"
+                    ),
+                ]
+            )
+        if not expressions:
+            continue
+        result = con.execute(
+            f"SELECT {', '.join(expressions)} FROM {_table('raw', table_name)}"
+        ).fetchone()
+        for index, (percent_column, _) in enumerate(chunk):
+            valid_count = result[index * 2]
+            different_count = result[index * 2 + 1]
+            if valid_count > 0 and different_count == 0:
+                duplicate_columns.add(percent_column)
+    return duplicate_columns
+
+
+def _acs_feature_aliases(
+    con,
+    table_name: str,
+    variable_lookup: dict[str, dict[str, str]],
+    *,
+    excluded_columns: set[str] | None = None,
+) -> list[tuple[str, str]]:
+    excluded_columns = excluded_columns or set()
     raw_columns = [
         column
         for column in _column_names(con, "raw", table_name)
         if column.lower() not in ACS_KEY_COLUMNS
+        and column.lower() not in ACS_EXCLUDED_FEATURE_COLUMNS
+        and column not in excluded_columns
     ]
     aliases = []
     used_aliases: set[str] = set()
     used_alias_keys: set[str] = set()
     for column in raw_columns:
-        alias = variable_lookup.get(column, {}).get("feature_name", column)
-        alias = _dedupe_feature_alias(alias, column, used_aliases)
+        variable = _acs_source_variable(column, variable_lookup)
+        alias = variable_lookup.get(variable or "", {}).get("feature_name", column)
+        alias = _dedupe_feature_alias(alias, variable or column, used_aliases)
         while alias.lower() in used_alias_keys:
             digest = hashlib.sha1(f"{table_name}:{column}".encode("utf-8")).hexdigest()[:8]
             suffix = f"_v{digest}"
@@ -1418,10 +1566,69 @@ def _acs_feature_aliases(con, table_name: str, variable_lookup: dict[str, dict[s
     return aliases
 
 
-def _acs_select_sql(con, table_name: str, variable_lookup: dict[str, dict[str, str]]) -> str:
+def _acs_feature_selects(
+    con,
+    table_name: str,
+    variable_lookup: dict[str, dict[str, str]],
+    *,
+    excluded_columns: set[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Build year-aware SQL expressions for stable ACS conceptual features."""
+    excluded_columns = excluded_columns or set()
+    table_years = {
+        int(row[0])
+        for row in con.execute(
+            f"SELECT DISTINCT try_cast(year AS INTEGER) FROM {_table('raw', table_name)} WHERE year IS NOT NULL"
+        ).fetchall()
+        if row[0] is not None
+    }
+    feature_sources: dict[str, dict[int, list[str]]] = {}
+    for column in _column_names(con, "raw", table_name):
+        if (
+            column.lower() in ACS_KEY_COLUMNS
+            or column.lower() in ACS_EXCLUDED_FEATURE_COLUMNS
+            or column in excluded_columns
+        ):
+            continue
+        variable = _acs_source_variable(column, variable_lookup)
+        if variable is None:
+            for year in table_years:
+                feature_sources.setdefault(column, {}).setdefault(year, []).append(column)
+            continue
+        for year, row in variable_lookup[variable]["by_year"].items():
+            if year not in table_years:
+                continue
+            feature_sources.setdefault(row["feature_name"], {}).setdefault(year, []).append(column)
+
+    selects = []
+    for feature_name, sources_by_year in sorted(feature_sources.items()):
+        cases = []
+        for year, source_columns in sorted(sources_by_year.items()):
+            values = [
+                f"acs_source.{_quote_ident(column)}"
+                for column in dict.fromkeys(source_columns)
+            ]
+            value_expression = values[0] if len(values) == 1 else f"coalesce({', '.join(values)})"
+            cases.append(f"WHEN try_cast(acs_source.year AS INTEGER) = {year} THEN {value_expression}")
+        selects.append((feature_name, f"CASE {' '.join(cases)} END"))
+    return selects
+
+
+def _acs_select_sql(
+    con,
+    table_name: str,
+    variable_lookup: dict[str, dict[str, str]],
+    *,
+    excluded_columns: set[str] | None = None,
+) -> str:
     select_columns = []
-    for column, alias in _acs_feature_aliases(con, table_name, variable_lookup):
-        select_columns.append(f"acs_source.{_quote_ident(column)} AS {_quote_ident(alias)}")
+    for alias, expression in _acs_feature_selects(
+        con,
+        table_name,
+        variable_lookup,
+        excluded_columns=excluded_columns,
+    ):
+        select_columns.append(f"{expression} AS {_quote_ident(alias)}")
     columns = ",\n        ".join(select_columns)
     return f"""
     SELECT
@@ -1458,8 +1665,17 @@ def _create_acs_mart(con, *, mart_name: str, table_names: list[str], variable_lo
         "source_table": "VARCHAR",
     }
     column_keys = {column.lower() for column in columns}
+    excluded_columns_by_table = {
+        table_name: _duplicate_acs_percent_columns(con, table_name, variable_lookup)
+        for table_name in table_names
+    }
     for table_name in table_names:
-        for _, alias in _acs_feature_aliases(con, table_name, variable_lookup):
+        for alias, _ in _acs_feature_selects(
+            con,
+            table_name,
+            variable_lookup,
+            excluded_columns=excluded_columns_by_table[table_name],
+        ):
             alias_key = alias.lower()
             if alias_key not in column_keys:
                 columns[alias] = "VARCHAR"
@@ -1468,12 +1684,44 @@ def _create_acs_mart(con, *, mart_name: str, table_names: list[str], variable_lo
     column_defs = ",\n        ".join(f"{_quote_ident(column)} {column_type}" for column, column_type in columns.items())
     con.execute(f"CREATE TABLE {_table('mart', mart_name)} (\n        {column_defs}\n    )")
     for table_name in table_names:
-        con.execute(f"INSERT INTO {_table('mart', mart_name)} BY NAME {_acs_select_sql(con, table_name, variable_lookup)}")
+        con.execute(
+            f"INSERT INTO {_table('mart', mart_name)} BY NAME "
+            f"{_acs_select_sql(con, table_name, variable_lookup, excluded_columns=excluded_columns_by_table[table_name])}"
+        )
     _null_acs_special_values_in_mart(con, mart_name, [column for column in columns if column not in {"fips", "state_fips", "year", "source_table"}])
 
 
 def _add_affordability_computed_columns(con) -> None:
-    """Add computed columns to affordability mart derived from S2503 data."""
+    """Add concise affordability features derived from detailed ACS tables."""
+    # B25103_001E/M report the county median real-estate taxes paid across
+    # owner-occupied units, regardless of mortgage status.
+    con.execute(
+        """
+        ALTER TABLE mart.acs_county_affordability_annual
+        ADD COLUMN IF NOT EXISTS median_property_taxes DOUBLE
+        """
+    )
+    con.execute(
+        """
+        ALTER TABLE mart.acs_county_affordability_annual
+        ADD COLUMN IF NOT EXISTS median_property_taxes_moe DOUBLE
+        """
+    )
+    affordability_columns = set(_column_names(con, "mart", "acs_county_affordability_annual"))
+    b25103_estimate = "b25103_median_real_estate_taxes_paid_total_est"
+    b25103_moe = "b25103_median_real_estate_taxes_paid_total_moe"
+    if b25103_estimate in affordability_columns:
+        moe_expression = f"try_cast({_quote_ident(b25103_moe)} AS DOUBLE)" if b25103_moe in affordability_columns else "NULL"
+        con.execute(
+            f"""
+            UPDATE mart.acs_county_affordability_annual
+            SET
+                median_property_taxes = try_cast({_quote_ident(b25103_estimate)} AS DOUBLE),
+                median_property_taxes_moe = {moe_expression}
+            WHERE {_quote_ident(b25103_estimate)} IS NOT NULL
+            """
+        )
+
     # Add housing_cost_pct_income: median monthly housing costs as percentage of median household income
     # Uses S2503_C02_024E (median monthly housing costs for owner-occupied) and S2503_C02_013E (median household income for owner-occupied)
     con.execute(
@@ -1591,6 +1839,8 @@ def build_database(database_path: Path = DATABASE_PATH, *, skip_indexes: bool = 
         con = duckdb.connect(str(database_path))
         _configure_connection(con)
         _create_acs_marts(con, loaded["acs"], variable_lookup)
+        create_feature_marts(con)
+        create_analysis_marts(con)
         if not skip_indexes:
             _create_indexes(con)
     finally:
