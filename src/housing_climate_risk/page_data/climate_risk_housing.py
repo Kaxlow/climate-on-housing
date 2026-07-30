@@ -193,6 +193,34 @@ def rating_clean(value: object) -> str | None:
     return RISK_MAP.get(str(value), str(value))
 
 
+def latest_complete_calendar_window(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    years: int = 10,
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Return [start, end) for the latest complete calendar years in Redfin."""
+
+    latest_year = con.execute(
+        """
+        SELECT max(calendar_year)
+        FROM (
+            SELECT
+                year(period_begin) AS calendar_year
+            FROM mart.redfin_county_monthly
+            WHERE property_type = 'All Residential'
+              AND period_begin IS NOT NULL
+            GROUP BY year(period_begin)
+            HAVING count(DISTINCT month(period_begin)) = 12
+        )
+        """
+    ).fetchone()[0]
+    if latest_year is None:
+        raise ValueError("Redfin data has no complete calendar year")
+    end = pd.Timestamp(year=int(latest_year) + 1, month=1, day=1)
+    start = pd.Timestamp(year=int(latest_year) - years + 1, month=1, day=1)
+    return start, end
+
+
 def weighted_bucket_average(frame: pd.DataFrame, buckets: list[tuple[str, float]], *, zero_cols: list[str] | None = None) -> pd.Series:
     total = pd.Series(0.0, index=frame.index)
     weighted = pd.Series(0.0, index=frame.index)
@@ -208,6 +236,8 @@ def weighted_bucket_average(frame: pd.DataFrame, buckets: list[tuple[str, float]
 
 
 def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
+    analysis_start, analysis_end = latest_complete_calendar_window(con)
+    latest_year_start = analysis_end - pd.DateOffset(years=1)
     hazard_cols: list[str] = []
     for hazard in HAZARDS:
         if hazard["key"] == "overall":
@@ -237,11 +267,12 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             ) AS observed_months
         FROM mart.redfin_county_monthly
         WHERE property_type = 'All Residential'
-          AND period_begin >= DATE '2025-01-01'
-          AND period_begin < DATE '2026-01-01'
+          AND period_begin >= ?
+          AND period_begin < ?
           AND fips IS NOT NULL
         GROUP BY fips
-        """
+        """,
+        [latest_year_start, analysis_end],
     ).df()
     df = ppsf.merge(nri, on="fips", how="inner")
     df["fips"] = df["fips"].astype(str).str.zfill(5)
@@ -285,8 +316,8 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                 END) AS median_ppsf_yoy
             FROM mart.redfin_county_monthly AS r
             WHERE r.property_type = 'All Residential'
-              AND r.period_begin >= DATE '2016-01-01'
-              AND r.period_begin < DATE '2026-01-01'
+              AND r.period_begin >= ?
+              AND r.period_begin < ?
               AND r.fips IS NOT NULL
             GROUP BY r.fips, date_trunc('month', r.period_begin)
         ),
@@ -302,7 +333,8 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         FROM monthly
         INNER JOIN complete_counties USING (fips)
         ORDER BY fips, month
-        """
+        """,
+        [analysis_start, analysis_end],
     ).df()
     history["fips"] = history["fips"].astype(str).str.zfill(5)
     history["median_ppsf_yoy"] = pd.to_numeric(history["median_ppsf_yoy"], errors="coerce")
@@ -377,6 +409,8 @@ def build_price_risk(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         "countyHistorySeries": county_history_series,
         "ratingHistoriesByHazard": rating_histories,
         "summary": {
+            "analysisStart": analysis_start.strftime("%Y-%m-%d"),
+            "analysisEnd": (analysis_end - pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
             "countyCount": int(df["fips"].nunique()),
             "medianAvgPpsfYoy": serialize_number(df["avg_median_ppsf_yoy"].median(), 5),
             "ppsfCapLower": serialize_number(cap_lower, 5),
@@ -1099,16 +1133,20 @@ def build_event_windows(
     con: duckdb.DuckDBPyConnection,
     eligible_feature_fips_by_risk: dict[str, set[str]] | None = None,
 ) -> dict[str, object]:
+    analysis_start, analysis_end = latest_complete_calendar_window(con)
     events = load_disaster_events(con)
-    events = events.loc[events["event_start_month"].between(pd.Timestamp("2016-01-01"), pd.Timestamp("2025-12-01"))].copy()
+    events = events.loc[
+        events["event_start_month"].ge(analysis_start)
+        & events["event_start_month"].lt(analysis_end)
+    ].copy()
     housing = load_redfin_county_monthly(con)
     for column in ["median_ppsf_yoy", "avg_sale_to_list_yoy", "homes_sold_yoy", "inventory_yoy", "housing_market_index"]:
         if column in housing:
             housing.loc[pd.to_numeric(housing[column], errors="coerce").le(-888888000), column] = np.nan
     metric = "median_ppsf_yoy"
 
-    # Window A: 1 year before event start → 3 years after event end (pre=12, post=36)
-    # Window B: 1 year before event end → 5 years after event end (pre=12, post=60, anchored at event end)
+    # Both windows use the split-anchored event_window_month: pre-event months
+    # relative to event start and post-event months relative to event end.
     # We use pre_event_months=24 for the raw build to cover both windows.
     affected = build_affected_event_windows(events, housing, pre_event_months=24, post_event_months=60)
     if affected.empty:
@@ -1116,14 +1154,17 @@ def build_event_windows(
         return {
             "windowA": empty,
             "windowB": empty,
-            "summary": {"events": 0},
+            "summary": {
+                "events": 0,
+                "analysisStart": analysis_start.strftime("%Y-%m-%d"),
+                "analysisEnd": (analysis_end - pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
+            },
         }
 
     nri = con.execute("SELECT fips, risk_rating FROM mart.nri_county_risk WHERE fips IS NOT NULL").df()
     nri["fips"] = nri["fips"].astype(str).str.zfill(5)
     nri["riskRating"] = nri["risk_rating"].map(rating_clean)
 
-    # Window A uses event_window_month (relative to event start), pre=12, post=36
     window_a = _build_window_data(
         affected,
         nri,
@@ -1134,24 +1175,12 @@ def build_event_windows(
         story_examples=True,
     )
 
-    # Window B is anchored at event END: use months_after_event_end for post, months_from_event_start for pre.
-    # We derive a combined "end-anchored" month column: negative = months before event end, positive = after.
-    affected_b = affected.copy()
-    affected_b["ewm_end"] = np.where(
-        affected_b["months_from_event_start"].le(0),
-        # pre-event period: distance from event start, negative
-        affected_b["months_from_event_start"],
-        # post-event period: months_after_event_end
-        affected_b["months_after_event_end"],
-    )
-    affected_b["line_id"] = affected_b["event_key"]
     window_b = _build_window_data(
-        affected_b,
+        affected,
         nri,
         metric,
         pre_months=12,
         post_months=60,
-        anchor_col="ewm_end",
         eligible_feature_fips_by_risk=eligible_feature_fips_by_risk,
     )
 
@@ -1160,6 +1189,8 @@ def build_event_windows(
         "windowB": window_b,
         "summary": {
             "events": int(events["event_key"].nunique()),
+            "analysisStart": analysis_start.strftime("%Y-%m-%d"),
+            "analysisEnd": (analysis_end - pd.DateOffset(months=1)).strftime("%Y-%m-%d"),
         },
     }
 
@@ -1189,6 +1220,7 @@ def build_county_playbook_data(
     con: duckdb.DuckDBPyConnection,
 ) -> dict[str, object]:
     """Build county hazard ratings, monthly PPSF history, and event periods."""
+    analysis_start, analysis_end = latest_complete_calendar_window(con)
     hazard_cols: list[str] = []
     for hazard in HAZARDS:
         if hazard["key"] == "overall":
@@ -1268,14 +1300,12 @@ def build_county_playbook_data(
         WHERE fips IS NOT NULL
           AND period_begin IS NOT NULL
           AND coalesce(property_type, PROPERTY_TYPE_1) = 'All Residential'
-          AND extract(year FROM period_begin) >= (
-              SELECT max(extract(year FROM period_begin)) - 9
-              FROM mart.redfin_county_monthly
-              WHERE period_begin IS NOT NULL
-          )
+          AND period_begin >= ?
+          AND period_begin < ?
         GROUP BY fips, date_trunc('month', period_begin)
         ORDER BY fips, month
-        """
+        """,
+        [analysis_start, analysis_end],
     ).df()
     history["fips"] = history["fips"].astype(str).str.zfill(5)
     history["median_ppsf_yoy"] = pd.to_numeric(history["median_ppsf_yoy"], errors="coerce")
@@ -1283,7 +1313,8 @@ def build_county_playbook_data(
 
     events = load_disaster_events(con)
     events = events.loc[
-        events["event_start_month"].between(pd.Timestamp("2016-01-01"), pd.Timestamp("2025-12-01"))
+        events["event_start_month"].ge(analysis_start)
+        & events["event_start_month"].lt(analysis_end)
     ].drop_duplicates("event_key")
     county_fips = {str(county["fips"]).zfill(5) for county in counties}
     events = events.loc[events["fips"].isin(county_fips)].sort_values(["fips", "event_start_month"])
@@ -2178,9 +2209,9 @@ const TEXT = {
   // ---- Pricing section ----
   pricingH2: "To Begin: What Does Growth in Housing Markets Look Like Across the United States?",
   scatterTitle: "Median Price-Per-Square-Foot (PPSF) Year-Over-Year (YoY) by County",
-  scatterSub: "Each line represents a county's monthly Median PPSF YoY from 2016 through 2025.",
+  scatterSub: "Each line represents a county's monthly Median PPSF YoY over the latest 10 complete calendar years.",
   scatterFootnote1: "* Values beyond the 10th–90th percentile are capped to keep extreme observations from compressing the visible pattern.",
-  scatterFootnote2: "* Only counties with a valid observation in every month from January 2016 through December 2025 are included.",
+  scatterFootnote2: "* Only counties with a valid observation in every month of the latest 10 complete calendar years are included.",
   pricingScoreScatterTakeaway: "<span class=\"takeaway-section\">From county-level median house price growth over the last 10 years, there is significant variation and there doesn't seem to be a clear pattern.</span><span class=\"takeaway-section\">However, the impact of climate change is uneven across the country, so looking from a climate angle might reveal a more meaningful pattern.</span>",
   pricingGroupingSubtitle: "A Climate Perspective: What Does House Price Growth Look Like When Grouping Counties by Climate Risk?",
   pricingNriPlaceholder: "The <a href='https://www.fema.gov/flood-maps/products-tools/national-risk-index' target='_blank' rel='noopener'>FEMA National Risk Index (NRI)</a> serves as a measure of climate-related risk exposure. It summarizes a county's expected annual loss, social vulnerability, and community resilience across natural hazards. Counties are assigned a risk rating along a scale from \"Very Low\" to \"Very High\".",
@@ -2196,7 +2227,7 @@ const TEXT = {
     All: "Together, the five layers reveal a broad decline in housing-price growth as climate risk rises.",
   },
   pricingTakeaway: "<span class=\"takeaway-section\">Looking at the bands pertaining to different risk levels, a pattern now emerges: Counties with higher risk tend to show lower levels of house price growth.</span><span class=\"takeaway-section\">Housing markets are influenced by events across time. Does this apply to extreme climate events?</span>",
-  pricingSources: 'Sources: <a href="https://hazards.fema.gov/nri/" target="_blank" rel="noopener">FEMA National Risk Index</a>, local mart <code>data/quoll.duckdb: mart.nri_county_risk</code>; <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>, local mart <code>mart.redfin_county_monthly</code>. The charts use monthly <code>MEDIAN_PPSF_YOY</code> observations from January 2016 through December 2025 and include only counties with complete data throughout that period.',
+  pricingSources: 'Sources: <a href="https://hazards.fema.gov/nri/" target="_blank" rel="noopener">FEMA National Risk Index</a>, local mart <code>data/quoll.duckdb: mart.nri_county_risk</code>; <a href="https://www.redfin.com/news/data-center/" target="_blank" rel="noopener">Redfin Data Center</a>, local mart <code>mart.redfin_county_monthly</code>. The charts use monthly <code>MEDIAN_PPSF_YOY</code> observations from the latest 10 complete calendar years and include only counties with complete data throughout that period.',
 
   // ---- Events section ----
   eventsH2: "What Do Housing Market Reactions to Extreme Climate Events Look Like?",

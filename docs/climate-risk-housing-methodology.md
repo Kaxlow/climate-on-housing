@@ -125,17 +125,17 @@ year-over-year change** (`MEDIAN_PPSF_YOY`) for `All Residential` properties.
 Values are parsed as numeric, and sentinel values at or below `-888888000` are
 treated as missing.
 
-Historical pricing charts show monthly observations from January 2016 through
-December 2025. They include only counties with a valid `MEDIAN_PPSF_YOY`
-observation in all 120 months. The county-history chart draws each eligible
-county's monthly series. The risk-group chart displays the median and
-25th–75th percentile interval across eligible counties for every risk group and
-month.
+Historical pricing charts show monthly observations from the latest ten
+complete calendar years available in the Redfin mart. The endpoint is the most
+recent year containing observations in all 12 calendar months; the start is
+January 1 nine years earlier. The charts include only counties with a valid
+`MEDIAN_PPSF_YOY` observation in all 120 months. The county-history chart draws
+each eligible county's monthly series. The risk-group chart displays the median
+and 25th–75th percentile interval across eligible counties for every risk group
+and month.
 
-January 2016 through December 2025 is a fixed publication window, not a
-dynamically advancing endpoint. Although the acquisition command selects the
-latest provider data, downloading a newer release does not automatically extend
-these charts.
+Partial current-year data are excluded. When a newly completed calendar year is
+loaded, rebuilding the page advances the analysis window by one year.
 
 ## Disaster event selection
 
@@ -158,11 +158,12 @@ types.
 A missing event end is set to its start; an end before the start causes the
 record to be removed. Dates are reduced to calendar months. Each
 county-source-event-start combination receives a unique key. The page retains
-events starting from January 2016 through December 2025.
+events starting within the same latest-ten-complete-calendar-years period used
+for the housing histories.
 
-The fixed dates above define the page view. The reusable `analysis` layer also
-persists complete-window summaries for post-event horizons of 12, 24, 36, 48,
-and 60 months when the available housing coverage permits them.
+That dynamically derived period defines the page view. The reusable `analysis`
+layer also persists complete-window summaries for post-event horizons of 12,
+24, 36, 48, and 60 months when the available housing coverage permits them.
 
 ## Event-window analysis
 
@@ -174,12 +175,10 @@ built around median PPSF year-over-year change:
 - **Window B:** the same start-relative 12-month pre-event observations, then
   months 1–60 measured after the event end.
 
-For both displayed windows, nonpositive months are counted relative to the event
-start and positive months begin after the event end. Window B is therefore
-described in the implementation as end-anchored for its post-event segment; it
-is not a single continuous month index around the event end. The raw join keeps
-up to 24 pre-start months so events spanning multiple months still supply the
-observations required by both display windows.
+Both windows use a split-anchored month index: nonpositive months are measured
+from the event start, while positive months are measured from the event end.
+The raw join keeps up to 24 pre-start months so events spanning multiple months
+still supply the observations required by both display windows.
 
 For each window, only county-event trajectories with a non-null value at every required month
 are retained. This makes full lines comparable but favors counties and events
@@ -313,8 +312,8 @@ resources.
   source.
 - **Optional insurance input:** insurance premium and non-renewal features are
   unavailable when the private county Feather snapshot is not supplied.
-- **Fixed publication period:** housing histories and page events stop in
-  December 2025 even when the bootstrap retrieves newer public source data.
+- **Rolling publication period:** housing histories and page events advance
+  only after the Redfin mart contains all 12 months of a newer calendar year.
 - **Static extracts:** results can change when inputs are revised and rebuilt.
 
 ## Reproduction

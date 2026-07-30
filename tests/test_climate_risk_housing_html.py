@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unittest
 
+import duckdb
 import pandas as pd
 
 from housing_climate_risk.page_data.climate_risk_housing import (
@@ -11,10 +12,42 @@ from housing_climate_risk.page_data.climate_risk_housing import (
     RISK_ORDER,
     STATES_PATH,
     _select_story_peer_candidates,
+    latest_complete_calendar_window,
 )
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    def test_analysis_window_uses_latest_complete_calendar_year(self) -> None:
+        con = duckdb.connect()
+        try:
+            con.execute("CREATE SCHEMA mart")
+            con.execute(
+                """
+                CREATE TABLE mart.redfin_county_monthly (
+                    property_type VARCHAR,
+                    period_begin DATE
+                )
+                """
+            )
+            con.execute(
+                """
+                INSERT INTO mart.redfin_county_monthly
+                SELECT 'All Residential', month
+                FROM generate_series(
+                    DATE '2025-01-01',
+                    DATE '2026-07-01',
+                    INTERVAL 1 MONTH
+                ) AS dates(month)
+                """
+            )
+
+            start, end = latest_complete_calendar_window(con)
+
+            self.assertEqual(start, pd.Timestamp("2016-01-01"))
+            self.assertEqual(end, pd.Timestamp("2026-01-01"))
+        finally:
+            con.close()
+
     def test_nri_link_does_not_break_javascript_string(self) -> None:
         self.assertIn(
             "href='https://www.fema.gov/flood-maps/products-tools/national-risk-index'",
