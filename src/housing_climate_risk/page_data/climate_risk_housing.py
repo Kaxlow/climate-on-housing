@@ -1147,8 +1147,7 @@ def build_event_windows(
 
     # Both windows use the split-anchored event_window_month: pre-event months
     # relative to event start and post-event months relative to event end.
-    # We use pre_event_months=24 for the raw build to cover both windows.
-    affected = build_affected_event_windows(events, housing, pre_event_months=24, post_event_months=60)
+    affected = build_affected_event_windows(events, housing, pre_event_months=12, post_event_months=60)
     if affected.empty:
         empty = {"byRating": [], "affectedCounties": [], "riskCounts": {}, "exampleCountyLines": []}
         return {

@@ -69,7 +69,7 @@ results.
 
 The county FIPS master at `data/fipsgeo/fips_master_v2.csv` is committed with
 the repository. The Redfin county extract is a required user-supplied input for
-the housing marts and final page, but it is intentionally not distributed or
+the housing marts and final page, but due to its private nature it could not be distributed or
 downloaded by this project. The county processed Feather snapshot is optional;
 when absent, its private insurance premium and non-renewal features are not
 available. `download-data all` reports missing manual inputs together at the
@@ -125,17 +125,8 @@ year-over-year change** (`MEDIAN_PPSF_YOY`) for `All Residential` properties.
 Values are parsed as numeric, and sentinel values at or below `-888888000` are
 treated as missing.
 
-Historical pricing charts show monthly observations from the latest ten
-complete calendar years available in the Redfin mart. The endpoint is the most
-recent year containing observations in all 12 calendar months; the start is
-January 1 nine years earlier. The charts include only counties with a valid
-`MEDIAN_PPSF_YOY` observation in all 120 months. The county-history chart draws
-each eligible county's monthly series. The risk-group chart displays the median
-and 25th–75th percentile interval across eligible counties for every risk group
-and month.
-
-Partial current-year data are excluded. When a newly completed calendar year is
-loaded, rebuilding the page advances the analysis window by one year.
+Historical charts show monthly observations at the county level across the latest ten
+complete calendar years. In charts where counties are grouped by NRI risk rating, only counties with complete monthly observations across the corresponding period are included. For each group, counties are aggregated and the median and 25th–75th percentile interval are calculated for each month. The median, 25th, and 75th percentile values over time are used to create a line plot with a surrounding band that represents the group's house price growth trajectory over time.
 
 ## Disaster event selection
 
@@ -177,12 +168,16 @@ built around median PPSF year-over-year change:
 
 Both windows use a split-anchored month index: nonpositive months are measured
 from the event start, while positive months are measured from the event end.
-The raw join keeps up to 24 pre-start months so events spanning multiple months
-still supply the observations required by both display windows.
+The raw page-data build retains the 12 pre-start months required by both display
+windows and up to 60 months after the event end. Months between the event's
+start and end are not part of either display window.
 
-For each window, only county-event trajectories with a non-null value at every required month
-are retained. This makes full lines comparable but favors counties and events
-with continuous Redfin coverage.
+The charts grouped by NRI risk rating include only county-event trajectories
+with a non-null median PPSF year-over-year value at every required month in the
+corresponding window: months -12 through 0 and 1 through 36 for Window A, or
+months -12 through 0 and 1 through 60 for Window B. Completeness is evaluated
+separately for each window, so a county-event trajectory can qualify for Window
+A but not Window B.
 
 At each relative month, trajectories are grouped by overall NRI rating. The
 page reports their median and interquartile range. A county associated with
@@ -191,8 +186,7 @@ multiple qualifying events can contribute multiple trajectories.
 To illustrate within-group differences, the page compares two configured focus
 county-event lines for each risk group when those lines meet coverage and
 feature-eligibility requirements. Selection logic supplies eligible fallbacks
-when a configured example is unavailable. These examples are descriptive; no
-statistical test establishes that the paired lines are significantly different.
+when a configured example is unavailable. These examples are descriptive rather than being statistically significant in terms of difference.
 
 ## Within-risk-group feature analysis
 
@@ -208,9 +202,9 @@ applicable mart. Some measures are constructed from related fields, such as
 weighted midpoints of ACS cost buckets.
 
 The page's **Most Significant County Features** come from the separate
-county-relative PPSF modeling workflow. The modeling table has one row per
+[county-relative PPSF modeling workflow](county-relative-ppsf-modeling.md). The modeling table has one row per
 county. Eligible counties have an NRI risk rating, a non-null target, and at
-least 60 valid monthly median PPSF year-over-year observations in the latest ten
+least 50% of monthly median PPSF year-over-year observations being valid in the latest ten
 calendar years. For each county, the target is its median monthly PPSF
 year-over-year growth over that period minus the median of that county summary
 among eligible counties in the same NRI risk group.
@@ -244,9 +238,7 @@ For each risk group, the page orders features by absolute importance, retains
 the top ten, and scales their displayed bar lengths relative to the largest
 absolute importance in that group. The two example counties are then compared
 using the underlying aggregated value of each selected feature and its
-percentile among eligible counties in the same original risk group. Feature
-values are not binned, and those percentiles do not determine feature
-importance.
+percentile among eligible counties in the same original risk group.
 
 The model estimates predictive associations rather than causal effects.
 Elastic Net coefficients and tree- or permutation-based importance are not
