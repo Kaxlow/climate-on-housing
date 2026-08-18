@@ -12,10 +12,16 @@ data, validates required filenames and columns, builds derived NOAA county
 outputs, and writes `data/download_receipt.yaml` with resolved source URLs,
 provider versions, and UTC retrieval timestamps.
 
-Three inputs are not downloaded:
+Redfin's monthly county Housing Market Tracker, Property Types, and Price Drops
+files are downloaded from the
+[Redfin Data Center Download Hub](https://www.redfin.com/news/data-center/downloads/)
+and stored under `housing/redfin_data_center/`. See Redfin's
+[methodology](https://www.redfin.com/news/data-center/methodology/) for metric
+definitions, coverage, and revision practices.
 
-- `housing/Redfin-Housing-Market-By-County.csv` — required private Redfin extract.
-- `fipsgeo/fips_master_v2.csv` — required private county reference.
+Two inputs are not downloaded:
+
+- `fipsgeo/fips_master_v2.csv` — required county reference packaged with the repository.
 - `20260401_county_processed_data/county_processed_data.feather` — optional
   private insurance-feature snapshot.
 

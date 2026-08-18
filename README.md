@@ -11,10 +11,6 @@ for the data sources, risk and housing definitions, disaster event selection,
 event-window construction, within-risk-group feature analysis, assumptions, and
 limitations behind the infographic.
 
-See [County Relative Median PPSF YoY Modeling](docs/county-relative-ppsf-modeling.md)
-for the separate county-level Elastic Net and gradient-boosted tree comparison,
-cross-validation design, results, limitations, and downstream model contract.
-
 ## Build
 
 Install the package once:
@@ -29,39 +25,39 @@ Populate the local data workspace from the latest available provider releases:
 download-data all
 ```
 
-This command creates the required directories; downloads Census ACS and
-boundaries, FEMA NRI and disaster declarations, NOAA, and StatsAmerica inputs;
+This command creates the required directories; downloads Redfin monthly county
+housing data, Census ACS and boundaries, FEMA NRI and disaster declarations,
+NOAA, and StatsAmerica inputs;
 builds derived NOAA county mappings; validates filenames and schemas; and writes
 the ignored local receipt `data/download_receipt.yaml`. Provider metadata and
 expected schemas are defined in
 [`config/data_sources.yaml`](config/data_sources.yaml).
+Third-party attribution and licensing scope are summarized in
+[`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).
 
-The bootstrap does not account for the following inputs which are either packaged with the repository or have to be supplied by the user as they are not publicly available:
+The Redfin inputs come from the public
+[Redfin Data Center Download Hub](https://www.redfin.com/news/data-center/downloads/),
+with metric definitions and revision notes documented in Redfin's
+[methodology](https://www.redfin.com/news/data-center/methodology/). The raw
+provider files remain ignored locally.
 
-- `data/housing/Redfin-Housing-Market-By-County.csv` (to be supplied by user due to private nature)
+The bootstrap does not download the following packaged or optional inputs:
+
 - `data/fipsgeo/fips_master_v2.csv` (comes packaged with repository)
 - `data/20260401_county_processed_data/county_processed_data.feather` (to be supplied by user due to private nature. optional; adds private insurance features)
 
 Set `CENSUS_API_KEY` before bootstrapping. The pipeline intentionally selects
 the latest available data. Annual versioned provider URLs are recorded where
 available; mutable APIs and unversioned downloads can change future results.
+Redfin's mutable files are downloaded at their current revision, while the
+housing mart retains January 2012 through December 2025 to preserve the existing
+analysis period.
 
 Rebuild the infographic:
 
 ```powershell
 build-climate-risk-housing
 ```
-
-Train the separate county relative Median PPSF YoY models with:
-
-```powershell
-train-county-relative-ppsf --n-jobs 1
-```
-
-This modeling command writes four model artifacts and evaluation results to
-`output/models/county_relative_ppsf/`. High and Very High counties share one
-pooled model. The command does not modify the infographic; the page builder
-consumes the resulting feature-importance and county-modeling artifacts.
 
 This page-only command uses the existing `data/quoll.duckdb`. To rebuild both the
 database and infographic, run:
@@ -75,7 +71,7 @@ build-climate-risk-housing
 
 1. **Acquire source data.** Run `download-data all` to populate the ignored local
    `data/` workspace. Provider extracts supply county identifiers,
-   Redfin housing history, FEMA National Risk Index ratings, FEMA and NOAA events,
+   Redfin Data Center housing history, FEMA National Risk Index ratings, FEMA and NOAA events,
    NCEI weather, ACS characteristics, and StatsAmerica economic and migration data.
    Notebooks and utilities under `scripts/` support cleaning, validation, and EDA;
    they are not invoked by the page builder.

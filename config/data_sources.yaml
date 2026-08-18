@@ -102,15 +102,19 @@ sources:
     exact_historical_reproduction: false
     exact_reproduction_note: The unversioned provider download URL can change
 
-  redfin_housing_private:
-    source_page_or_api: Private user-supplied extract; public context at https://www.redfin.com/news/data-center/
-    destination: data/housing/Redfin-Housing-Market-By-County.csv
-    version_or_date_range: User-supplied latest available extract
-    expected_columns: [REGION, REGION_TYPE, PERIOD_BEGIN, PERIOD_END, PROPERTY_TYPE, MEDIAN_SALE_PRICE, MEDIAN_PPSF]
+  redfin_housing_county_monthly:
+    source_page_or_api: https://www.redfin.com/news/data-center/downloads/
+    methodology: https://www.redfin.com/news/data-center/methodology/
+    destination:
+      - data/housing/redfin_data_center/housing_market_monthly_counties.csv
+      - data/housing/redfin_data_center/property_types_monthly_counties.csv
+      - data/housing/redfin_data_center/price_drops_monthly_counties.csv
+    version_or_date_range: Public mutable monthly county files; mart restricted to 2012-01-01 through 2025-12-31 to match the prior analysis period
+    expected_columns: [FREQUENCY, PERIOD BEGIN, PERIOD END, REGION TYPE, REGION NAME, PROPERTY TYPE, MEDIAN SALE PRICE PER SQ.FT. ($), MEDIAN SALE PRICE PER SQ.FT. YOY (%), PERCENT ACTIVE WITH PRICE DROPS (%)]
     api_credentials_required: false
-    provider_terms_or_attribution: Redfin Data Center; verify redistribution rights before publishing the extract
-    exact_historical_reproduction: conditional
-    exact_reproduction_note: Exact only when the user retains the original private extract
+    provider_terms_or_attribution: Data provided by Redfin, a national real estate brokerage; link the first reference to Redfin
+    exact_historical_reproduction: false
+    exact_reproduction_note: Redfin revises mutable public files; the receipt records retrieval time, ETag, and Last-Modified metadata
 
   fips_master_private:
     source_page_or_api: Private user-supplied county reference

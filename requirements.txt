@@ -7,11 +7,9 @@ pandas
 polars
 patsy
 pyarrow
-scikit-learn
 scipy
 seaborn
 statsmodels
 
-# Machine learning model persistence and configuration
-joblib
+# Configuration
 pyyaml

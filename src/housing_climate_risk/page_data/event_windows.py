@@ -141,13 +141,13 @@ def load_redfin_county_monthly(
             STATE_CODE AS state_code,
             period_begin,
             period_end,
-            try_cast(replace(MEDIAN_PPSF_YOY, ',', '') AS DOUBLE) AS median_ppsf_yoy,
-            try_cast(replace(AVG_SALE_TO_LIST_YOY, ',', '') AS DOUBLE) AS avg_sale_to_list_yoy,
-            try_cast(replace(HOMES_SOLD_YOY, ',', '') AS DOUBLE) AS homes_sold_yoy,
-            try_cast(replace(INVENTORY_YOY, ',', '') AS DOUBLE) AS inventory_yoy,
-            try_cast(replace(NEW_LISTINGS_YOY, ',', '') AS DOUBLE) AS new_listings_yoy,
-            try_cast(replace(MEDIAN_DOM_YOY, ',', '') AS DOUBLE) AS median_dom_yoy,
-            try_cast(replace(PRICE_DROPS_YOY, ',', '') AS DOUBLE) AS price_drops_yoy
+            try_cast(MEDIAN_PPSF_YOY AS DOUBLE) AS median_ppsf_yoy,
+            try_cast(AVG_SALE_TO_LIST_YOY AS DOUBLE) AS avg_sale_to_list_yoy,
+            try_cast(HOMES_SOLD_YOY AS DOUBLE) AS homes_sold_yoy,
+            try_cast(INVENTORY_YOY AS DOUBLE) AS inventory_yoy,
+            try_cast(NEW_LISTINGS_YOY AS DOUBLE) AS new_listings_yoy,
+            try_cast(MEDIAN_DOM_YOY AS DOUBLE) AS median_dom_yoy,
+            try_cast(PRICE_DROPS_YOY AS DOUBLE) AS price_drops_yoy
         FROM mart.redfin_county_monthly
         WHERE property_type = ?
           AND fips IS NOT NULL

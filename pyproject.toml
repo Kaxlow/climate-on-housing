@@ -12,7 +12,6 @@ license = { file = "LICENSE" }
 dependencies = [
     "duckdb",
     "geopandas",
-    "joblib",
     "matplotlib",
     "numpy",
     "pandas",
@@ -20,7 +19,6 @@ dependencies = [
     "patsy",
     "pyarrow",
     "pyyaml",
-    "scikit-learn",
     "scipy",
     "seaborn",
     "statsmodels",
@@ -38,7 +36,6 @@ notebooks = [
 build-climate-risk-housing = "housing_climate_risk.page_data.climate_risk_housing:main"
 build-database = "housing_climate_risk.cli.build_database:main"
 download-data = "housing_climate_risk.cli.download_data:main"
-train-county-relative-ppsf = "housing_climate_risk.modeling.county_relative_ppsf.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

@@ -13,6 +13,7 @@ from housing_climate_risk.cli import (
     acs_data,
     climate_damage_data,
     ncei_county_weather_data,
+    redfin_housing_data,
     statsamerica_bea_cew,
     statsamerica_population_components,
 )
@@ -40,18 +41,6 @@ DIRECTORY_LAYOUT = (
 )
 
 PRIVATE_INPUTS = {
-    "redfin_housing": {
-        "path": DATA_DIR / "housing" / "Redfin-Housing-Market-By-County.csv",
-        "required": True,
-        "columns": {
-            "PERIOD_BEGIN", "PERIOD_END", "REGION_TYPE", "REGION", "STATE_CODE",
-            "PROPERTY_TYPE", "MEDIAN_SALE_PRICE", "MEDIAN_PPSF", "MEDIAN_PPSF_YOY",
-        },
-        "instruction": (
-            "Place the private Redfin county extract at "
-            "data/housing/Redfin-Housing-Market-By-County.csv."
-        ),
-    },
     "fips_master": {
         "path": DATA_DIR / "fipsgeo" / "fips_master_v2.csv",
         "required": True,
@@ -76,6 +65,21 @@ PRIVATE_INPUTS = {
 }
 
 PUBLIC_CSV_SCHEMAS = {
+    "housing/redfin_data_center/housing_market_monthly_counties.csv": set(
+        redfin_housing_data.REDFIN_COUNTY_FILES[
+            "redfin_housing_market_monthly_counties"
+        ]["columns"]
+    ),
+    "housing/redfin_data_center/property_types_monthly_counties.csv": set(
+        redfin_housing_data.REDFIN_COUNTY_FILES[
+            "redfin_property_types_monthly_counties"
+        ]["columns"]
+    ),
+    "housing/redfin_data_center/price_drops_monthly_counties.csv": set(
+        redfin_housing_data.REDFIN_COUNTY_FILES[
+            "redfin_price_drops_monthly_counties"
+        ]["columns"]
+    ),
     "fema/NRI_Table_Counties.csv": {
         "STATE", "COUNTY", "STCOFIPS", "RISK_SCORE", "RISK_RATNG", "NRI_VER",
     },
@@ -215,6 +219,10 @@ def bootstrap_all(*, force: bool = False, continue_on_error: bool = True) -> int
     run("Census county/state boundaries", lambda: download_census_boundaries(force=force))
     run("FEMA National Risk Index counties", lambda: download_fema_nri_counties(force=force))
     run("FEMA disaster declarations", lambda: download_fema_disaster_declarations(force=force))
+    run(
+        "Redfin Data Center monthly county housing",
+        lambda: redfin_housing_data.download_redfin_county_monthly(force=force),
+    )
 
     acs_values = ["--include-population", "--include-migration"]
     if force:
@@ -305,7 +313,7 @@ def bootstrap_all(*, force: bool = False, continue_on_error: bool = True) -> int
         for item in [*failures, *public_missing]:
             print(f"  - {item}")
     if not manual_required and not failures and not public_missing:
-        print("[OK] All required public and private inputs are present and validated.")
+        print("[OK] All required public inputs and optional private inputs are validated.")
         print(f"Retrieval metadata: {DATA_DIR / 'download_receipt.yaml'}")
         return 0
     print(
@@ -317,6 +325,10 @@ def bootstrap_all(*, force: bool = False, continue_on_error: bool = True) -> int
 
 
 DOWNLOADERS: dict[str, tuple[str, Callable[[], None]]] = {
+    "redfin": (
+        "Redfin Data Center monthly county housing",
+        redfin_housing_data.main,
+    ),
     "acs": ("Census ACS county tables", acs_data.main),
     "climate-damage": (
         "NOAA Storm Events damage and FEMA financial summaries", climate_damage_data.main

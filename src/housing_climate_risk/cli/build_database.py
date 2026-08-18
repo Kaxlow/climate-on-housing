@@ -12,6 +12,11 @@ import pandas as pd
 
 from housing_climate_risk.cli.analysis_marts import create_analysis_marts
 from housing_climate_risk.cli.feature_marts import create_feature_marts
+from housing_climate_risk.cli.redfin_housing_data import (
+    ANALYSIS_PERIOD_END as REDFIN_PERIOD_END,
+    ANALYSIS_PERIOD_START as REDFIN_PERIOD_START,
+    REDFIN_COUNTY_FILES,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data"
@@ -30,7 +35,15 @@ STATSAMERICA_DIR = DATA_DIR / "statsamerica"
 
 RAW_FILES = {
     "fips_master_v2": FIPSGEO_DIR / "fips_master_v2.csv",
-    "redfin_housing_market_by_county": HOUSING_DIR / "Redfin-Housing-Market-By-County.csv",
+    "redfin_housing_market_monthly_counties": Path(
+        REDFIN_COUNTY_FILES["redfin_housing_market_monthly_counties"]["path"]
+    ),
+    "redfin_property_types_monthly_counties": Path(
+        REDFIN_COUNTY_FILES["redfin_property_types_monthly_counties"]["path"]
+    ),
+    "redfin_price_drops_monthly_counties": Path(
+        REDFIN_COUNTY_FILES["redfin_price_drops_monthly_counties"]["path"]
+    ),
     "nri_table_counties": FEMA_DIR / "NRI_Table_Counties.csv",
     "fema_disaster_declarations": FEMA_DIR / "FEMA_Disaster_Declarations.csv",
     "fema_web_disaster_summaries": CLIMATE_DAMAGE_DIR
@@ -47,7 +60,9 @@ RAW_FILES = {
 }
 
 RAW_SOURCE_URLS = {
-    "redfin_housing_market_by_county": "https://www.redfin.com/news/data-center/",
+    key: str(spec["url"])
+    for key, spec in REDFIN_COUNTY_FILES.items()
+} | {
     "nri_table_counties": "https://hazards.fema.gov/nri/data-resources",
     "fema_disaster_declarations": "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries",
     "fema_web_disaster_summaries": "https://www.fema.gov/api/open/v1/FemaWebDisasterSummaries",
@@ -735,12 +750,128 @@ def _redfin_fips_expr() -> str:
         WHERE lower(raw_redfin.STATE_CODE) = lower(c.state)
           AND (
             lower(raw_redfin.REGION) = lower(c.county_name || ', ' || c.state)
+            OR lower(regexp_replace(split_part(raw_redfin.REGION, ',', 1), ' County$', '', 'i')) = lower(c.county_name)
             OR _normalize_place_name(split_part(raw_redfin.REGION, ',', 1)) = _normalize_place_name(c.county_name)
             OR _normalize_place_name(regexp_replace(split_part(raw_redfin.REGION, ',', 1), '\\s+County$', '', 'i')) = _normalize_place_name(c.county_name)
             OR _normalize_place_name(split_part(raw_redfin.REGION, ',', 1)) = _normalize_place_name(regexp_replace(c.county_name, '\\s+(County|Parish|City and Borough|Borough|Census Area|Municipality|city)$', '', 'i'))
           )
+        ORDER BY CASE
+            WHEN lower(raw_redfin.REGION) = lower(c.county_name || ', ' || c.state) THEN 0
+            WHEN lower(regexp_replace(split_part(raw_redfin.REGION, ',', 1), ' County$', '', 'i')) = lower(c.county_name) THEN 1
+            WHEN _normalize_place_name(split_part(raw_redfin.REGION, ',', 1)) = _normalize_place_name(c.county_name) THEN 2
+            WHEN _normalize_place_name(regexp_replace(split_part(raw_redfin.REGION, ',', 1), '\\s+County$', '', 'i')) = _normalize_place_name(c.county_name) THEN 3
+            ELSE 4
+        END
         LIMIT 1
     )
+    """
+
+
+def _redfin_number(alias: str, column: str, *, divisor: int = 1) -> str:
+    value = (
+        f"try_cast(nullif(trim(cast({_quote_ident(alias)}.{_quote_ident(column)} "
+        "AS VARCHAR)), 'NA') AS DOUBLE)"
+    )
+    return value if divisor == 1 else f"({value} / {divisor}.0)"
+
+
+def _redfin_bounded_percent(alias: str, column: str) -> str:
+    value = _redfin_number(alias, column)
+    return f"CASE WHEN {value} BETWEEN 0 AND 100 THEN {value} / 100.0 END"
+
+
+def _redfin_normalized_select(
+    alias: str, *, property_type: str, price_drop_alias: str | None = None
+) -> str:
+    n = lambda column, divisor=1: _redfin_number(alias, column, divisor=divisor)
+    price_drop = (
+        _redfin_bounded_percent(
+            price_drop_alias, "PERCENT ACTIVE WITH PRICE DROPS (%)"
+        )
+        if price_drop_alias
+        else "NULL::DOUBLE"
+    )
+    price_drop_mom = (
+        _redfin_number(
+            price_drop_alias,
+            "PERCENT ACTIVE WITH PRICE DROPS MOM (PPTS)",
+            divisor=100,
+        )
+        if price_drop_alias
+        else "NULL::DOUBLE"
+    )
+    price_drop_yoy = (
+        _redfin_number(
+            price_drop_alias,
+            "PERCENT ACTIVE WITH PRICE DROPS YOY (PPTS)",
+            divisor=100,
+        )
+        if price_drop_alias
+        else "NULL::DOUBLE"
+    )
+    return f"""
+        {_quote_ident(alias)}."PERIOD BEGIN" AS PERIOD_BEGIN,
+        {_quote_ident(alias)}."PERIOD END" AS PERIOD_END,
+        date_diff('day', try_cast({_quote_ident(alias)}."PERIOD BEGIN" AS DATE),
+                  try_cast({_quote_ident(alias)}."PERIOD END" AS DATE)) + 1 AS PERIOD_DURATION,
+        lower({_quote_ident(alias)}."REGION TYPE") AS REGION_TYPE,
+        NULL::INTEGER AS REGION_TYPE_ID,
+        {_quote_ident(alias)}."REGION ID" AS TABLE_ID,
+        false AS IS_SEASONALLY_ADJUSTED,
+        {_quote_ident(alias)}."REGION NAME" AS REGION,
+        NULL::VARCHAR AS CITY,
+        NULL::VARCHAR AS STATE,
+        right(trim({_quote_ident(alias)}."REGION NAME"), 2) AS STATE_CODE,
+        {property_type} AS PROPERTY_TYPE,
+        NULL::INTEGER AS PROPERTY_TYPE_ID,
+        {n('MEDIAN SALE PRICE NSA ($)')} AS MEDIAN_SALE_PRICE,
+        {n('MEDIAN SALE PRICE NSA MOM (%)', 100)} AS MEDIAN_SALE_PRICE_MOM,
+        {n('MEDIAN SALE PRICE NSA YOY (%)', 100)} AS MEDIAN_SALE_PRICE_YOY,
+        {n('MEDIAN NEW LISTING PRICE ($)')} AS MEDIAN_LIST_PRICE,
+        {n('MEDIAN NEW LISTING PRICE MOM (%)', 100)} AS MEDIAN_LIST_PRICE_MOM,
+        {n('MEDIAN NEW LISTING PRICE YOY (%)', 100)} AS MEDIAN_LIST_PRICE_YOY,
+        {n('MEDIAN SALE PRICE PER SQ.FT. ($)')} AS MEDIAN_PPSF,
+        {n('MEDIAN SALE PRICE PER SQ.FT. MOM (%)', 100)} AS MEDIAN_PPSF_MOM,
+        {n('MEDIAN SALE PRICE PER SQ.FT. YOY (%)', 100)} AS MEDIAN_PPSF_YOY,
+        {n('MEDIAN NEW LISTING PRICE PER SQ.FT. ($)')} AS MEDIAN_LIST_PPSF,
+        {n('MEDIAN NEW LISTING PRICE PER SQ.FT. MOM (%)', 100)} AS MEDIAN_LIST_PPSF_MOM,
+        {n('MEDIAN NEW LISTING PRICE PER SQ.FT. YOY (%)', 100)} AS MEDIAN_LIST_PPSF_YOY,
+        {n('HOMES SOLD')} AS HOMES_SOLD,
+        {n('HOMES SOLD MOM (%)', 100)} AS HOMES_SOLD_MOM,
+        {n('HOMES SOLD YOY (%)', 100)} AS HOMES_SOLD_YOY,
+        {n('PENDING SALES')} AS PENDING_SALES,
+        {n('PENDING SALES MOM (%)', 100)} AS PENDING_SALES_MOM,
+        {n('PENDING SALES YOY (%)', 100)} AS PENDING_SALES_YOY,
+        {n('NEW LISTINGS')} AS NEW_LISTINGS,
+        {n('NEW LISTINGS MOM (%)', 100)} AS NEW_LISTINGS_MOM,
+        {n('NEW LISTINGS YOY (%)', 100)} AS NEW_LISTINGS_YOY,
+        {n('ACTIVE LISTINGS')} AS ACTIVE_LISTINGS,
+        {n('ACTIVE LISTINGS MOM (%)', 100)} AS ACTIVE_LISTINGS_MOM,
+        {n('ACTIVE LISTINGS YOY (%)', 100)} AS ACTIVE_LISTINGS_YOY,
+        {n('INVENTORY')} AS INVENTORY,
+        {n('INVENTORY MOM (%)', 100)} AS INVENTORY_MOM,
+        {n('INVENTORY YOY (%)', 100)} AS INVENTORY_YOY,
+        {n('MONTHS OF SUPPLY')} AS MONTHS_OF_SUPPLY,
+        {n('MONTHS OF SUPPLY MOM (%)', 100)} AS MONTHS_OF_SUPPLY_MOM,
+        {n('MONTHS OF SUPPLY YOY (%)', 100)} AS MONTHS_OF_SUPPLY_YOY,
+        {n('MEDIAN DAYS ON MARKET (DAYS)')} AS MEDIAN_DOM,
+        {n('MEDIAN DAYS ON MARKET MOM (%)', 100)} AS MEDIAN_DOM_MOM,
+        {n('MEDIAN DAYS ON MARKET YOY (%)', 100)} AS MEDIAN_DOM_YOY,
+        {n('AVERAGE SALE TO LIST RATIO (%)', 100)} AS AVG_SALE_TO_LIST,
+        {n('AVERAGE SALE TO LIST RATIO MOM (PPTS)', 100)} AS AVG_SALE_TO_LIST_MOM,
+        {n('AVERAGE SALE TO LIST RATIO YOY (PPTS)', 100)} AS AVG_SALE_TO_LIST_YOY,
+        {_redfin_bounded_percent(alias, 'SHARE SOLD ABOVE ORIGINAL LIST (%)')} AS SOLD_ABOVE_LIST,
+        {n('SHARE SOLD ABOVE ORIGINAL LIST MOM (PPTS)', 100)} AS SOLD_ABOVE_LIST_MOM,
+        {n('SHARE SOLD ABOVE ORIGINAL LIST YOY (PPTS)', 100)} AS SOLD_ABOVE_LIST_YOY,
+        {price_drop} AS PRICE_DROPS,
+        {price_drop_mom} AS PRICE_DROPS_MOM,
+        {price_drop_yoy} AS PRICE_DROPS_YOY,
+        {_redfin_bounded_percent(alias, 'PERCENT OFF MARKET IN TWO WEEKS (%)')} AS OFF_MARKET_IN_TWO_WEEKS,
+        {n('PERCENT OFF MARKET IN TWO WEEKS MOM (PPTS)', 100)} AS OFF_MARKET_IN_TWO_WEEKS_MOM,
+        {n('PERCENT OFF MARKET IN TWO WEEKS YOY (PPTS)', 100)} AS OFF_MARKET_IN_TWO_WEEKS_YOY,
+        {_quote_ident(alias)}.METRO AS PARENT_METRO_REGION,
+        NULL::VARCHAR AS PARENT_METRO_REGION_METRO_CODE,
+        {_quote_ident(alias)}."LAST UPDATED" AS LAST_UPDATED
     """
 
 
@@ -1003,16 +1134,59 @@ def _create_core_marts(con) -> None:
     )
 
     con.execute("DROP TABLE IF EXISTS mart.redfin_county_monthly")
+    housing_select = _redfin_normalized_select(
+        "h", property_type="'All Residential'", price_drop_alias="d"
+    )
+    property_select = _redfin_normalized_select(
+        "p",
+        property_type=(
+            "CASE WHEN p.\"PROPERTY TYPE\" = 'Multi-Family (2-4 Units)' "
+            "THEN 'Multi-Family (2-4 Unit)' ELSE p.\"PROPERTY TYPE\" END"
+        ),
+    )
     con.execute(
         f"""
         CREATE TABLE mart.redfin_county_monthly AS
+        WITH normalized AS (
+            SELECT
+                {housing_select}
+            FROM raw.redfin_housing_market_monthly_counties AS h
+            LEFT JOIN raw.redfin_price_drops_monthly_counties AS d
+              ON h."PERIOD BEGIN" = d."PERIOD BEGIN"
+             AND h."REGION NAME" = d."REGION NAME"
+             AND d.FREQUENCY = 'Monthly'
+            WHERE h.FREQUENCY = 'Monthly'
+
+            UNION ALL BY NAME
+
+            SELECT
+                {property_select}
+            FROM raw.redfin_property_types_monthly_counties AS p
+            WHERE p.FREQUENCY = 'Monthly'
+        ),
+        resolved_counties AS (
+            SELECT
+                REGION,
+                STATE_CODE,
+                {_redfin_fips_expr()} AS fips
+            FROM (
+                SELECT DISTINCT REGION, STATE_CODE
+                FROM normalized
+            ) AS raw_redfin
+        )
         SELECT
-            {_redfin_fips_expr()} AS fips,
+            resolved.fips,
             try_cast(PERIOD_BEGIN AS DATE) AS period_begin,
             try_cast(PERIOD_END AS DATE) AS period_end,
             PROPERTY_TYPE AS property_type,
             raw_redfin.*
-        FROM raw.redfin_housing_market_by_county AS raw_redfin
+        FROM normalized AS raw_redfin
+        LEFT JOIN resolved_counties AS resolved
+          ON raw_redfin.REGION = resolved.REGION
+         AND raw_redfin.STATE_CODE = resolved.STATE_CODE
+        WHERE try_cast(PERIOD_BEGIN AS DATE)
+              BETWEEN DATE {_quote_literal(REDFIN_PERIOD_START)}
+                  AND DATE {_quote_literal(REDFIN_PERIOD_END)}
         """
     )
 

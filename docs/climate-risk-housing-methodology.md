@@ -12,7 +12,6 @@ Way the Wind Blows: Climate Risk and U.S. Housing Markets**
 - `src/housing_climate_risk/cli/analysis_marts.py`
 - `src/housing_climate_risk/page_data/climate_risk_housing.py`
 - `src/housing_climate_risk/page_data/event_windows.py`
-- `src/housing_climate_risk/modeling/county_relative_ppsf/`
 - `config/data_sources.yaml`
 
 The page explores whether county housing-market performance varies with
@@ -35,7 +34,7 @@ the fields that view requires, so sample sizes can differ between charts.
 
 | Source | Use |
 | --- | --- |
-| Redfin | Monthly county housing-market measures |
+| [Redfin Data Center](https://www.redfin.com/news/data-center/downloads/) | Monthly county Housing Market Tracker, property-type, and price-drop measures; see Redfin's [methodology](https://www.redfin.com/news/data-center/methodology/) |
 | FEMA National Risk Index (NRI) | Overall and hazard-specific county risk scores and ratings |
 | FEMA disaster declarations | Event locations, types, and dates |
 | NOAA Storm Events | County storm events, dates, and estimated damage |
@@ -58,7 +57,7 @@ workspace from the latest available provider releases with:
 download-data all
 ```
 
-The bootstrap downloads Census, FEMA, NOAA, and StatsAmerica inputs; selects the
+The bootstrap downloads Redfin, Census, FEMA, NOAA, and StatsAmerica inputs; selects the
 latest annual vintage when a provider exposes versioned files; derives the NOAA
 forecast-zone-to-county crosswalk; and validates required filenames and schemas.
 It writes resolved URLs, provider versions, and UTC retrieval timestamps to the
@@ -68,9 +67,8 @@ can change after retrieval, so later runs may not exactly reproduce earlier
 results.
 
 The county FIPS master at `data/fipsgeo/fips_master_v2.csv` is committed with
-the repository. The Redfin county extract is a required user-supplied input for
-the housing marts and final page, but due to its private nature it could not be distributed or
-downloaded by this project. The county processed Feather snapshot is optional;
+the repository. Redfin's mutable public county CSVs are downloaded into the
+ignored local workspace. The county processed Feather snapshot is optional;
 when absent, its private insurance premium and non-renewal features are not
 available. `download-data all` reports missing manual inputs together at the
 end.
@@ -120,10 +118,13 @@ equal distance between adjacent FEMA categories.
 
 ## Housing-market outcome
 
-The principal outcome is Redfin's **median price per square foot,
+The principal outcome is Redfin's **median sale price per square foot,
 year-over-year change** (`MEDIAN_PPSF_YOY`) for `All Residential` properties.
-Values are parsed as numeric, and sentinel values at or below `-888888000` are
-treated as missing.
+The ingestion layer converts Redfin's percentages and percentage-point changes
+to proportions. It combines the all-residential Housing Market Tracker with the
+property-type file and joins the separate Price Drops file for all-residential
+price-drop shares. The mart is restricted to January 2012 through December 2025,
+matching the former extract's period.
 
 Historical charts show monthly observations at the county level across the latest ten
 complete calendar years. In charts where counties are grouped by NRI risk rating, only counties with complete monthly observations across the corresponding period are included. For each group, counties are aggregated and the median and 25th–75th percentile interval are calculated for each month. The median, 25th, and 75th percentile values over time are used to create a line plot with a surrounding band that represents the group's house price growth trajectory over time.
@@ -201,63 +202,51 @@ primarily county averages over the latest ten years available in each
 applicable mart. Some measures are constructed from related fields, such as
 weighted midpoints of ACS cost buckets.
 
-The page's **Most Significant County Features** come from the separate
-[county-relative PPSF modeling workflow](county-relative-ppsf-modeling.md). The modeling table has one row per
-county. Eligible counties have an NRI risk rating, a non-null target, and at
-least 50% of monthly median PPSF year-over-year observations being valid in the latest ten
-calendar years. For each county, the target is its median monthly PPSF
-year-over-year growth over that period minus the median of that county summary
-among eligible counties in the same NRI risk group.
+Displayed income components are annual BEA amounts per county resident: net
+earnings by place of residence; dividends, interest, and rent; and transfer
+receipts. The homeowners-insurance, property-tax, and utility cost shares instead
+use county median annual household income as their denominator. Each is averaged
+over the latest ten years available in its mart before the county comparison.
 
-Candidate predictors are the retained numeric fields in `feature.catalog`,
-aggregated at their native frequencies before the county-level join. Within
-each model population, predictors must meet coverage and variance requirements.
-Highly redundant predictors are pruned when their absolute pairwise Spearman
-correlation is at least 0.85. This correlation is between predictors for
-redundancy control; features are not ranked by their individual correlation
-with the PPSF target.
+The feature-analysis outcome is each county's arithmetic mean of monthly median
+PPSF YoY across all of its complete event-window observations: month -12 through
+the event start (month 0) and months 1 through 36 after the event end. Every
+county contributes one observation to this analysis. Because all qualifying
+events have the same complete window, multiple events receive equal weight
+within a county; overlapping event windows can repeat the same calendar housing
+observation.
 
-Elastic Net and gradient-boosted tree regressions are compared using repeated
-nested cross-validation, and the model with the lowest mean absolute error is
-selected for each population. Very Low, Low, and Medium are modeled separately.
-High and Very High are pooled into one model with a Very High indicator and
-predictor interactions because the standalone Very High sample is small.
+For each NRI risk group, the page ranks retained features by the absolute
+Spearman correlation between the county feature value and this county-level
+average PPSF YoY around events. The sign of the correlation indicates whether the
+descriptive relationship is positive or negative. Scatterplots trim feature
+outliers using the interquartile range rule and add an overall linear trend
+line.
 
-Importance is specific to the selected model:
-
-- For Elastic Net, importance is the fitted coefficient in standardized
-  predictor and target units.
-- For a separately fitted gradient-boosted tree model, importance is the
-  model's unsigned impurity importance.
-- For the pooled High and Very High model, importance is calculated separately
-  for the two original risk groups by repeatedly permuting each base feature
-  within that group and measuring the mean increase in in-sample absolute
-  error. Negative mean increases are set to zero for ranking.
-
-For each risk group, the page orders features by absolute importance, retains
-the top ten, and scales their displayed bar lengths relative to the largest
-absolute importance in that group. The two example counties are then compared
-using the underlying aggregated value of each selected feature and its
-percentile among eligible counties in the same original risk group.
-
-The model estimates predictive associations rather than causal effects.
-Elastic Net coefficients and tree- or permutation-based importance are not
-directly comparable effect sizes. Details of the target, validation design,
-model selection, and saved artifacts are in
-`docs/county-relative-ppsf-modeling.md`.
+Counties within each risk group are divided into four ordered subgroups using
+the most prominent feature patterns. The page reports the middle 50% (IQR) of
+the leading feature values for the selected subgroup. These associations and
+subgroups are descriptive, not predictions or causal estimates.
 
 ## County Climate Playbook
 
-The lookup combines overall and hazard-specific NRI measures, monthly county
-median PPSF year-over-year history, and qualifying FEMA/NOAA event periods from
-2016–2025. Rule-based narrative text compares observed movement with the broad
-pattern expected for a risk group.
+The lookup combines overall and hazard-specific NRI measures, the leading
+within-risk-group county features and subgroup assignment, monthly county median
+PPSF year-over-year history, and qualifying FEMA/NOAA event periods from
+2016–2025. Its comparison view overlays the selected risk group's monthly median
+and IQR. Event narratives assess how closely the county's post-event change
+matches its risk-group expectation and how closely its relative PPSF YoY level
+matches the feature-subgroup expectation shown in the profile. Highly volatile
+histories are reported as inconclusive. Counties without a qualifying event
+receive a risk-group and subgroup-based expectation instead.
 
 ## Geography and generated page
 
 Only geometries represented in the playbook data enter the page payload.
 Geometry is simplified while preserving topology (with a larger tolerance for
-Alaska), and polygon orientation is normalized for browser rendering.
+Alaska), and polygon orientation is normalized for browser rendering. State
+outlines are dissolved from the displayed county geometries so both boundary
+layers use exactly the same edges.
 
 `build-climate-risk-housing` queries the marts, constructs the analytical
 payloads, and embeds filtered GeoJSON. It writes a three-file publication
@@ -292,20 +281,20 @@ resources.
   as a contemporaneous historical risk rating.
 - **Year-over-year outcome:** adjacent monthly observations share information
   because each compares with the previous year.
-- **Model-specific feature ranking:** importance depends on the selected model,
-  available predictors, preprocessing, and sample. Tree impurity importance can
-  favor continuous predictors, and pooled-group permutation importance is
-  measured in-sample. None of these rankings establishes a causal contribution.
+- **Correlation-based feature ranking:** rank and direction depend on the
+  available features, aggregation window, and counties represented in each risk
+  group. Correlation does not establish a causal contribution.
 - **Illustrative examples:** configured county-event examples and fallback
   selection are descriptive; their differences are not formal significance
   findings.
-- **Private housing input:** the repository does not distribute Redfin county
-  data, so a clean clone cannot regenerate the housing marts or final page from
-  source.
+- **Mutable Redfin source:** Redfin's public county files can be revised. The
+  download receipt records retrieval time and provider response metadata, but a
+  later clean rebuild may not reproduce byte-identical source data.
 - **Optional insurance input:** insurance premium and non-renewal features are
   unavailable when the private county Feather snapshot is not supplied.
-- **Rolling publication period:** housing histories and page events advance
-  only after the Redfin mart contains all 12 months of a newer calendar year.
+- **Fixed Redfin analysis period:** the downloaded Redfin files may contain newer
+  observations, but the housing mart remains fixed at January 2012 through
+  December 2025 to preserve the analysis period requested for this publication.
 - **Static extracts:** results can change when inputs are revised and rebuilt.
 
 ## Reproduction
@@ -316,14 +305,12 @@ From the repository root:
 pip install -e .
 download-data all
 build-database
-train-county-relative-ppsf --n-jobs 1
 build-climate-risk-housing
 ```
 
 Set `CENSUS_API_KEY` before running the bootstrap. The committed FIPS master
-requires no manual retrieval. A full rebuild additionally requires the user to
-supply `data/housing/Redfin-Housing-Market-By-County.csv`; without it, the
-housing marts, model, and final page cannot be regenerated. The private
+requires no manual retrieval. Redfin county housing data is fetched by
+`download-data all` from the public Download Hub. The private
 `county_processed_data.feather` input is optional and only adds its insurance
 features.
 
@@ -331,14 +318,11 @@ If an existing `data/quoll.duckdb` already contains current raw tables:
 
 ```powershell
 build-database --marts-only
-train-county-relative-ppsf --n-jobs 1
 build-climate-risk-housing
 ```
 
 `--marts-only` cannot initialize a fresh clone because it depends on those
-existing raw tables. Retraining is necessary only when regenerating the model
-artifacts consumed by the page; the committed small model artifacts can
-otherwise be retained.
+existing raw tables.
 
 Viewing or publishing the committed page does not require DuckDB or any source
 data. It requires the HTML file and both deferred JavaScript payloads listed
