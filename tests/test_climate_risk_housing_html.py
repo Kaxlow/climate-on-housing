@@ -216,6 +216,13 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('button.feature-subgroup-control', HTML_TEMPLATE)
         self.assertIn('selectFeatureSubgroup(Number(d.index))', HTML_TEMPLATE)
         self.assertIn('.feature-subgroup-controls.visible { display: grid; }', HTML_TEMPLATE)
+        self.assertIn('class="feature-plot-shell"', HTML_TEMPLATE)
+        self.assertIn('grid-template-columns: minmax(0, 1fr) 132px;', HTML_TEMPLATE)
+        self.assertIn('cursor: pointer !important;', HTML_TEMPLATE)
+        self.assertIn('pointer-events: auto; touch-action: manipulation;', HTML_TEMPLATE)
+        self.assertIn('cursor: pointer; pointer-events: none;', HTML_TEMPLATE)
+        self.assertIn('#feature-event-window { pointer-events: none; }', HTML_TEMPLATE)
+        self.assertIn('marginRight: 24', HTML_TEMPLATE)
         self.assertIn('risk === "Very High" && label === "Upper-Middle" ? "Middle" : label', HTML_TEMPLATE)
 
     def test_both_focus_county_lines_are_solid(self) -> None:
@@ -233,16 +240,24 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
 
     def test_playbook_reports_insufficient_feature_data(self) -> None:
         self.assertIn("playbookInsufficientFeatureData:", HTML_TEMPLATE)
+        self.assertIn("playbookInsufficientEventWindowData:", HTML_TEMPLATE)
         self.assertIn("const hasFeatureData = Boolean(", HTML_TEMPLATE)
+        self.assertIn("const insufficientCopy = !profile.row", HTML_TEMPLATE)
         self.assertIn('style("display", "none").text("")', HTML_TEMPLATE)
         self.assertIn("Insufficient feature data available for {county}.", HTML_TEMPLATE)
+        self.assertIn(
+            "could not be determined because there were insufficient data for a complete event window.",
+            HTML_TEMPLATE,
+        )
         self.assertIn('class="playbook-feature-insufficient"', HTML_TEMPLATE)
 
     def test_playbook_subgroup_copy_is_a_county_sentence(self) -> None:
         self.assertIn(
-            "With the above features, {county} falls within the {subgroup} range of {risk} Risk counties.",
+            "With the above features, {county}'s house price growth rate falls within the {subgroup} range of {risk} Risk counties.",
             HTML_TEMPLATE,
         )
+        self.assertIn("function subgroupProseName(label)", HTML_TEMPLATE)
+        self.assertIn("subgroup: subgroupProseName(profile.subgroupName)", HTML_TEMPLATE)
 
     def test_playbook_event_comparison_is_qualitative_and_handles_volatility(self) -> None:
         self.assertIn("function eventWindowTrendStats(points)", HTML_TEMPLATE)
@@ -257,8 +272,12 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertNotIn("relativeDirection:", HTML_TEMPLATE)
 
     def test_map_boundaries_share_a_cohesive_visual_treatment(self) -> None:
-        self.assertIn('.county { stroke: #d8e1dd; stroke-width: .34;', HTML_TEMPLATE)
-        self.assertIn('.state-boundary { fill: none; stroke: #60756e; stroke-width: .9;', HTML_TEMPLATE)
+        self.assertIn('.county { stroke: #ffffff; stroke-width: .45;', HTML_TEMPLATE)
+        self.assertIn('.state-boundary { fill: none; stroke: #173f37; stroke-width: 1.4;', HTML_TEMPLATE)
+
+    def test_playbook_event_list_scrolls_within_frame_three(self) -> None:
+        self.assertIn('.playbook-events-pane { display: flex; flex-direction: column; }', HTML_TEMPLATE)
+        self.assertIn('overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;', HTML_TEMPLATE)
 
     def test_state_boundaries_are_dissolved_from_displayed_counties(self) -> None:
         county_geojson = {
@@ -276,10 +295,15 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
                 },
             ],
         }
-        result = build_state_geojson(county_geojson, {"01": ("AL", None)})
+        result = build_state_geojson(
+            {"01001", "01003"},
+            {"01": ("AL", None)},
+            county_geojson,
+        )
         self.assertEqual(len(result["features"]), 1)
         self.assertEqual(result["features"][0]["properties"]["state"], "AL")
         self.assertEqual(result["features"][0]["geometry"]["type"], "Polygon")
+        self.assertEqual(len(result["features"][0]["geometry"]["coordinates"]), 1)
 
     def test_playbook_has_four_frames_and_risk_group_comparison(self) -> None:
         for state in ('"search"', '"profile"', '"history-events"', '"history-compare"'):

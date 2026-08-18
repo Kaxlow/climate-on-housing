@@ -245,8 +245,9 @@ receive a risk-group and subgroup-based expectation instead.
 Only geometries represented in the playbook data enter the page payload.
 Geometry is simplified while preserving topology (with a larger tolerance for
 Alaska), and polygon orientation is normalized for browser rendering. State
-outlines are dissolved from the displayed county geometries so both boundary
-layers use exactly the same edges.
+outlines are dissolved from unsimplified county geometries, stripped of interior
+rings, and only then simplified. This preserves the exterior state perimeter
+without turning county-level simplification gaps into internal state lines.
 
 `build-climate-risk-housing` queries the marts, constructs the analytical
 payloads, and embeds filtered GeoJSON. It writes a three-file publication

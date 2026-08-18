@@ -460,18 +460,26 @@ def build_geojson(
 
 
 def build_state_geojson(
-    county_geojson: dict[str, object],
+    fips_set: set[str],
     state_geometries: dict[str, tuple[str, object]],
+    county_geojson: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """Dissolve displayed county shapes so state outlines share their exact edges."""
-    from shapely.geometry import mapping, shape
+    """Dissolve unsimplified counties, then simplify only completed state shells."""
+    from shapely.geometry import MultiPolygon, Polygon, mapping, shape
     from shapely.ops import unary_union
 
+    raw = county_geojson or json.loads(COUNTIES_PATH.read_text(encoding="utf-8"))
     features = []
     counties_by_state: dict[str, list[object]] = {}
-    for feature in county_geojson.get("features", []):
-        fips = str(feature.get("properties", {}).get("fips", "")).zfill(5)
-        if not fips or not feature.get("geometry"):
+    for feature in raw.get("features", []):
+        properties = feature.get("properties", {})
+        fips = str(
+            properties.get("fips")
+            or properties.get("GEOID")
+            or properties.get("GEOID10")
+            or ""
+        ).zfill(5)
+        if fips not in fips_set or not feature.get("geometry"):
             continue
         counties_by_state.setdefault(fips[:2], []).append(shape(feature["geometry"]))
     for state_fips, county_geometries in counties_by_state.items():
@@ -482,6 +490,14 @@ def build_state_geojson(
         geometry = unary_union(county_geometries)
         if geometry.is_empty:
             continue
+        if isinstance(geometry, Polygon):
+            geometry = Polygon(geometry.exterior)
+        elif isinstance(geometry, MultiPolygon):
+            geometry = MultiPolygon(
+                [Polygon(polygon.exterior) for polygon in geometry.geoms]
+            )
+        tolerance = 0.08 if state_fips == "02" else 0.025
+        geometry = geometry.simplify(tolerance, preserve_topology=True)
         features.append(
             {
                 "type": "Feature",
@@ -2069,8 +2085,8 @@ HTML_TEMPLATE = r"""<!doctype html>
     .band { opacity: .18; }
     .band.background { opacity: .05; }
     .band { pointer-events: none; }
-    .county { stroke: #d8e1dd; stroke-width: .34; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-    .state-boundary { fill: none; stroke: #60756e; stroke-width: .9; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; vector-effect: non-scaling-stroke; }
+    .county { stroke: #ffffff; stroke-width: .45; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+    .state-boundary { fill: none; stroke: #173f37; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; vector-effect: non-scaling-stroke; }
     .legend { display: flex; flex-wrap: wrap; gap: 8px 12px; color: var(--muted); font-size: 12px; align-items: center; margin-top: 8px; }
     .scale-legend { width: min(100%, 320px); display: grid; grid-template-columns: 70px 1fr 70px; gap: 8px; align-items: center; }
     .scale-bar { height: 10px; border-radius: 999px; border: 1px solid rgba(23,32,38,.12); }
@@ -2093,7 +2109,8 @@ HTML_TEMPLATE = r"""<!doctype html>
     #feature-risk-sidebar .sidebar-label { width: 100%; }
     .feature-importance-chart { display: grid; gap: 4px; margin-top: 6px; align-content: start; }
     .feature-story-grid { align-items: start; }
-    .feature-line-pane { position: relative; z-index: 2; }
+    .feature-line-pane { position: relative; z-index: 10; isolation: isolate; }
+    .feature-plot-shell { min-width: 0; }
     .feature-detail-stack { position: relative; min-height: min(52svh, 480px); overflow: hidden; }
     .feature-detail-heading { position: relative; z-index: 3; min-height: 25px; margin: 0 0 6px; }
     .feature-frame { position: absolute; inset: 31px 0 0; width: 100%; opacity: 0; pointer-events: none; transition: opacity 320ms ease, transform 380ms ease; }
@@ -2134,10 +2151,12 @@ HTML_TEMPLATE = r"""<!doctype html>
     .subgroup-iqr { display: grid; gap: 8px; margin-top: 12px; }
     .subgroup-iqr-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 14px; align-items: center; padding: 10px 12px; background: white; border: 1px solid var(--line); font-size: 12px; }
     .subgroup-iqr-value { color: var(--ink); font-weight: 800; white-space: nowrap; }
-    .feature-subgroup-controls { position: absolute; z-index: 5; top: 50%; right: 10px; display: none; width: 132px; transform: translateY(-50%); gap: 9px; }
+    .feature-subgroup-controls { display: none; width: 132px; gap: 9px; pointer-events: auto; }
     .feature-subgroup-controls.visible { display: grid; }
-    .feature-subgroup-control { position: relative; width: 100%; min-height: 30px; padding: 6px 10px 6px 31px; border: 2px solid var(--subgroup-color); border-radius: 999px; background: rgba(255,255,255,.96); color: var(--subgroup-color); text-align: left; font-size: 11px; cursor: pointer; }
-    .feature-subgroup-control::before { content: ""; position: absolute; left: 10px; top: 50%; width: 10px; height: 10px; border: 2px solid var(--subgroup-color); border-radius: 50%; background: white; transform: translateY(-50%); }
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-plot-shell { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 8px; align-items: center; }
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-subgroup-controls { position: relative; z-index: 2; align-self: center; }
+    .feature-subgroup-control { position: relative; width: 100%; min-height: 30px; padding: 6px 10px 6px 31px; border: 2px solid var(--subgroup-color); border-radius: 999px; background: rgba(255,255,255,.96); color: var(--subgroup-color); text-align: left; font-size: 11px; cursor: pointer !important; pointer-events: auto; touch-action: manipulation; user-select: none; }
+    .feature-subgroup-control::before { content: ""; position: absolute; left: 10px; top: 50%; width: 10px; height: 10px; border: 2px solid var(--subgroup-color); border-radius: 50%; background: white; transform: translateY(-50%); cursor: pointer; pointer-events: none; }
     .feature-subgroup-control.active { background: var(--subgroup-color); color: white; }
     .feature-subgroup-control.active::before { border-color: white; background: var(--subgroup-color); box-shadow: inset 0 0 0 2px var(--subgroup-color), inset 0 0 0 4px white; }
     .feature-subgroup-control:focus-visible { outline: 3px solid rgba(17,121,109,.32); outline-offset: 2px; }
@@ -2167,7 +2186,8 @@ HTML_TEMPLATE = r"""<!doctype html>
     .playbook-history-pane { grid-column: 2; display: flex; flex-direction: column; }
     .playbook-history-pane .chart { flex: 1 1 auto; min-height: 0; height: 100%; }
     .playbook-events-pane, .playbook-commentary-pane { grid-column: 3; overflow: hidden; }
-    .playbook-event-column { display: grid; gap: 7px; margin-top: 8px; }
+    .playbook-events-pane { display: flex; flex-direction: column; }
+    .playbook-event-column { display: grid; flex: 1 1 auto; align-content: start; gap: 7px; min-height: 0; margin-top: 8px; padding-right: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
     .playbook-event-card { padding: 9px 10px; border: 1px solid var(--line); border-left: 4px solid #df7d2f; background: #fff8f1; font-size: 11px; line-height: 1.35; }
     .playbook-back-button { margin-bottom: 10px; border-radius: 0; }
     .playbook-subgroup-badge { margin: 10px 0; padding: 9px 10px; border-left: 4px solid var(--teal); background: #eaf5f1; font-size: 12px; line-height: 1.35; }
@@ -2275,6 +2295,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     .story-stage #score-scatter { height: min(41svh, 320px) !important; }
     #features .feature-line-pane.scatter-active #feature-event-window { height: min(40svh, 360px); }
     #features .story-stage[data-story-state="feature-frame-3"] #feature-event-window { height: min(47svh, 435px); }
+    #features .story-stage[data-story-state="feature-frame-3"] #feature-event-window { pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .story-stage > *, .story-stage .takeaway { transition-duration: 1ms !important; }
@@ -2398,8 +2419,10 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div class="viz-grid timeseries-grid feature-story-grid">
         <div class="feature-line-pane">
           <h3 id="feature-chart-title"></h3>
-          <svg id="feature-event-window" class="chart map-companion-line"></svg>
-          <div id="feature-subgroup-toggles" class="feature-subgroup-controls" aria-label="Feature subgroup lines"></div>
+          <div class="feature-plot-shell">
+            <svg id="feature-event-window" class="chart map-companion-line"></svg>
+            <div id="feature-subgroup-toggles" class="feature-subgroup-controls" aria-label="Feature subgroup lines"></div>
+          </div>
           <div id="feature-line-legend" class="feature-line-legend"></div>
           <div id="feature-relationship" class="feature-relationship" hidden></div>
         </div>
@@ -2593,10 +2616,11 @@ const TEXT = {
   playbookH2: "Climate Playbook: What to Know About Your County's Climate Exposure",
   playbookSearchPlaceholder: "Search for a county by name, state, or FIPS…",
   playbookInsufficientFeatureData: "Insufficient feature data available for {county}.",
+  playbookInsufficientEventWindowData: "The most important features for {county} could not be determined because there were insufficient data for a complete event window.",
   playbookInsufficientFeatureValue: "Insufficient data",
   playbookHistoryTitle: "Monthly Median PPSF YoY Over the Past 10 Years",
   playbookFeatureTitle: "Most important features for {risk} Risk counties",
-  playbookSubgroup: "With the above features, {county} falls within the {subgroup} range of {risk} Risk counties.",
+  playbookSubgroup: "With the above features, {county}'s house price growth rate falls within the {subgroup} range of {risk} Risk counties.",
   playbookPastEventsTitle: "Past extreme weather events",
   playbookNoPastEvents: "No qualifying extreme weather events occurred during this 10-year period.",
   playbookZoomOut: "Zoom out",
@@ -2607,9 +2631,9 @@ const TEXT = {
   playbookRiskSeriesLegend: "{risk} Risk median and IQR",
   playbookTakeaways: {
     noEvents: "<strong>{county} had no extreme climate events in the last 10 years.</strong><span class=\"playbook-summary-detail\">Given its profile as {countyContext}, its Median PPSF YoY would be expected to {expectation} after an extreme climate event.</span>",
-    eventAlignmentSummary: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Its Median PPSF YoY level relative to the risk group {subgroupAlignment} with the {subgroup} range shown at left: the county was {countyLevel}, while that subgroup is typically {subgroupLevel}. The comparison covers one year before each event began through three years after it ended.</span>",
-    eventAlignmentWithoutSubgroup: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Alignment with a feature subgroup could not be assessed because sufficient feature data were unavailable. The comparison covers one year before each event began through three years after it ended.</span>",
-    volatileEventSummary: "<strong>{county}'s Median PPSF YoY was too volatile to assess whether its post-event change aligned with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">Its level relative to the risk group also could not be compared meaningfully with the {subgroupContext}. The comparison covers one year before each event began through three years after it ended.</span>",
+    eventAlignmentSummary: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Its Median PPSF YoY level relative to its risk group {subgroupAlignment} with the {subgroup} range of counties within the {risk} Risk category. The percentage-point change covers one year before each event began through three years after it ended.</span>",
+    eventAlignmentWithoutSubgroup: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Its relative performance within its risk group could not be assessed because sufficient feature data were unavailable. The percentage-point change covers one year before each event began through three years after it ended.</span>",
+    volatileEventSummary: "<strong>{county}'s Median PPSF YoY was too volatile to assess whether its post-event change aligned with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">Its level relative to its risk group also could not be compared meaningfully with the {subgroupContext}. The percentage-point change covers one year before each event began through three years after it ended.</span>",
     insufficientHistory: "{county} had insufficient housing data from one year before its events through three years after they ended to compare with its risk group.",
     groupExpectation: "By year 3, counties with {risk} climate risk typically {groupBehavior} versus their pre-event-year level.",
     groupBehaviorChange: "{direction} by about {magnitude} percentage points",
@@ -3397,6 +3421,10 @@ function subgroupName(group, count, risk = selectedFeatureRisk) {
   return risk === "Very High" && label === "Upper-Middle" ? "Middle" : label;
 }
 
+function subgroupProseName(label) {
+  return String(label || "").toLowerCase();
+}
+
 function drawFeatureSubgroupPanel() {
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: [], excludedOutliers: 0};
   if (selectedFeatureSubgroup == null || !payload.groups.some(d => d.index === selectedFeatureSubgroup)) selectedFeatureSubgroup = payload.groups[0]?.index ?? null;
@@ -3428,7 +3456,7 @@ function drawFeatureSubgroupLines() {
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
   const domainValues = payload.groups.flatMap(group => group.values.map(d => d.value).filter(Number.isFinite));
   d3.select(".feature-line-pane").classed("scatter-active", false);
-  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, marginRight: 150, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
+  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, marginRight: 24, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
   const svg = d3.select("#feature-event-window");
   const line = d3.line().defined(d => d.value != null).x(d => chart.x(d.month)).y(d => chart.y(d.value));
   svg.selectAll("path.feature-subgroup-line").data(payload.groups).join("path")
@@ -3620,7 +3648,10 @@ function renderPlaybookFeatureSummary(county) {
     && profile.metrics.every(metric => Number.isFinite(profile.row.values?.[metric.feature]))
   );
   if (!hasFeatureData) {
-    d3.select("#playbook-feature-summary").html(`<div class="playbook-feature-insufficient">${replaceFeatureText(TEXT.playbookInsufficientFeatureData, {county: countyDisplayName(county)})}</div>`);
+    const insufficientCopy = !profile.row
+      ? TEXT.playbookInsufficientEventWindowData
+      : TEXT.playbookInsufficientFeatureData;
+    d3.select("#playbook-feature-summary").html(`<div class="playbook-feature-insufficient">${replaceFeatureText(insufficientCopy, {county: countyDisplayName(county)})}</div>`);
     d3.select("#playbook-subgroup-summary").style("display", "none").text("");
   } else {
     d3.select("#playbook-feature-summary").html(profile.metrics.map(metric => {
@@ -3632,7 +3663,7 @@ function renderPlaybookFeatureSummary(county) {
       .style("display", null)
       .text(replaceFeatureText(TEXT.playbookSubgroup, {
         county: countyDisplayName(county),
-        subgroup: profile.subgroupName,
+        subgroup: subgroupProseName(profile.subgroupName),
         risk: county.riskRating || "Unknown",
       }));
   }
@@ -3917,7 +3948,7 @@ function renderPlaybookCommentary(county, history, events) {
     container.html(fillTextTemplate(copy.noEvents, {
       county: countyLabel,
       countyContext: profile.subgroupName
-        ? `a ${risk} Risk county in the ${profile.subgroupName} range`
+        ? `a ${risk} Risk county in the ${subgroupProseName(profile.subgroupName)} range`
         : `a ${risk} Risk county`,
       expectation: groupExpectation.groupBehavior || "follow the broader risk-group pattern",
     }));
@@ -3959,7 +3990,7 @@ function renderPlaybookCommentary(county, history, events) {
       county: countyLabel,
       risk,
       subgroupContext: profile.subgroupName
-        ? `${profile.subgroupName} subgroup shown at left`
+        ? `${subgroupProseName(profile.subgroupName)} subgroup shown at left`
         : "feature subgroup because sufficient feature data were unavailable",
     }));
     return;
@@ -3982,7 +4013,7 @@ function renderPlaybookCommentary(county, history, events) {
     riskAlignment,
     countyChange: describePpsfChange(countyChange, terms),
     groupChange: groupExpectation.groupBehavior,
-    subgroup: profile.subgroupName,
+    subgroup: subgroupProseName(profile.subgroupName),
     subgroupAlignment: alignmentExtent(observedGap, subgroupExpectedGap, levelThreshold),
     countyLevel: qualitativeRelation(observedGap, levelThreshold),
     subgroupLevel: qualitativeRelation(subgroupExpectedGap, levelThreshold),
@@ -4457,11 +4488,12 @@ def main() -> None:
         playbook = build_county_playbook_data(con)
 
     state_geometries = load_state_geometries()
+    playbook_fips = {county["fips"] for county in playbook["counties"]}
     geojson = build_geojson(
-        {county["fips"] for county in playbook["counties"]},
+        playbook_fips,
         state_geometries,
     )
-    state_geojson = build_state_geojson(geojson, state_geometries)
+    state_geojson = build_state_geojson(playbook_fips, state_geometries)
     county_history = {
         "months": price_risk.pop("countyHistoryMonths"),
         "series": price_risk.pop("countyHistorySeries"),
