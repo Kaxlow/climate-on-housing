@@ -191,16 +191,14 @@ when a configured example is unavailable. These examples are descriptive rather 
 
 ## Within-risk-group feature analysis
 
-This section explores which county characteristics accompany stronger or
-weaker housing growth among counties in the same overall risk group. Production
-features are supplied through the `feature` domain marts and the definitions in
-`feature.catalog`. Their underlying sources include ACS, StatsAmerica and its
-BEA/CEW series, NCEI weather, NRI risk, and Redfin housing. Optional private
-insurance extracts are materialized separately when present; the cataloged
-homeowners-insurance affordability measure is derived from ACS. Features are
-primarily county averages over the latest ten years available in each
-applicable mart. Some measures are constructed from related fields, such as
-weighted midpoints of ACS cost buckets.
+This section explores which economic and demographic county characteristics
+accompany stronger or weaker housing growth among counties in the same overall
+risk group. Production features are supplied through the `feature` domain marts
+and the definitions in `feature.catalog`. Their underlying sources include ACS
+and StatsAmerica's BEA series. The cataloged homeowners-insurance affordability
+measure is derived from ACS. Features are primarily county averages over the
+latest ten years available in each applicable mart. Some measures are
+constructed from related fields, such as weighted midpoints of ACS cost buckets.
 
 Displayed income components are annual BEA amounts per county resident: net
 earnings by place of residence; dividends, interest, and rent; and transfer
@@ -221,22 +219,33 @@ Spearman correlation between the county feature value and this county-level
 average PPSF YoY around events. The sign of the correlation indicates whether the
 descriptive relationship is positive or negative. Scatterplots trim feature
 outliers using the interquartile range rule and add an overall linear trend
-line.
+line. A 95% percentile confidence interval is calculated from 160 bootstrap
+samples drawn with replacement. A feature clears the minimum-effect filter only
+when that interval lies entirely above +0.10 or below -0.10. Features with
+absolute point correlation greater than or equal to 0.30 receive the strongest-correlation
+visual treatment.
 
-Counties within each risk group are divided into four ordered subgroups using
-the most prominent feature patterns. The page reports the middle 50% (IQR) of
-the leading feature values for the selected subgroup. These associations and
-subgroups are descriptive, not predictions or causal estimates.
+For the performance view, counties are sorted in descending order of their
+county-level average PPSF YoY around events and divided into four approximately
+equal-sized groups. The smaller Very High-risk sample is divided into three
+groups. Each trend is the month-level median after first collapsing multiple
+qualifying events to one county-month value, so every county receives equal
+weight. The companion distribution plot shows strongly correlated feature
+values for the selected performance group after excluding values beyond 1.5
+times the risk group's interquartile range.
+Because the performance groups are defined directly from the outcome, their
+separation is descriptive and in-sample; it is not evidence of prediction or
+causation.
 
 ## County Climate Playbook
 
 The lookup combines overall and hazard-specific NRI measures, the leading
-within-risk-group county features and subgroup assignment, monthly county median
+within-risk-group county features and performance-group assignment, monthly county median
 PPSF year-over-year history, and qualifying FEMA/NOAA event periods from
 2016–2025. Its comparison view overlays the selected risk group's monthly median
 and IQR. Event narratives assess how closely the county's post-event change
 matches its risk-group expectation and how closely its relative PPSF YoY level
-matches the feature-subgroup expectation shown in the profile. Highly volatile
+matches the performance-group expectation shown in the profile. Highly volatile
 histories are reported as inconclusive. Counties without a qualifying event
 receive a risk-group and subgroup-based expectation instead.
 

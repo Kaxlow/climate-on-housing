@@ -114,6 +114,8 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('classed("visible", Boolean(callout) && frame.callout)', HTML_TEMPLATE)
         self.assertIn("riskIndex < activeRiskIndex", HTML_TEMPLATE)
         self.assertNotIn("sequence-callout-frame", HTML_TEMPLATE)
+        self.assertIn('.sequence-callout { position: relative;', HTML_TEMPLATE)
+        self.assertIn('margin: 4px 24px 0 58px;', HTML_TEMPLATE)
 
     def test_pricing_takeaway_pauses_rating_sequence(self) -> None:
         self.assertIn("function pauseRatingSequence()", HTML_TEMPLATE)
@@ -160,8 +162,9 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
             HTML_TEMPLATE,
         )
 
-    def test_feature_story_uses_directional_bars_and_filtered_scatter(self) -> None:
-        self.assertIn('importance-bar ${(metric.rho || 0) < 0 ? "negative" : "positive"}', HTML_TEMPLATE)
+    def test_feature_story_uses_uniform_bars_direction_markers_and_filtered_scatter(self) -> None:
+        self.assertIn('correlation-marker ${(metric.rho || 0) < 0 ? "negative" : "positive"}', HTML_TEMPLATE)
+        self.assertIn('class", "importance-bar"', HTML_TEMPLATE)
         self.assertIn('const [xLow, xHigh] = iqrBounds', HTML_TEMPLATE)
         self.assertIn('.attr("stroke-dasharray", "5 5")', HTML_TEMPLATE)
         self.assertIn('.text(featureLabel(feature))', HTML_TEMPLATE)
@@ -172,7 +175,78 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertNotIn('featureStoryDirection:', HTML_TEMPLATE)
         self.assertNotIn('featureSubgroupIntro:', HTML_TEMPLATE)
         self.assertIn('const group = payload.groups.find(d => d.index === selectedFeatureSubgroup)', HTML_TEMPLATE)
-        self.assertIn('class", "subgroup-iqr-row"', HTML_TEMPLATE)
+        self.assertIn('id="feature-distribution-chart"', HTML_TEMPLATE)
+        self.assertIn('drawFeatureSubgroupPanel()', HTML_TEMPLATE)
+
+    def test_feature_story_adds_shared_subgroup_summary_frame(self) -> None:
+        self.assertIn('class="feature-frame" data-frame="3"', HTML_TEMPLATE)
+        self.assertIn('{state: "feature-frame-3"}', HTML_TEMPLATE)
+        self.assertIn('function subgroupFeatureRelations(risk, subgroup)', HTML_TEMPLATE)
+        self.assertIn('function drawFeatureSubgroupSummary()', HTML_TEMPLATE)
+        self.assertIn('higher: "above average"', HTML_TEMPLATE)
+        self.assertIn('lower: "below average"', HTML_TEMPLATE)
+        self.assertIn('close: "average"', HTML_TEMPLATE)
+        self.assertIn('state === "feature-frame-2" || state === "feature-frame-3"', HTML_TEMPLATE)
+
+    def test_feature_subgroup_summary_scrolls_only_its_rows(self) -> None:
+        self.assertIn('.feature-subgroup-summary { display: flex; flex-direction: column;', HTML_TEMPLATE)
+        self.assertIn('height: 100%; min-height: 0; overflow: hidden;', HTML_TEMPLATE)
+        self.assertIn('.feature-subgroup-summary-rows { display: grid;', HTML_TEMPLATE)
+        self.assertIn('const rowScroller = summary.append("div").attr("class", "feature-subgroup-summary-rows");', HTML_TEMPLATE)
+
+    def test_subgroup_toggles_activate_on_pointer_down_without_selecting_text(self) -> None:
+        self.assertIn('.feature-subgroup-control-label { display: block; pointer-events: none; user-select: none; }', HTML_TEMPLATE)
+        self.assertIn('.on("pointerdown", (event, d) => {', HTML_TEMPLATE)
+        self.assertIn('if (event.detail !== 0) return;', HTML_TEMPLATE)
+
+    def test_feature_subgroup_lines_have_additional_upper_domain_margin(self) -> None:
+        self.assertIn('opts.upperDomainPadding || 0', HTML_TEMPLATE)
+        self.assertIn('upperDomainPadding: 0.16', HTML_TEMPLATE)
+
+    def test_intro_and_feature_context_use_inline_tooltips(self) -> None:
+        self.assertNotIn('id="t-scatter-fn1"', HTML_TEMPLATE)
+        self.assertNotIn('id="t-scatter-fn2"', HTML_TEMPLATE)
+        self.assertIn('scatterFootnotesTooltip:', HTML_TEMPLATE)
+        self.assertIn('id=\\"feature-performance-term\\"', HTML_TEMPLATE)
+        self.assertIn('featurePerformanceTooltip:', HTML_TEMPLATE)
+
+    def test_feature_threshold_negative_state_and_distribution_filter(self) -> None:
+        self.assertIn('(metric.absRho || 0) >= 0.3', HTML_TEMPLATE)
+        self.assertIn('negative-active', HTML_TEMPLATE)
+        self.assertIn('scatter-negative', HTML_TEMPLATE)
+        self.assertIn('value >= lowerBound && value <= upperBound', HTML_TEMPLATE)
+        self.assertIn('featureDistributionOutlierTooltip:', HTML_TEMPLATE)
+        self.assertIn('const removeOutliers = selectedFeatureRisk !== "Very High";', HTML_TEMPLATE)
+        self.assertIn('featureDistributionVeryHighTooltip:', HTML_TEMPLATE)
+
+    def test_feature_importance_and_distribution_controls_match_latest_design(self) -> None:
+        self.assertIn('class", "importance-strong-group"', HTML_TEMPLATE)
+        self.assertNotIn('featureOutcomeTopic:', HTML_TEMPLATE)
+        self.assertIn('featureDistributionPrevious:', HTML_TEMPLATE)
+        self.assertIn('featureDistributionNext:', HTML_TEMPLATE)
+        self.assertNotIn('id="feature-distribution-group-label"', HTML_TEMPLATE)
+        self.assertIn('rotateFeature = direction =>', HTML_TEMPLATE)
+
+    def test_information_tooltips_are_persistent_and_clickable(self) -> None:
+        self.assertIn('.tooltip.persistent { pointer-events: auto; }', HTML_TEMPLATE)
+        self.assertIn('activeInfoTooltipTrigger = element', HTML_TEMPLATE)
+        self.assertIn('document.addEventListener("pointerdown"', HTML_TEMPLATE)
+        self.assertNotIn('element.addEventListener("pointerleave"', HTML_TEMPLATE)
+
+    def test_latest_section_layout_and_distribution_interactions(self) -> None:
+        self.assertIn('class="rating-line-pane"', HTML_TEMPLATE)
+        self.assertIn('event-horizon-number', HTML_TEMPLATE)
+        self.assertIn('eventHorizonYears:', HTML_TEMPLATE)
+        self.assertIn('.feature-frame[data-frame="1"] { display: flex; flex-direction: column; overflow: hidden; }', HTML_TEMPLATE)
+        self.assertIn('featureDistributionTitle: "County Distribution"', HTML_TEMPLATE)
+        self.assertIn('if (options.length > 1) controls.append("button")', HTML_TEMPLATE)
+        self.assertIn('countyDisplayName(county) || d.fips', HTML_TEMPLATE)
+        self.assertIn('--takeaway-bottom: 52px', HTML_TEMPLATE)
+
+    def test_tooltip_position_is_clamped_to_the_viewport(self) -> None:
+        self.assertIn('function showTooltip(event, content', HTML_TEMPLATE)
+        self.assertIn('window.innerWidth - width - edge', HTML_TEMPLATE)
+        self.assertIn('window.innerHeight - height - edge', HTML_TEMPLATE)
 
     def test_income_feature_labels_identify_measure_and_population(self) -> None:
         expected_labels = [
@@ -185,7 +259,7 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         ]
         for label in expected_labels:
             self.assertIn(label, HTML_TEMPLATE)
-        self.assertIn("annual BEA amounts per county resident", HTML_TEMPLATE)
+        self.assertIn("Economic and demographic features use ten-year county averages.", HTML_TEMPLATE)
 
     def test_story_titles_lock_after_the_intro_transition(self) -> None:
         self.assertIn('stage.dataset.storyDirection = direction < 0 ? "backward" : "forward"', HTML_TEMPLATE)
@@ -197,33 +271,33 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
     def test_text_cards_have_consistent_spacing_and_overlay_rules(self) -> None:
         self.assertIn('.takeaway-section { display: block; padding: 24px 28px; }', HTML_TEMPLATE)
         self.assertNotIn('id="event-window-takeaway" style=', HTML_TEMPLATE)
-        self.assertIn('.slide:not(#pricing-grouping)', HTML_TEMPLATE)
-        self.assertIn('opacity: .5; filter: none;', HTML_TEMPLATE)
+        self.assertIn('--takeaway-space: min(17svh, 132px)', HTML_TEMPLATE)
+        self.assertIn('> .panel > *:not(.takeaway) { opacity: 1; filter: none; }', HTML_TEMPLATE)
 
     def test_story_cards_reserve_a_sources_footer(self) -> None:
         self.assertIn('.story-stage > .panel:has(> .sources) { padding-bottom: 78px; }', HTML_TEMPLATE)
         self.assertIn('bottom: 14px; margin: 0; padding: 10px 0 0;', HTML_TEMPLATE)
 
-    def test_feature_subgroup_labels_are_short_and_ordered(self) -> None:
-        self.assertIn('subgroupNames: ["Lower", "Lower-Middle", "Upper-Middle", "Upper"]', HTML_TEMPLATE)
-        self.assertIn('const orderedGroups = [...payload.groups].sort((a, b) => b.index - a.index)', HTML_TEMPLATE)
+    def test_feature_subgroup_labels_are_performance_based_and_ordered(self) -> None:
+        self.assertIn('subgroupNamesFour: ["Strong Overperformers", "Mild Overperformers", "Mild Underperformers", "Strong Underperformers"]', HTML_TEMPLATE)
+        self.assertIn('subgroupNamesThree: ["Overperformers", "Average Performers", "Underperformers"]', HTML_TEMPLATE)
+        self.assertIn('const orderedGroups = [...payload.groups].sort((a, b) => a.index - b.index)', HTML_TEMPLATE)
         self.assertIn('attr("aria-pressed"', HTML_TEMPLATE)
-        self.assertIn('height: min(47svh, 435px)', HTML_TEMPLATE)
+        self.assertIn('startFeatureSubgroupSequence()', HTML_TEMPLATE)
 
     def test_feature_subgroup_legend_has_reliable_toggles_and_no_line_end_label(self) -> None:
         self.assertIn('hideEndLabel: true', HTML_TEMPLATE)
         self.assertIn('id="feature-subgroup-toggles"', HTML_TEMPLATE)
         self.assertIn('button.feature-subgroup-control', HTML_TEMPLATE)
-        self.assertIn('selectFeatureSubgroup(Number(d.index))', HTML_TEMPLATE)
+        self.assertIn('selectFeatureSubgroup(Number(d.index), true)', HTML_TEMPLATE)
         self.assertIn('.feature-subgroup-controls.visible { display: grid; }', HTML_TEMPLATE)
         self.assertIn('class="feature-plot-shell"', HTML_TEMPLATE)
-        self.assertIn('grid-template-columns: minmax(0, 1fr) 132px;', HTML_TEMPLATE)
+        self.assertIn('grid-template-columns: minmax(0, 1fr) 146px;', HTML_TEMPLATE)
         self.assertIn('cursor: pointer !important;', HTML_TEMPLATE)
         self.assertIn('pointer-events: auto; touch-action: manipulation;', HTML_TEMPLATE)
         self.assertIn('cursor: pointer; pointer-events: none;', HTML_TEMPLATE)
-        self.assertIn('#feature-event-window { pointer-events: none; }', HTML_TEMPLATE)
         self.assertIn('marginRight: 24', HTML_TEMPLATE)
-        self.assertIn('risk === "Very High" && label === "Upper-Middle" ? "Middle" : label', HTML_TEMPLATE)
+        self.assertIn('const names = count === 3 ? TEXT.subgroupNamesThree : TEXT.subgroupNamesFour', HTML_TEMPLATE)
 
     def test_both_focus_county_lines_are_solid(self) -> None:
         self.assertNotIn(
@@ -241,23 +315,49 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
     def test_playbook_reports_insufficient_feature_data(self) -> None:
         self.assertIn("playbookInsufficientFeatureData:", HTML_TEMPLATE)
         self.assertIn("playbookInsufficientEventWindowData:", HTML_TEMPLATE)
-        self.assertIn("const hasFeatureData = Boolean(", HTML_TEMPLATE)
+        self.assertIn("const hasFeatureData = summarizeSubgroup", HTML_TEMPLATE)
         self.assertIn("const insufficientCopy = !profile.row", HTML_TEMPLATE)
         self.assertIn('style("display", "none").text("")', HTML_TEMPLATE)
         self.assertIn("Insufficient feature data available for {county}.", HTML_TEMPLATE)
         self.assertIn(
-            "could not be determined because there were insufficient data for a complete event window.",
+            "could not be determined because there were insufficient housing data to form a complete event window for analysis.",
             HTML_TEMPLATE,
         )
         self.assertIn('class="playbook-feature-insufficient"', HTML_TEMPLATE)
 
     def test_playbook_subgroup_copy_is_a_county_sentence(self) -> None:
         self.assertIn(
-            "With the above features, {county}'s house price growth rate falls within the {subgroup} range of {risk} Risk counties.",
+            "{county}'s house price growth rate around extreme climate events makes it a {subgroup} among {risk} Risk counties.",
             HTML_TEMPLATE,
         )
-        self.assertIn("function subgroupProseName(label)", HTML_TEMPLATE)
-        self.assertIn("subgroup: subgroupProseName(profile.subgroupName)", HTML_TEMPLATE)
+        self.assertIn("function playbookPerformanceName(label)", HTML_TEMPLATE)
+        self.assertIn("subgroup: playbookPerformanceName(profile.subgroupName)", HTML_TEMPLATE)
+
+    def test_playbook_uses_analysis_significance_rule_and_scrolls_only_feature_values(self) -> None:
+        self.assertIn("function mostImportantFeatureMetrics(risk)", HTML_TEMPLATE)
+        self.assertIn("const metrics = mostImportantFeatureMetrics(county.riskRating);", HTML_TEMPLATE)
+        self.assertIn(".playbook-feature-summary { display: grid; gap: 6px; max-height:", HTML_TEMPLATE)
+        self.assertIn("overflow-y: auto;", HTML_TEMPLATE)
+
+    def test_later_playbook_frames_use_the_subgroup_feature_summary(self) -> None:
+        self.assertIn("function renderPlaybookFeatureSummary(county, summarizeSubgroup = false)", HTML_TEMPLATE)
+        self.assertIn('state === "history-events" || state === "history-compare"', HTML_TEMPLATE)
+        self.assertIn('playbookSubgroupFeatureTitle:', HTML_TEMPLATE)
+        self.assertIn('const subgroupRelations = subgroupFeatureRelations(county.riskRating, profile.subgroup);', HTML_TEMPLATE)
+
+    def test_playbook_history_profile_card_has_fixed_chrome_and_scrollable_traits(self) -> None:
+        self.assertIn('playbookSubgroupFeatureTitle: "County Traits"', HTML_TEMPLATE)
+        self.assertIn('.playbook-back-button { align-self: flex-start;', HTML_TEMPLATE)
+        self.assertIn('padding: 5px 8px; font-size: 10px;', HTML_TEMPLATE)
+        self.assertIn('[data-story-state^="history-"] #playbook-selected-county-name { display: none !important; }', HTML_TEMPLATE)
+        self.assertIn('[data-story-state^="history-"] .playbook-feature-summary { flex: 1 1 auto; min-height: 0; max-height: none; }', HTML_TEMPLATE)
+        self.assertIn('[data-story-state^="history-"] .playbook-subgroup-badge { flex: 0 0 auto; margin: auto 0 0; }', HTML_TEMPLATE)
+
+    def test_playbook_county_history_line_is_distinct_from_risk_colors(self) -> None:
+        self.assertIn('const COUNTY_LINE_COLOR = "#2456a6";', HTML_TEMPLATE)
+        self.assertNotIn('playbook-county-line-halo', HTML_TEMPLATE)
+        self.assertIn('attr("stroke", COUNTY_LINE_COLOR).attr("stroke-width", 2.4)', HTML_TEMPLATE)
+        self.assertIn('{label: TEXT.playbookSeriesLegend, color: COUNTY_LINE_COLOR, opacity: 1, line: true}', HTML_TEMPLATE)
 
     def test_playbook_event_comparison_is_qualitative_and_handles_volatility(self) -> None:
         self.assertIn("function eventWindowTrendStats(points)", HTML_TEMPLATE)
@@ -316,11 +416,12 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('id="playbook-back-to-search"', HTML_TEMPLATE)
         self.assertIn('id="playbook-profile-map"', HTML_TEMPLATE)
 
-    def test_pricing_takeaway_keeps_main_card_faded_behind_it(self) -> None:
-        self.assertIn(
-            '#pricing-grouping .story-stage[data-story-state^="takeaway"] > .panel > *:not(.takeaway) { opacity: .5; filter: none; }',
-            HTML_TEMPLATE,
-        )
+    def test_takeaway_keeps_main_card_fully_visible_behind_it(self) -> None:
+        self.assertNotIn('opacity: .5; filter: none;', HTML_TEMPLATE)
+        self.assertIn('padding-bottom: calc(var(--takeaway-space) + var(--takeaway-footnote-space) + 12px) !important;', HTML_TEMPLATE)
+        self.assertIn('function syncTakeawaySpace(section, takeaway)', HTML_TEMPLATE)
+        self.assertIn('if (previousTakeaway === nextTakeaway && previousContent !== nextContent)', HTML_TEMPLATE)
+        self.assertIn('max-height: none;', HTML_TEMPLATE)
 
     def test_story_peer_selection_prefers_iqr_eligible_lines(self) -> None:
         background = pd.DataFrame(

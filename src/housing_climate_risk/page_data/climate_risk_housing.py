@@ -142,9 +142,6 @@ WITHIN_GROUP_FEATURES = [
     ("Demographic", "Population vulnerability factors", "age_65_plus_pct", "percent"),
     ("Demographic", "Population vulnerability factors", "communication_barrier_pct", "percent"),
     ("Demographic", "Population vulnerability factors", "disability_pct", "percent"),
-    ("Housing Market", "Housing market", "homes_sold_yoy", "pct"),
-    ("Housing Market", "Housing market", "inventory_yoy", "pct"),
-    ("Housing Market", "Housing market", "avg_sale_to_list_yoy", "pct"),
 ]
 
 def clean_numeric(series: pd.Series) -> pd.Series:
@@ -1685,8 +1682,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     """Build the within-risk feature story from the DuckDB feature layer."""
     feature_columns = [item[2] for item in WITHIN_GROUP_FEATURES]
     economic_columns = feature_columns[:8]
-    demographic_columns = feature_columns[8:12]
-    housing_columns = feature_columns[12:]
+    demographic_columns = feature_columns[8:]
 
     economic = con.execute(
         f"""
@@ -1720,7 +1716,7 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         & events["event_start_month"].lt(analysis_end)
     ].copy()
     housing = load_redfin_county_monthly(con)
-    for column in ["median_ppsf_yoy", *housing_columns]:
+    for column in ["median_ppsf_yoy"]:
         housing[column] = pd.to_numeric(housing[column], errors="coerce")
         housing.loc[housing[column].le(-888888000), column] = np.nan
     affected = build_affected_event_windows(events, housing, pre_event_months=12, post_event_months=36)
@@ -1736,13 +1732,11 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
     complete = complete.merge(nri[["fips", "riskRating"]], on="fips", how="left")
 
     county_target = _county_average_event_window_target(complete)
-    county_housing_features = complete.groupby("fips", as_index=False)[housing_columns].mean()
-    county_housing = county_target.merge(county_housing_features, on="fips", how="left")
     counties = (
         nri[["fips", "riskRating"]]
         .merge(economic, on="fips", how="left")
         .merge(demographic, on="fips", how="left")
-        .merge(county_housing, on="fips", how="inner")
+        .merge(county_target, on="fips", how="inner")
     )
     for column in [FEATURE_TARGET_COLUMN, *feature_columns]:
         counties[column] = pd.to_numeric(counties[column], errors="coerce")
@@ -1795,52 +1789,30 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
             if pd.notna(getattr(row, FEATURE_TARGET_COLUMN))
         ]
 
-        valid_target = group[FEATURE_TARGET_COLUMN].dropna()
-        if len(valid_target) < 9:
+        performance_group = group.dropna(subset=[FEATURE_TARGET_COLUMN]).copy()
+        if len(performance_group) < 9:
             subgroup_payload[risk] = {"groups": [], "excludedOutliers": 0}
             continue
-        q1, q3 = valid_target.quantile([0.25, 0.75])
-        iqr = q3 - q1
-        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        clean_group = group.loc[group[FEATURE_TARGET_COLUMN].between(lower, upper)].copy()
         ranked_metrics = sorted(
             [item for item in metrics if item["rho"] is not None],
             key=lambda item: float(item["absRho"] or 0),
             reverse=True,
         )
-        top_metrics = [item for item in ranked_metrics if item["passesThreshold"]][:3]
-        if len(top_metrics) < 3:
-            top_metrics = ranked_metrics[:3]
-        top_features = [str(item["feature"]) for item in top_metrics]
-        cluster_frame = clean_group.dropna(subset=top_features).copy()
-        score = pd.Series(0.0, index=cluster_frame.index)
-        total_weight = 0.0
-        for metric in top_metrics:
-            feature = str(metric["feature"])
-            standard_deviation = cluster_frame[feature].std()
-            if not np.isfinite(standard_deviation) or standard_deviation == 0:
-                continue
-            weight = max(float(metric["absRho"] or 0), minimum_effect)
-            direction = 1 if float(metric["rho"] or 0) >= 0 else -1
-            score += (
-                (cluster_frame[feature] - cluster_frame[feature].median())
-                / standard_deviation
-                * weight
-                * direction
-            )
-            total_weight += weight
-        cluster_frame["featureIndex"] = score / max(total_weight, minimum_effect)
-        subgroup_count = 4 if len(cluster_frame) >= 80 else 3
-        try:
-            cluster_frame["subgroup"] = pd.qcut(
-                cluster_frame["featureIndex"],
-                subgroup_count,
-                labels=False,
-                duplicates="drop",
-            )
-        except ValueError:
-            cluster_frame["subgroup"] = 0
-        subgroup_map = cluster_frame.set_index("fips")["subgroup"].to_dict()
+        strong_metrics = [item for item in ranked_metrics if float(item["absRho"] or 0) >= 0.3]
+        distribution_metrics = strong_metrics or ranked_metrics[:1]
+        distribution_features = [str(item["feature"]) for item in distribution_metrics]
+
+        subgroup_count = 3 if risk == "Very High" else 4
+        performance_group = performance_group.sort_values(
+            [FEATURE_TARGET_COLUMN, "fips"], ascending=[False, True]
+        ).reset_index(drop=True)
+        performance_group["subgroup"] = np.minimum(
+            np.floor(
+                np.arange(len(performance_group)) * subgroup_count / len(performance_group)
+            ).astype(int),
+            subgroup_count - 1,
+        )
+        subgroup_map = performance_group.set_index("fips")["subgroup"].to_dict()
         subgroup_by_fips.update(
             {
                 str(fips).zfill(5): int(subgroup)
@@ -1850,33 +1822,30 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         )
         line_frame = complete.loc[
             complete["riskRating"].eq(risk)
-            & complete["fips"].isin(cluster_frame["fips"])
+            & complete["fips"].isin(performance_group["fips"])
         ].copy()
         line_frame["subgroup"] = line_frame["fips"].map(subgroup_map)
+        county_month_lines = (
+            line_frame.groupby(["fips", "subgroup", "event_window_month"], as_index=False)["median_ppsf_yoy"]
+            .median()
+        )
         group_entries: list[dict[str, object]] = []
-        group_feature_medians = clean_group[top_features].median()
-        group_feature_stds = clean_group[top_features].std().replace(0, np.nan)
-        for subgroup_index in sorted(cluster_frame["subgroup"].dropna().unique()):
+        for subgroup_index in sorted(performance_group["subgroup"].dropna().unique()):
             subgroup_index = int(subgroup_index)
-            members = cluster_frame.loc[cluster_frame["subgroup"].eq(subgroup_index)]
+            members = performance_group.loc[performance_group["subgroup"].eq(subgroup_index)]
             monthly = (
-                line_frame.loc[line_frame["subgroup"].eq(subgroup_index)]
+                county_month_lines.loc[county_month_lines["subgroup"].eq(subgroup_index)]
                 .groupby("event_window_month", as_index=False)["median_ppsf_yoy"]
                 .median()
                 .sort_values("event_window_month")
             )
             traits = []
-            for feature in top_features:
-                subgroup_median = members[feature].median()
+            for feature in distribution_features:
                 subgroup_q1, subgroup_q3 = members[feature].quantile([0.25, 0.75])
-                standardized_difference = (
-                    (subgroup_median - group_feature_medians[feature]) / group_feature_stds[feature]
-                )
                 traits.append(
                     {
                         "feature": feature,
-                        "direction": "higher" if standardized_difference >= 0 else "lower",
-                        "difference": serialize_number(abs(standardized_difference), 3),
+                        "median": serialize_number(members[feature].median(), 5),
                         "q1": serialize_number(subgroup_q1, 5),
                         "q3": serialize_number(subgroup_q3, 5),
                     }
@@ -1897,9 +1866,10 @@ def build_feature_payload(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
                 }
             )
         subgroup_payload[risk] = {
-            "features": top_features,
+            "features": distribution_features,
+            "hasStrongFeatures": bool(strong_metrics),
             "groups": group_entries,
-            "excludedOutliers": int(len(group) - len(clean_group)),
+            "excludedOutliers": 0,
         }
 
     return {
@@ -2055,7 +2025,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     .viz-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
     .timeseries-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); }
     .feature-grid { grid-template-columns: 1fr; }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--water); border-radius: 0; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+    .panel { position: relative; background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--water); border-radius: 0; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
     .panel h3, .panel p, .panel .sub, .panel .note, .panel .sources { margin-left: 0; margin-right: 0; }
     #pricing-grouping .panel, #features .panel { border-top-color: var(--teal); }
     #events .panel { border-top-color: var(--hazard); }
@@ -2096,24 +2066,30 @@ HTML_TEMPLATE = r"""<!doctype html>
     .takeaway.segmented { padding: 0; }
     .takeaway-section { display: block; padding: 24px 28px; }
     .takeaway-section + .takeaway-section { border-top: 1px solid #b9d8ce; background: rgba(255,255,255,.34); }
-    .sources { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 14px; }
-    .panel > .sources { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .sources { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 14px; }
+    .panel > .sources { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
     .sources a { color: #205f90; }
-    .tooltip { position: fixed; display: none; max-width: 300px; background: #172026; color: white; padding: 9px 10px; border-radius: 0; box-shadow: 0 8px 22px rgba(23,32,38,.28); font-size: 12px; line-height: 1.35; pointer-events: none; z-index: 10; }
+    .info-tooltip-trigger { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; min-width: 17px; border: 1px solid currentColor; border-radius: 50%; padding: 0; background: white; color: var(--teal); font-size: 10px; font-weight: 900; line-height: 1; cursor: pointer; }
+    .tooltip { position: fixed; display: none; max-width: min(300px, calc(100vw - 16px)); max-height: calc(100svh - 16px); overflow: auto; background: #172026; color: white; padding: 9px 10px; border-radius: 0; box-shadow: 0 8px 22px rgba(23,32,38,.28); font-size: 12px; line-height: 1.35; pointer-events: none; z-index: 1000; }
+    .tooltip.persistent { pointer-events: auto; }
     #county-results { border-radius: 0 !important; box-shadow: 0 8px 20px rgba(23,51,45,.10); }
     .county-line-label { font-size: 10px; fill: var(--muted); pointer-events: none; }
     .feature-line-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; min-height: 18px; margin: -4px 0 6px; color: var(--ink); font-size: 11px; font-weight: 700; }
     .feature-line-legend-item { display: inline-flex; align-items: center; gap: 7px; }
     .feature-line-key { width: 28px; border-top: 3px solid; }
-    #feature-risk-sidebar { align-items: center; justify-content: center; text-align: center; }
-    #feature-risk-sidebar .sidebar-label { width: 100%; }
-    .feature-importance-chart { display: grid; gap: 4px; margin-top: 6px; align-content: start; }
+    #feature-risk-sidebar { flex-wrap: nowrap; align-items: center; justify-content: center; text-align: left; }
+    #feature-risk-sidebar .sidebar-label { flex: 0 0 auto; width: auto; margin-right: 8px; }
+    .feature-importance-chart { display: grid; gap: 4px; margin-top: 6px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 4px; }
     .feature-story-grid { align-items: start; }
-    .feature-line-pane { position: relative; z-index: 10; isolation: isolate; }
-    .feature-plot-shell { min-width: 0; }
-    .feature-detail-stack { position: relative; min-height: min(52svh, 480px); overflow: hidden; }
+    .feature-line-pane { position: relative; z-index: 20; isolation: isolate; }
+    .feature-line-pane.scatter-negative .feature-relationship { border-left-color: #b42318; background: #fff0ed; color: #6f2119; }
+    #feature-chart-title .info-tooltip-trigger { margin: 0 5px; vertical-align: 2px; }
+    .feature-plot-shell { position: relative; min-width: 0; isolation: isolate; }
+    #feature-event-window { position: relative; z-index: 0; }
+    .feature-detail-stack { position: relative; min-height: min(52svh, 480px); max-height: min(58svh, 520px); overflow: hidden; padding-right: 5px; }
     .feature-detail-heading { position: relative; z-index: 3; min-height: 25px; margin: 0 0 6px; }
-    .feature-frame { position: absolute; inset: 31px 0 0; width: 100%; opacity: 0; pointer-events: none; transition: opacity 320ms ease, transform 380ms ease; }
+    .feature-frame { position: absolute; inset: var(--feature-frame-top, 42px) 0 auto; width: 100%; height: calc(100% - var(--feature-frame-top, 42px)); opacity: 0; pointer-events: none; transition: opacity 320ms ease, transform 380ms ease; }
+    .feature-frame[data-frame="1"] { display: flex; flex-direction: column; overflow: hidden; }
     #features .story-stage[data-story-state="feature-frame-1"] .feature-frame[data-frame="2"],
     #features .story-stage[data-story-state="feature-frame-1"] .feature-frame[data-frame="3"],
     #features .story-stage[data-story-state="feature-frame-2"] .feature-frame[data-frame="3"] { transform: translateY(42px); }
@@ -2121,26 +2097,51 @@ HTML_TEMPLATE = r"""<!doctype html>
     #features .story-stage[data-story-state="feature-frame-3"] .feature-frame[data-frame="1"],
     #features .story-stage[data-story-state="feature-frame-3"] .feature-frame[data-frame="2"] { transform: translateY(-42px); }
     #features .story-stage[data-story-state="feature-frame-1"] .feature-frame[data-frame="1"],
+    #features .story-stage[data-story-state="takeaway-feature"] .feature-frame[data-frame="1"],
     #features .story-stage[data-story-state="feature-frame-2"] .feature-frame[data-frame="2"],
     #features .story-stage[data-story-state="feature-frame-3"] .feature-frame[data-frame="3"] { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    #features .story-stage[data-story-state="feature-frame-2"] .feature-detail-heading,
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-detail-heading { display: none; }
+    #features .story-stage[data-story-state="feature-frame-2"] .feature-frame[data-frame="2"],
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-frame[data-frame="3"] { inset: 0; height: 100%; }
+    .feature-order-controls { display: flex; gap: 6px; margin: 2px 0 6px; }
+    .feature-order-controls button { flex: 1 1 0; padding: 6px 8px; font-size: 10px; }
+    .feature-click-hint { margin: 0 0 5px; color: var(--muted); font-size: 9px; }
     .importance-group-label { margin: 5px 0 1px; color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
-    .importance-row { display: grid; grid-template-columns: minmax(176px, 1.18fr) minmax(108px, .82fr); gap: 8px; align-items: center; width: 100%; border: 0; border-radius: 0; padding: 2px 3px; background: transparent; color: var(--ink); text-align: left; font-size: 10px; }
+    .importance-row { display: grid; grid-template-columns: 9px minmax(164px, 1.18fr) minmax(108px, .82fr); gap: 7px; align-items: center; width: 100%; border: 1px solid transparent; border-radius: 0; padding: 3px 4px; background: transparent; color: var(--ink); text-align: left; font-size: 10px; }
     .importance-row:hover, .importance-row.active { background: #e8f4ef; color: #17332d; }
     .importance-row.active .importance-label { color: #17332d; }
     .importance-row.active { box-shadow: inset 3px 0 0 var(--teal); }
+    .importance-row.active.negative-active { background: #fff0ed; box-shadow: inset 3px 0 0 #b42318; }
+    .importance-strong-group { display: grid; gap: 4px; border: 2px solid #9a6b00; padding: 3px; background: rgba(184,134,11,.045); }
+    .correlation-marker { width: 8px; height: 8px; border-radius: 2px; }
+    .correlation-marker.positive { background: #16803c; }
+    .correlation-marker.negative { background: #b42318; }
     .importance-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .importance-bar-track { position: relative; height: 10px; border: 1px solid var(--line); background: #edf2ef; overflow: hidden; }
-    .importance-bar { height: 100%; transform-origin: left center; transition: width 360ms ease; }
-    .importance-bar.positive { background: var(--water); }
-    .importance-bar.negative { background: var(--hazard); }
-    .importance-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .importance-direction-legend { display: flex; flex: 0 0 auto; gap: 10px; color: var(--muted); font-size: 9px; font-weight: 750; }
-    .importance-direction-legend span { display: inline-flex; align-items: center; gap: 4px; }
-    .importance-direction-swatch { width: 18px; height: 8px; display: inline-block; }
-    .feature-method { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.35; }
-    .feature-method strong { color: var(--ink); }
-    .feature-footnotes { margin-top: 4px; color: var(--muted); font-size: 8px; line-height: 1.3; }
+    .importance-bar { height: 100%; background: linear-gradient(90deg, #b9ddd4, #11796d); transform-origin: left center; transition: width 360ms ease; }
+    .feature-footnote-tabs { display: none; gap: 18px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; font-weight: 800; }
+    #features .story-stage[data-story-state="feature-frame-1"] .feature-footnote-tabs { display: flex; }
+    .feature-footnote-topic { display: inline-flex; align-items: center; gap: 4px; }
     .feature-relationship { min-height: 48px; margin-top: 8px; padding: 10px 12px; border-left: 4px solid var(--teal); background: #edf7f3; color: var(--ink); font-size: 12px; line-height: 1.42; }
+    .feature-distribution-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 7px; align-items: center; margin: 4px 0 8px; }
+    .feature-distribution-controls button { min-width: 34px; padding: 5px 8px; font-size: 12px; }
+    .feature-distribution-current { min-width: 0; color: var(--ink); font-size: 17px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; text-align: center; }
+    .feature-distribution-controls.single-feature .feature-distribution-current { grid-column: 1 / -1; }
+    .feature-distribution-title { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; color: var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
+    .feature-distribution-plot { display: block; width: 100%; }
+    .feature-distribution-chart { width: 100%; height: min(24svh, 210px); display: block; overflow: visible; }
+    .feature-subgroup-takeaway { margin-top: 8px; padding: 10px 12px; border-left: 4px solid #7651a8; background: #f2eef8; font-size: 12px; line-height: 1.42; }
+    .feature-subgroup-summary { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; overflow: hidden; }
+    .feature-subgroup-summary-intro { margin: 0 0 2px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .feature-subgroup-summary-rows { display: grid; align-content: start; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 4px; }
+    .feature-subgroup-summary-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 11px; border: 1px solid var(--line); background: #f8fbf9; font-size: 12px; }
+    .feature-peer-relation { padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 850; white-space: nowrap; }
+    .feature-peer-relation.higher { background: #e8f4ef; color: #166147; }
+    .feature-peer-relation.lower { background: #fff0ed; color: #9b3026; }
+    .feature-peer-relation.close { background: #edf2f5; color: #50636d; }
+    .feature-sequence-resume { display: none; margin: 0 auto 8px; }
+    .feature-sequence-resume.visible { display: inline-flex; }
     .feature-story-copy { display: grid; margin-top: 4px; }
     .feature-story-copy p { margin: 0; padding: 22px 24px; border-left: 6px solid var(--line); background: #f6f8f6; font-size: clamp(17px, 1.7vw, 23px); line-height: 1.55; }
     .subgroup-list { display: grid; gap: 8px; margin-top: 10px; }
@@ -2151,19 +2152,28 @@ HTML_TEMPLATE = r"""<!doctype html>
     .subgroup-iqr { display: grid; gap: 8px; margin-top: 12px; }
     .subgroup-iqr-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 14px; align-items: center; padding: 10px 12px; background: white; border: 1px solid var(--line); font-size: 12px; }
     .subgroup-iqr-value { color: var(--ink); font-weight: 800; white-space: nowrap; }
-    .feature-subgroup-controls { display: none; width: 132px; gap: 9px; pointer-events: auto; }
+    .feature-subgroup-control-stack { position: relative; z-index: 100; width: 146px; align-self: center; isolation: isolate; pointer-events: auto; }
+    .feature-subgroup-controls { display: none; width: 100%; gap: 9px; pointer-events: auto; }
     .feature-subgroup-controls.visible { display: grid; }
-    #features .story-stage[data-story-state="feature-frame-3"] .feature-plot-shell { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 8px; align-items: center; }
-    #features .story-stage[data-story-state="feature-frame-3"] .feature-subgroup-controls { position: relative; z-index: 2; align-self: center; }
-    .feature-subgroup-control { position: relative; width: 100%; min-height: 30px; padding: 6px 10px 6px 31px; border: 2px solid var(--subgroup-color); border-radius: 999px; background: rgba(255,255,255,.96); color: var(--subgroup-color); text-align: left; font-size: 11px; cursor: pointer !important; pointer-events: auto; touch-action: manipulation; user-select: none; }
+    #features .story-stage[data-story-state="feature-frame-2"] .feature-plot-shell,
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-plot-shell { display: grid; grid-template-columns: minmax(0, 1fr) 146px; gap: 8px; align-items: center; }
+    #features .story-stage[data-story-state="feature-frame-2"] .feature-subgroup-controls,
+    #features .story-stage[data-story-state="feature-frame-3"] .feature-subgroup-controls { position: relative; z-index: 101; align-self: center; width: 100%; }
+    .feature-subgroup-control, .feature-subgroup-control * { cursor: pointer !important; user-select: none; }
+    .feature-subgroup-control { position: relative; z-index: 102; width: 100%; min-height: 30px; padding: 6px 10px 6px 31px; border: 2px solid var(--subgroup-color); border-radius: 999px; background: rgba(255,255,255,.96); color: var(--subgroup-color); text-align: left; font-size: 11px; cursor: pointer !important; pointer-events: auto; touch-action: manipulation; user-select: none; }
     .feature-subgroup-control::before { content: ""; position: absolute; left: 10px; top: 50%; width: 10px; height: 10px; border: 2px solid var(--subgroup-color); border-radius: 50%; background: white; transform: translateY(-50%); cursor: pointer; pointer-events: none; }
+    .feature-subgroup-control-label { display: block; pointer-events: none; user-select: none; }
     .feature-subgroup-control.active { background: var(--subgroup-color); color: white; }
     .feature-subgroup-control.active::before { border-color: white; background: var(--subgroup-color); box-shadow: inset 0 0 0 2px var(--subgroup-color), inset 0 0 0 4px white; }
     .feature-subgroup-control:focus-visible { outline: 3px solid rgba(17,121,109,.32); outline-offset: 2px; }
     .subgroup-note { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.4; }
     #pricing-grouping .panel { position: relative; }
-    .sequence-callout { position: absolute; z-index: 7; left: 8%; right: 8%; bottom: 18px; min-height: 64px; padding: 14px 20px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(23,51,45,.18); background: rgba(255,255,255,.96); box-shadow: var(--shadow); color: var(--ink); font-size: 19px; line-height: 1.4; font-weight: 800; text-align: center; opacity: 0; pointer-events: none; transform: translateY(12px); transition: opacity 240ms ease, transform 240ms ease; }
+    .rating-line-pane { position: relative; display: flex; flex-direction: column; min-width: 0; }
+    .sequence-callout { position: relative; z-index: 7; align-self: flex-start; width: calc(100% - 82px); min-height: 0; margin: 4px 24px 0 58px; padding: 7px 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(23,51,45,.18); background: rgba(255,255,255,.94); box-shadow: 0 5px 14px rgba(23,51,45,.12); color: var(--ink); font-size: 12px; line-height: 1.3; font-weight: 750; text-align: center; opacity: 0; pointer-events: none; transform: translateY(7px); transition: opacity 240ms ease, transform 240ms ease; }
     .sequence-callout.visible { opacity: 1; transform: translateY(0); }
+    .event-horizon-number { display: inline-block; min-width: 1.2em; margin: 0 .08em; padding: 0 .18em; border: 2px solid #9a6b00; background: #f4d77c; color: #5b4300; text-align: center; }
+    .event-horizon-number.changed { animation: eventHorizonPulse 720ms ease both; }
+    @keyframes eventHorizonPulse { 0% { transform: scale(.72); background: #fff5c2; } 55% { transform: scale(1.2); background: #e9bb36; } 100% { transform: scale(1); background: #f4d77c; } }
     .percentile-comparison { display: grid; grid-template-columns: minmax(145px, .9fr) 1fr; gap: 10px 16px; align-items: center; }
     .percentile-comparison-row { display: contents; }
     .comparison-scale { position: relative; height: 24px; border: 1px solid var(--line); background: linear-gradient(90deg, #e8f4ed, #f0cf75, #e77662); }
@@ -2189,10 +2199,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     .playbook-events-pane { display: flex; flex-direction: column; }
     .playbook-event-column { display: grid; flex: 1 1 auto; align-content: start; gap: 7px; min-height: 0; margin-top: 8px; padding-right: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
     .playbook-event-card { padding: 9px 10px; border: 1px solid var(--line); border-left: 4px solid #df7d2f; background: #fff8f1; font-size: 11px; line-height: 1.35; }
-    .playbook-back-button { margin-bottom: 10px; border-radius: 0; }
+    .playbook-back-button { align-self: flex-start; margin-bottom: 8px; border-radius: 0; padding: 5px 8px; font-size: 10px; line-height: 1.15; }
     .playbook-subgroup-badge { margin: 10px 0; padding: 9px 10px; border-left: 4px solid var(--teal); background: #eaf5f1; font-size: 12px; line-height: 1.35; }
     #playbook-profile-details { min-width: 0; }
-    .playbook-feature-summary { display: grid; gap: 6px; }
+    .playbook-feature-summary { display: grid; gap: 6px; max-height: min(26svh, 210px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
     .playbook-feature-row { display: grid; grid-template-columns: minmax(110px, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 10px; }
     .playbook-feature-insufficient { padding: 14px; border: 1px solid var(--line); background: #f5f7f5; color: var(--muted); font-size: 13px; line-height: 1.45; }
     .feature-data-unavailable { grid-column: 2 / -1; color: var(--muted); font-style: italic; }
@@ -2259,16 +2269,20 @@ HTML_TEMPLATE = r"""<!doctype html>
     .story-stage[data-story-state^="feature-frame"] > .sources { opacity: 1; }
     .story-stage .takeaway { opacity: 0; max-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; transition: opacity 320ms ease, translate 380ms ease; }
     .story-stage > .panel > *:not(.takeaway) { transition: opacity 320ms ease, filter 320ms ease; }
-    .slide:not(#pricing-grouping) .story-stage[data-story-state^="takeaway"] > .panel > *:not(.takeaway) { opacity: .5; filter: none; }
-    #pricing-grouping .story-stage[data-story-state^="takeaway"] > .panel > *:not(.takeaway) { opacity: .5; filter: none; }
+    .story-stage[data-story-state^="takeaway"] > .panel { --takeaway-space: min(17svh, 132px); --takeaway-bottom: 8px; --takeaway-footnote-space: 0px; padding-bottom: calc(var(--takeaway-space) + var(--takeaway-footnote-space) + 12px) !important; }
+    .story-stage[data-story-state^="takeaway"] > .panel:has(> .sources) { --takeaway-bottom: 52px; --takeaway-footnote-space: 44px; }
+    .story-stage[data-story-state^="takeaway"] > .panel > *:not(.takeaway) { opacity: 1; filter: none; }
+    .story-stage[data-story-state^="takeaway"] > .panel > .sources { bottom: 8px; }
     .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway,
-    .story-stage .takeaway.story-outgoing-takeaway { position: absolute; z-index: 8; left: 50%; top: 50%; width: calc(100% - 36px); max-width: 1060px; max-height: 70svh; margin: 0; padding: 24px 28px; opacity: 1; overflow: visible; transform: translate(-50%, -50%); font-size: clamp(22px, 2.6vw, 34px); line-height: 1.35; }
+    .story-stage .takeaway.story-outgoing-takeaway { position: absolute; z-index: 8; left: 8px; right: 8px; top: auto; bottom: var(--takeaway-bottom, 8px); width: auto; max-width: none; max-height: none; margin: 0; padding: 10px 14px; opacity: 1; overflow: hidden; transform: none; font-size: clamp(13px, 1.15vw, 17px); line-height: 1.3; }
+    #features .story-stage[data-story-state="takeaway-feature"] > .panel { --takeaway-bottom: 40px; --takeaway-footnote-space: 32px; }
+    #features .story-stage[data-story-state="takeaway-feature"] .feature-footnote-tabs { display: flex; position: absolute; z-index: 9; left: 14px; right: 14px; bottom: 8px; margin: 0; background: var(--panel); }
     .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway.segmented,
     .story-stage .takeaway.story-outgoing-takeaway.segmented { padding: 0; }
     .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway .takeaway-section { display: none; }
-    .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway .takeaway-section.story-active-segment { display: block; border-top: 0; }
+    .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway .takeaway-section.story-active-segment { display: block; border-top: 0; padding: 10px 14px; }
     .story-stage .takeaway.story-outgoing-takeaway .takeaway-section { display: none; }
-    .story-stage .takeaway.story-outgoing-takeaway .takeaway-section.story-active-segment { display: block; border-top: 0; }
+    .story-stage .takeaway.story-outgoing-takeaway .takeaway-section.story-active-segment { display: block; border-top: 0; padding: 10px 14px; }
     .story-slide-out-up { animation: takeawayOutUp 420ms ease both; }
     .story-slide-in-up { animation: takeawayInUp 420ms ease both; }
     .story-slide-out-down { animation: takeawayOutDown 420ms ease both; }
@@ -2289,13 +2303,22 @@ HTML_TEMPLATE = r"""<!doctype html>
     #playbook .story-stage[data-story-state^="history-"] .playbook-profile-map-pane { display: none; }
     #playbook .story-stage[data-story-state="history-events"] .playbook-commentary-pane { display: none; }
     #playbook .story-stage[data-story-state="history-compare"] .playbook-events-pane { display: none; }
+    #playbook .story-stage[data-story-state^="history-"] .playbook-profile-panel { display: flex; flex-direction: column; min-height: 0; }
+    #playbook .story-stage[data-story-state^="history-"] #playbook-selected-county-name { display: none !important; }
+    #playbook .story-stage[data-story-state^="history-"] .playbook-feature-summary { flex: 1 1 auto; min-height: 0; max-height: none; }
+    #playbook .story-stage[data-story-state^="history-"] .playbook-subgroup-badge { flex: 0 0 auto; margin: auto 0 0; }
     .story-stage .chart.rating-risk-line { height: min(48svh, 470px); }
     .story-stage .chart.map-companion-line { height: min(43svh, 405px); }
     .story-stage .chart.map-companion-map { height: min(38svh, 340px); }
     .story-stage #score-scatter { height: min(41svh, 320px) !important; }
+    .story-stage[data-story-state^="takeaway"] .chart.rating-risk-line { height: min(48svh, 470px, max(190px, calc(100svh - var(--takeaway-space) - 265px))); }
+    .story-stage[data-story-state^="takeaway"] .chart.map-companion-line { height: min(43svh, 405px, max(180px, calc(100svh - var(--takeaway-space) - 275px))); }
+    .story-stage[data-story-state^="takeaway"] .chart.map-companion-map { height: min(38svh, 340px, max(170px, calc(100svh - var(--takeaway-space) - 300px))); }
+    .story-stage[data-story-state^="takeaway"] #score-scatter { height: min(41svh, 320px, max(180px, calc(100svh - var(--takeaway-space) - 245px))) !important; }
+    #features .story-stage[data-story-state^="takeaway"] .feature-detail-stack { min-height: min(52svh, 480px, max(190px, calc(100svh - var(--takeaway-space) - 260px))); max-height: min(52svh, 480px, max(190px, calc(100svh - var(--takeaway-space) - 260px))); }
     #features .feature-line-pane.scatter-active #feature-event-window { height: min(40svh, 360px); }
+    #features .story-stage[data-story-state="feature-frame-2"] #feature-event-window,
     #features .story-stage[data-story-state="feature-frame-3"] #feature-event-window { height: min(47svh, 435px); }
-    #features .story-stage[data-story-state="feature-frame-3"] #feature-event-window { pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .story-stage > *, .story-stage .takeaway { transition-duration: 1ms !important; }
@@ -2315,12 +2338,12 @@ HTML_TEMPLATE = r"""<!doctype html>
       .playbook-event-item { grid-template-columns: 30px minmax(0,1fr); }
       .event-change { grid-column: 2; justify-content: flex-start; }
       .playbook-selected-layout { grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr) minmax(190px, .7fr); gap: 8px; }
-      .importance-row { grid-template-columns: minmax(125px, 1fr) 1fr; }
+      .importance-row { grid-template-columns: 9px minmax(125px, 1fr) minmax(90px, 1fr); }
       .story-stage { padding: 18px 0; }
       .story-stage > .panel { margin-top: 82px !important; max-height: calc(100svh - 96px); }
       .story-stage > .panel:has(> .sources) { padding-bottom: 122px; }
       .story-stage[data-story-state^="takeaway"] .takeaway.story-active-takeaway,
-      .story-stage .takeaway.story-outgoing-takeaway { width: calc(100% - 16px); margin: 0; font-size: 22px; }
+      .story-stage .takeaway.story-outgoing-takeaway { width: auto; margin: 0; font-size: 16px; }
     }
   </style>
 </head>
@@ -2344,8 +2367,6 @@ HTML_TEMPLATE = r"""<!doctype html>
         <canvas id="score-scatter-canvas" aria-label="Monthly Median PPSF YoY lines for U.S. counties"></canvas>
         <svg id="score-scatter-axes" aria-hidden="true"></svg>
       </div>
-      <p class="footnote" id="t-scatter-fn1"></p>
-      <p class="footnote" id="t-scatter-fn2"></p>
       <div class="takeaway" id="score-scatter-takeaway"></div>
     </div>
   </section>
@@ -2362,15 +2383,15 @@ HTML_TEMPLATE = r"""<!doctype html>
         <div class="sidebar-label" id="t-hazard-sidebar-label"></div>
       </div>
       <div class="viz-grid pricing-viz-grid">
-        <div>
+        <div class="rating-line-pane">
           <svg id="rating-scatter" class="chart map-companion-line rating-risk-line"></svg>
+          <div id="rating-sequence-callout" class="sequence-callout"></div>
         </div>
         <div class="map-with-legend">
           <svg id="rating-map" class="chart map-companion-map"></svg>
           <div class="legend" id="rating-map-legend"></div>
         </div>
       </div>
-      <div id="rating-sequence-callout" class="sequence-callout"></div>
       <div class="takeaway" id="pricing-takeaway"></div>
       <div class="sources" id="t-pricing-sources"></div>
     </div>
@@ -2421,7 +2442,10 @@ HTML_TEMPLATE = r"""<!doctype html>
           <h3 id="feature-chart-title"></h3>
           <div class="feature-plot-shell">
             <svg id="feature-event-window" class="chart map-companion-line"></svg>
-            <div id="feature-subgroup-toggles" class="feature-subgroup-controls" aria-label="Feature subgroup lines"></div>
+            <div class="feature-subgroup-control-stack">
+              <button id="feature-sequence-resume" class="feature-sequence-resume" type="button"></button>
+              <div id="feature-subgroup-toggles" class="feature-subgroup-controls" aria-label="Feature subgroup lines"></div>
+            </div>
           </div>
           <div id="feature-line-legend" class="feature-line-legend"></div>
           <div id="feature-relationship" class="feature-relationship" hidden></div>
@@ -2429,26 +2453,28 @@ HTML_TEMPLATE = r"""<!doctype html>
         <div class="feature-detail-stack">
           <h3 id="feature-detail-title" class="feature-detail-heading"></h3>
           <div class="feature-frame" data-frame="1">
-            <div class="importance-heading-row">
-              <span></span>
-              <div class="importance-direction-legend" aria-label="Relationship direction">
-                <span><i class="importance-direction-swatch" style="background:var(--water)"></i>Positive</span>
-                <span><i class="importance-direction-swatch" style="background:var(--hazard)"></i>Negative</span>
-              </div>
+            <div id="feature-order-controls" class="feature-order-controls" aria-label="Feature ordering">
+              <button type="button" data-order="category"></button>
+              <button type="button" data-order="significance"></button>
             </div>
+            <p id="feature-click-hint" class="feature-click-hint"></p>
             <div id="feature-importance-chart" class="feature-importance-chart"></div>
-            <div id="feature-method" class="feature-method"></div>
-            <div id="feature-footnotes" class="feature-footnotes"></div>
           </div>
           <div class="feature-frame" data-frame="2">
-            <div id="feature-risk-story" class="feature-story-copy"></div>
+            <div id="feature-distribution-controls" class="feature-distribution-controls"></div>
+            <div id="feature-distribution-title" class="feature-distribution-title"></div>
+            <div class="feature-distribution-plot">
+              <svg id="feature-distribution-chart" class="feature-distribution-chart"></svg>
+            </div>
+            <div id="feature-subgroup-takeaway" class="feature-subgroup-takeaway"></div>
           </div>
           <div class="feature-frame" data-frame="3">
-            <div id="feature-subgroup-list" class="subgroup-list"></div>
+            <div id="feature-subgroup-summary" class="feature-subgroup-summary"></div>
           </div>
         </div>
       </div>
-      <div class="sources" id="t-features-sources"></div>
+      <div id="feature-footnote-tabs" class="feature-footnote-tabs"></div>
+      <div class="takeaway" id="feature-takeaway"></div>
     </div>
   </section>
 
@@ -2521,13 +2547,14 @@ const TEXT = {
   heroDek: "Climate change results in more severe weather events and natural disasters that cause substantial damage to properties and in extreme cases, devastate local communities. What does all this mean to you as a homeowner?",
   storyPrevLabel: "Prev",
   storyNextLabel: "Next",
+  sourcesLabel: "Sources",
+  informationTooltipLabel: "More information",
 
   // ---- Pricing section ----
   pricingH2: "To Begin: What Does Growth in Housing Markets Look Like Across the United States?",
   scatterTitle: "Median Price-Per-Square-Foot (PPSF) Year-Over-Year (YoY) by County",
   scatterSub: "Each line represents a county's monthly Median PPSF YoY over the latest 10 complete calendar years.",
-  scatterFootnote1: "* Values beyond the 10th–90th percentile are capped to keep extreme observations from compressing the visible pattern.",
-  scatterFootnote2: "* Only counties with a valid observation in every month of the latest 10 complete calendar years are included.",
+  scatterFootnotesTooltip: "Values beyond the 10th–90th percentile are capped to keep extreme observations from compressing the visible pattern. Only counties with a valid observation in every month of the latest 10 complete calendar years are included.",
   pricingScoreScatterTakeaway: "<span class=\"takeaway-section\">From county-level median house price growth over the last 10 years, there is significant variation and there doesn't seem to be a clear pattern.</span><span class=\"takeaway-section\">However, the impact of climate change is uneven across the country, so looking from a climate angle might reveal a more meaningful pattern.</span>",
   pricingGroupingSubtitle: "A Climate Perspective: What Happens When Counties are Grouped by Climate Risk?",
   pricingNriPlaceholder: "The <a href='https://www.fema.gov/flood-maps/products-tools/national-risk-index' target='_blank' rel='noopener'>FEMA National Risk Index (NRI)</a> serves as a measure of climate-related risk exposure. It summarizes a county's expected annual loss, social vulnerability, and community resilience across natural hazards. Counties are assigned a risk rating along a scale from \"Very Low\" to \"Very High\".",
@@ -2553,28 +2580,37 @@ const TEXT = {
   eventsShortSubtitle: "Within the short term:",
   eventsLongTitle: "Median PPSF YoY in 5 years after event",
   eventsLongSubtitle: "Within the longer term:",
+  eventHorizonYears: {A: "3", B: "5"},
   riskSidebarLabel: "Risk rating",
   eventWindowATakeaway: "Past the 2-year mark post-event, house price growth momentum diverges across the different risk bands. Growth weakening is more pronounced in higher risk groups.",
   eventFuturePrompt: "What does it look like further into the future?",
   eventWindowBTakeaway: "Around the 4-year mark post-event, house price growth across the different risk bands begin to converge to the same level. It appears that the event’s impact fades from view eventually.",
-  eventsTakeaway: "<span class=\"takeaway-section\">In higher-risk counties, there is a time lag after an event before house price growth declines significantly. Homeowners who made it through the period of weakness then experienced some subsequent recovery.</span><span class=\"takeaway-section\">The risk bands have significant width, indicating that counties are hardly uniform, even within the same risk category. Why does this variation exist?</span>",
+  eventsTakeaway: "<span class=\"takeaway-section\">In higher-risk counties, there is a time lag after an event before house price growth declines significantly. Homeowners who made it through the period of weakness then experienced some subsequent recovery.</span><span class=\"takeaway-section\">The risk bands have significant width, indicating that counties' housing markets are hardly uniform, even within the same risk category. What is behind this variation?</span>",
   eventsSources: "Sources: local marts <code>mart.fema_disaster_declarations</code>, <code>mart.noaa_storm_events</code>, <code>mart.redfin_county_monthly</code>, and <code>mart.nri_county_risk</code>. Housing data provided by Redfin; see the linked Download Hub and methodology in the first housing-data source note.",
 
   // ---- Features section ----
-  featuresH2: "Why Do Counties Behave Differently Within the Same Risk Group?",
-  featuresCopy: "Counties have different features which can make their housing markets more vulnerable or resilient to destructive weather events, ultimately influencing the rate of house price growth.",
+  featuresH2: "What Factors Influence a County's Housing Market Performance within Risk Groups?",
+  featuresCopy: "From the vast data on counties, a model to understand counties' housing market <span id=\"feature-performance-term\">performance</span> can be built upon the most significant data types.",
+  featurePerformanceTooltip: "Performance is defined in terms of different Median PPSF YoY over the same time period.",
   featureSidebarLabel: "Risk rating",
   featureLineTitle: "Median PPSF YoY around events",
-  featureScatterTitle: "Average PPSF YoY around events vs. {feature}",
-  featureFrame1Title: "Which features matter most to {risk} Risk counties?",
-  featureFrame2Title: "Which features matter most to {risk} Risk counties?",
-  featureFrame3Title: "What patterns exist among {risk} Risk counties?",
-  featureMethod: "<strong>Outcome:</strong> Each county’s average monthly median PPSF YoY across its complete event windows, from month -12 through the event start and months 1–36 after the event end. Counties with multiple qualifying events still contribute one observation. <strong>Ranking:</strong> Absolute Spearman correlation, estimated with bootstrapped 95% confidence intervals and a minimum-effect threshold of |ρ| ≥ {threshold}.",
-  featureFootnotes: "* Net earnings, dividends/interest/rent, and transfer receipts are annual BEA amounts per county resident, averaged across the latest 10 years. Insurance, property-tax, and utility shares use county median annual household income as the denominator. * Aged population means age 65 and above. * Language barrier means lack of English fluency.",
+  featureScatterTitle: "Median PPSF YoY around events vs. {feature}",
+  featureOutcomeTerm: "Median PPSF YoY around events",
+  featureOutcomeTooltip: "This value is each county's average monthly Median PPSF YoY across its complete event windows, from month -12 through the event start and months 1–36 after the event end. Counties with multiple qualifying events contribute one observation.",
+  featureFrame1Title: "Which data types matter most to {risk} Risk counties?",
+  featureFrame2Title: "What types of counties exist within the {risk} Risk group?",
+  featureFrame3Title: "What features define {subgroup} in the {risk} Risk group?",
+  featureGroupByCategory: "Group by Category",
+  featureOrderBySignificance: "Order by Significance",
+  featureClickHint: "Select any feature to reveal its relationship with Median PPSF YoY around events.",
+  featureStrongTooltip: "Strongest correlation: |ρ| ≥ 0.30",
+  featureSourcesTopic: "Sources",
+  featureRankingTopic: "Ranking",
+  featureSourcesNote: "DuckDB feature-layer tables feature.county_economic_annual, feature.county_demographic_annual, and feature.county_risk. Economic and demographic features use ten-year county averages.",
+  featureRankingNote: "Data types are ranked by descending absolute Spearman correlation (|ρ|). A correlation is significant if its bootstrapped 95% confidence intervals meet the minimum-effect threshold of |ρ| ≥ {threshold}.",
   featureCategories: {
-    Economic: "Economic features",
-    Demographic: "Demographic features",
-    "Housing Market": "Housing Market features",
+    Economic: "Economic Data",
+    Demographic: "Demographic Data",
   },
   featureLabels: {
     net_earnings_per_capita_usd: "Net Earnings per Resident (Place of Residence)",
@@ -2589,38 +2625,48 @@ const TEXT = {
     age_65_plus_pct: "Aged Population Share",
     communication_barrier_pct: "Share of Population with Language Barrier",
     disability_pct: "Share of Population with Disabled Status",
-    homes_sold_yoy: "Growth of Homes Sold",
-    inventory_yoy: "Growth of Housing Inventory",
-    avg_sale_to_list_yoy: "Growth of Sale-to-List Price Ratio",
   },
-  featureRelationship: {
-    positive: "Within {risk} Risk counties, higher {feature} tends to accompany higher average PPSF YoY around events (Spearman ρ = {rho}; 95% CI {ci}).",
-    negative: "Within {risk} Risk counties, higher {feature} tends to accompany lower average PPSF YoY around events (Spearman ρ = {rho}; 95% CI {ci}).",
-    weak: "Within {risk} Risk counties, {feature} has a weak monotonic relationship with average PPSF YoY around events (Spearman ρ = {rho}; 95% CI {ci}).",
-  },
-  featureStoryRisk: "For {risk} Risk counties, {first} is the clearest signal, followed by {second} and {third}.",
-  subgroupNames: ["Lower", "Lower-Middle", "Upper-Middle", "Upper"],
+  featureRelationship: "{feature} has a {strength} {direction} relationship with Median PPSF YoY around events.",
+  featureRelationshipStrength: {weak: "weak", moderate: "moderate", strong: "strong"},
+  featureRelationshipDirection: {positive: "positive", negative: "negative"},
+  featureTakeaway: "A location's NRI Risk Rating by itself doesn't determine everything. Many different attributes can also influence house price growth.",
+  subgroupNamesFour: ["Strong Overperformers", "Mild Overperformers", "Mild Underperformers", "Strong Underperformers"],
+  subgroupNamesThree: ["Overperformers", "Average Performers", "Underperformers"],
   subgroupFallback: "Subgroup {number}",
   subgroupCount: "{count} counties",
-  subgroupTarget: "Average PPSF YoY around events: {value}",
-  subgroupIqrIntro: "Middle 50% of values for this subgroup's most important features:",
-  subgroupIqrRange: "{low} to {high}",
+  featureDistributionFallback: "No feature reaches |ρ| ≥ 0.30 for this risk group; the strongest available feature is shown.",
+  featureDistributionTitle: "County Distribution",
+  featureDistributionOutlierTooltip: "Outlier values beyond 1.5 times the interquartile range are not shown in this plot.",
+  featureDistributionVeryHighTooltip: "All available values are shown for the Very High Risk group because this group has relatively few counties.",
+  featureDistributionPrevious: "Previous feature",
+  featureDistributionNext: "Next feature",
+  featureDistributionSelected: "Selected subgroup",
+  featureDistributionLevel: {higher: "higher", lower: "lower"},
+  featureResumeSequence: "Resume",
+  featureSubgroupTakeaway: "Counties with {level} {feature} values are more likely to be {subgroup} in the {risk} Risk group.",
+  featureSubgroupSummaryIntro: "Compared with other {risk} Risk counties, counties in {subgroup} tend to have:",
+  featurePeerRelation: {
+    higher: "above average",
+    lower: "below average",
+    close: "average",
+  },
+  featureSubgroupSummaryUnavailable: "A feature summary is not available for this subgroup.",
   featureGroupMedianLegend: "{risk} group median",
   featureEventMarker: "Event",
   featureXAxis: "Months from event",
   featureYAxis: "Median PPSF YoY",
-  featureScatterYAxis: "Average PPSF YoY around events",
-  featuresSources: "Sources: DuckDB feature-layer tables <code>feature.county_economic_annual</code>, <code>feature.county_demographic_annual</code>, <code>feature.county_housing_monthly</code>, and <code>feature.county_risk</code>. Economic and demographic features use ten-year county averages. The outcome is each county’s average monthly median PPSF YoY across complete -12 to +36 event windows.",
+  featureScatterYAxis: "Median PPSF YoY around events",
 
   // ---- Playbook section ----
   playbookH2: "Climate Playbook: What to Know About Your County's Climate Exposure",
   playbookSearchPlaceholder: "Search for a county by name, state, or FIPS…",
   playbookInsufficientFeatureData: "Insufficient feature data available for {county}.",
-  playbookInsufficientEventWindowData: "The most important features for {county} could not be determined because there were insufficient data for a complete event window.",
+  playbookInsufficientEventWindowData: "The most important data types for {county} could not be determined because there were insufficient housing data to form a complete event window for analysis.",
   playbookInsufficientFeatureValue: "Insufficient data",
   playbookHistoryTitle: "Monthly Median PPSF YoY Over the Past 10 Years",
-  playbookFeatureTitle: "Most important features for {risk} Risk counties",
-  playbookSubgroup: "With the above features, {county}'s house price growth rate falls within the {subgroup} range of {risk} Risk counties.",
+  playbookFeatureTitle: "Most important data types for {risk} Risk counties",
+  playbookSubgroupFeatureTitle: "County Traits",
+  playbookSubgroup: "{county}'s house price growth rate around extreme climate events makes it a {subgroup} among {risk} Risk counties.",
   playbookPastEventsTitle: "Past extreme weather events",
   playbookNoPastEvents: "No qualifying extreme weather events occurred during this 10-year period.",
   playbookZoomOut: "Zoom out",
@@ -2631,9 +2677,9 @@ const TEXT = {
   playbookRiskSeriesLegend: "{risk} Risk median and IQR",
   playbookTakeaways: {
     noEvents: "<strong>{county} had no extreme climate events in the last 10 years.</strong><span class=\"playbook-summary-detail\">Given its profile as {countyContext}, its Median PPSF YoY would be expected to {expectation} after an extreme climate event.</span>",
-    eventAlignmentSummary: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Its Median PPSF YoY level relative to its risk group {subgroupAlignment} with the {subgroup} range of counties within the {risk} Risk category. The percentage-point change covers one year before each event began through three years after it ended.</span>",
-    eventAlignmentWithoutSubgroup: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}. Its relative performance within its risk group could not be assessed because sufficient feature data were unavailable. The percentage-point change covers one year before each event began through three years after it ended.</span>",
-    volatileEventSummary: "<strong>{county}'s Median PPSF YoY was too volatile to assess whether its post-event change aligned with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">Its level relative to its risk group also could not be compared meaningfully with the {subgroupContext}. The percentage-point change covers one year before each event began through three years after it ended.</span>",
+    eventAlignmentSummary: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}.<br>Its Median PPSF YoY level relative to its risk group {subgroupAlignment} with the {subgroup} within the {risk} Risk category.<br>The percentage-point change covers one year before each event began through three years after it ended.</span>",
+    eventAlignmentWithoutSubgroup: "<strong>{county}'s post-event change {riskAlignment} with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">The county {countyChange}; its risk group typically {groupChange}.<br>Its relative performance within its risk group could not be assessed because sufficient feature data were unavailable.<br>The percentage-point change covers one year before each event began through three years after it ended.</span>",
+    volatileEventSummary: "<strong>{county}'s Median PPSF YoY was too volatile to assess whether its post-event change aligned with the {risk} Risk expectation.</strong><span class=\"playbook-summary-detail\">Its level relative to its risk group also could not be compared meaningfully with the {subgroupContext}.</span>",
     insufficientHistory: "{county} had insufficient housing data from one year before its events through three years after they ended to compare with its risk group.",
     groupExpectation: "By year 3, counties with {risk} climate risk typically {groupBehavior} versus their pre-event-year level.",
     groupBehaviorChange: "{direction} by about {magnitude} percentage points",
@@ -2675,8 +2721,6 @@ function hydrateText() {
     pricingH2: "t-pricing-h2",
     scatterTitle: "t-scatter-title",
     scatterSub: "t-scatter-sub",
-    scatterFootnote1: "t-scatter-fn1",
-    scatterFootnote2: "t-scatter-fn2",
     pricingScoreScatterTakeaway: "score-scatter-takeaway",
     pricingTakeaway: "pricing-takeaway",
     pricingGroupingSubtitle: "t-pricing-grouping-subtitle",
@@ -2695,7 +2739,7 @@ function hydrateText() {
     featuresH2: "t-features-h2",
     featuresCopy: "t-features-copy",
     featureSidebarLabel: "t-feature-sidebar-label",
-    featuresSources: "t-features-sources",
+    featureTakeaway: "feature-takeaway",
     playbookH2: "t-playbook-h2",
     playbookHistoryTitle: "t-playbook-history-title",
     playbookSources: "t-playbook-sources",
@@ -2712,6 +2756,11 @@ function hydrateText() {
   document.getElementById("story-prev").title = TEXT.storyPrevLabel;
   document.getElementById("story-next").setAttribute("aria-label", TEXT.storyNextLabel);
   document.getElementById("story-next").title = TEXT.storyNextLabel;
+  const scatterSub = document.getElementById("t-scatter-sub");
+  scatterSub?.append(" ", makeInfoButton(TEXT.scatterFootnotesTooltip, {label: TEXT.informationTooltipLabel}));
+  const performanceTerm = document.getElementById("feature-performance-term");
+  performanceTerm?.after(makeInfoButton(TEXT.featurePerformanceTooltip, {label: TEXT.informationTooltipLabel}));
+  condenseSourceDisclosures();
 }
 
 const HAZARD_ICONS = {
@@ -2734,7 +2783,7 @@ const RATING_SEQUENCE_FRAMES = [
   {risk: null, callout: true, key: "All"},
 ];
 const RISK_COLORS = {"Very Low":"#16803c","Low":"#79b851","Medium":"#e0b33b","High":"#df7d2f","Very High":"#b42318"};
-const COUNTY_LINE_COLOR = "#5b7a8a";
+const COUNTY_LINE_COLOR = "#2456a6";
 const FEATURE_HIGHER_LINE_COLOR = "#175d8f";
 const FEATURE_LOWER_LINE_COLOR = "#8a4f7d";
 const fmtPct = d3.format("+.1%");
@@ -2744,6 +2793,83 @@ const fmtNum = d3.format(",.1f");
 const fmtMoney = d3.format("$,.0f");
 const parsePriceMonth = d3.utcParse("%Y-%m-%d");
 const tooltip = d3.select("#tooltip");
+let activeInfoTooltipTrigger = null;
+
+function hideTooltip(force = false) {
+  if (activeInfoTooltipTrigger && !force) return;
+  tooltip.style("display", "none").style("visibility", "hidden").classed("persistent", false);
+}
+
+function closeInfoTooltip() {
+  if (activeInfoTooltipTrigger) activeInfoTooltipTrigger.setAttribute("aria-expanded", "false");
+  activeInfoTooltipTrigger = null;
+  hideTooltip(true);
+}
+
+function showTooltip(event, content, {html = true, anchor = null} = {}) {
+  if (activeInfoTooltipTrigger && anchor !== activeInfoTooltipTrigger) return;
+  if (html) tooltip.html(content); else tooltip.text(content);
+  tooltip.style("display", "block").style("visibility", "hidden");
+  const anchorRect = anchor?.getBoundingClientRect();
+  const originX = Number.isFinite(event?.clientX) ? event.clientX : (anchorRect?.right || 8);
+  const originY = Number.isFinite(event?.clientY) ? event.clientY : (anchorRect?.top || 8);
+  const node = tooltip.node();
+  const width = node.offsetWidth, height = node.offsetHeight;
+  const gap = 12, edge = 8;
+  let left = originX + gap;
+  let top = originY + gap;
+  if (left + width > window.innerWidth - edge) left = originX - width - gap;
+  if (top + height > window.innerHeight - edge) top = originY - height - gap;
+  left = Math.max(edge, Math.min(left, window.innerWidth - width - edge));
+  top = Math.max(edge, Math.min(top, window.innerHeight - height - edge));
+  tooltip.style("left", `${left}px`).style("top", `${top}px`).style("visibility", "visible");
+}
+
+function attachInfoTooltip(element, content, {html = false} = {}) {
+  element.setAttribute("aria-expanded", "false");
+  element.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeInfoTooltipTrigger === element) {
+      closeInfoTooltip();
+      return;
+    }
+    closeInfoTooltip();
+    activeInfoTooltipTrigger = element;
+    element.setAttribute("aria-expanded", "true");
+    tooltip.classed("persistent", true);
+    showTooltip(event, content, {html, anchor: element});
+  });
+}
+
+document.addEventListener("pointerdown", event => {
+  if (!activeInfoTooltipTrigger) return;
+  if (event.target === activeInfoTooltipTrigger || tooltip.node().contains(event.target)) return;
+  closeInfoTooltip();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeInfoTooltip();
+});
+
+function makeInfoButton(content, options = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "info-tooltip-trigger";
+  button.textContent = "?";
+  button.setAttribute("aria-label", options.label || TEXT.informationTooltipLabel);
+  attachInfoTooltip(button, content, options);
+  return button;
+}
+
+function condenseSourceDisclosures() {
+  document.querySelectorAll(".panel > .sources").forEach(source => {
+    const content = source.innerHTML.replace(/^\s*Sources:\s*/i, "");
+    source.innerHTML = "";
+    const label = document.createElement("span");
+    label.textContent = TEXT.sourcesLabel;
+    source.append(label, makeInfoButton(content, {html: true, label: `${TEXT.sourcesLabel}: ${TEXT.informationTooltipLabel}`}));
+  });
+}
 const countyByFips = new Map(DATA.priceRisk.counties.map(d => [d.fips, d]));
 let playbookCountyByFips = new Map();
 let scoreHistoryData = null;
@@ -2768,6 +2894,10 @@ let activeEventWindow = "A"; // "A" or "B"
 let selectedFeatureRisk = "Medium";
 let selectedFeatureKey = null;
 let selectedFeatureSubgroup = null;
+let featureOrderMode = "category";
+let selectedDistributionFeature = null;
+let featureSubgroupSequenceTimer = null;
+let featureSubgroupSequencePaused = false;
 // Playbook state
 let selectedCountyFips = null;
 let playbookMapZoomed = false;
@@ -2846,7 +2976,7 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
   svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
   const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
   const path = d3.geoPath(projection);
-  svg.on("mouseleave", () => tooltip.style("display","none"));
+  svg.on("mouseleave", () => hideTooltip());
   svg.append("g").selectAll("path")
     .data(DATA.geojson.features)
     .join("path")
@@ -2857,10 +2987,10 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
     .on("mousemove", (event, d) => {
       const html = tooltipFn(countyByFips.get(d.properties.fips), d.properties.fips);
       if (!html) {
-        tooltip.style("display", "none");
+        hideTooltip();
         return;
       }
-      tooltip.style("display","block").style("left", `${event.clientX+12}px`).style("top", `${event.clientY+12}px`).html(html);
+      showTooltip(event, html);
     })
     .on("click", clickFn ? (event, d) => clickFn(d.properties.fips) : null);
   drawStateBoundaries(svg, path);
@@ -2956,7 +3086,7 @@ function initScoreScatter() {
       const rect = container.getBoundingClientRect();
       const px = clientX - rect.left, py = clientY - rect.top;
       if (px < margin.left || px > width - margin.right || py < margin.top || py > height - margin.bottom) {
-        tooltip.style("display", "none");
+        hideTooltip();
         return;
       }
       const monthIndex = d3.bisector(d => d).center(months, x.invert(px));
@@ -2971,13 +3101,13 @@ function initScoreScatter() {
         }
       }
       if (!nearest || nearestDistance > 10) {
-        tooltip.style("display", "none");
+        hideTooltip();
         return;
       }
-      tooltip.style("display","block").style("left",`${clientX+12}px`).style("top",`${clientY+12}px`).html(`<strong>${countyDisplayName(nearest)}</strong>`);
+      showTooltip({clientX, clientY}, `<strong>${countyDisplayName(nearest)}</strong>`);
     });
   });
-  container.addEventListener("mouseleave", () => tooltip.style("display", "none"));
+  container.addEventListener("mouseleave", () => hideTooltip());
 }
 
 function currentRatingSequenceFrame() {
@@ -3111,7 +3241,13 @@ function drawLineChart(svgId, source, groupKey, horizonLimit, activeRisk = null,
   const domainData = hideOthers && activeRisk ? data.filter(d => d[groupKey] === activeRisk) : data;
   const values = domainData.flatMap(d => [d.q1, d.median, d.q3]).filter(v => v != null);
   if (opts.extraDomainValues) values.push(...opts.extraDomainValues);
-  const y = d3.scaleLinear().domain(d3.extent(values)).nice().range([height - margin.bottom, margin.top]);
+  const valueExtent = d3.extent(values);
+  const valueSpan = Math.max((valueExtent[1] || 0) - (valueExtent[0] || 0), 0.01);
+  const yDomain = [
+    valueExtent[0] - valueSpan * (opts.lowerDomainPadding || 0),
+    valueExtent[1] + valueSpan * (opts.upperDomainPadding || 0),
+  ];
+  const y = d3.scaleLinear().domain(yDomain).nice().range([height - margin.bottom, margin.top]);
   svg.append("g").attr("class","grid").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).ticks(6).tickSize(-(width-margin.left-margin.right)).tickFormat(""));
   const useYears = horizonLimit > 12;
   const yearTicks = [minMonth, 0, ...d3.range(12, horizonLimit + 1, 12)];
@@ -3188,6 +3324,9 @@ function initButtons() {
       selectedFeatureRisk=d;
       selectedFeatureKey=null;
       selectedFeatureSubgroup=null;
+      selectedDistributionFeature=null;
+      featureSubgroupSequencePaused=false;
+      clearInterval(featureSubgroupSequenceTimer);
       featureSidebar.selectAll("button").classed("active",x=>x===selectedFeatureRisk)
         .style("background", x=>x===selectedFeatureRisk ? RISK_COLORS[x] : null);
       drawFeatureHeatmaps();
@@ -3246,9 +3385,14 @@ function activeWindowData() {
 
 function renderEventSection() {
   const wd = activeWindowData();
-  d3.select("#t-events-card-title").text(
-    activeEventWindow === "A" ? TEXT.eventsShortTitle : TEXT.eventsLongTitle
-  );
+  const eventTitle = activeEventWindow === "A" ? TEXT.eventsShortTitle : TEXT.eventsLongTitle;
+  const horizonYears = TEXT.eventHorizonYears[activeEventWindow];
+  const highlightedYears = `<span class="event-horizon-number${activeEventWindow === "B" ? " changed" : ""}">${horizonYears}</span>`;
+  const eventTitleElement = document.getElementById("t-events-card-title");
+  if (eventTitleElement.dataset.window !== activeEventWindow) {
+    eventTitleElement.dataset.window = activeEventWindow;
+    eventTitleElement.innerHTML = eventTitle.replace(horizonYears, highlightedYears);
+  }
   d3.select("#events-window-subtitle").text(
     activeEventWindow === "A" ? TEXT.eventsShortSubtitle : TEXT.eventsLongSubtitle
   );
@@ -3306,36 +3450,63 @@ function activeFeatureMetric(feature) {
 
 function drawFeatureImportanceV2() {
   const metrics = new Map((DATA.features.importanceByRisk[selectedFeatureRisk] || []).map(d => [d.feature, d]));
+  d3.select("#feature-order-controls").selectAll("button")
+    .text(function() { return this.dataset.order === "category" ? TEXT.featureGroupByCategory : TEXT.featureOrderBySignificance; })
+    .classed("active", function() { return this.dataset.order === featureOrderMode; })
+    .attr("aria-pressed", function() { return this.dataset.order === featureOrderMode ? "true" : "false"; })
+    .on("click", function() {
+      featureOrderMode = this.dataset.order;
+      drawFeatureImportanceV2();
+    });
+  d3.select("#feature-click-hint").text(TEXT.featureClickHint);
   const chart = d3.select("#feature-importance-chart");
   chart.selectAll("*").remove();
   let lastCategory = null;
-  DATA.features.featureOrder.forEach(feature => {
+  const features = featureOrderMode === "significance"
+    ? [...DATA.features.featureOrder].sort((a, b) => (metrics.get(b)?.absRho || 0) - (metrics.get(a)?.absRho || 0))
+    : DATA.features.featureOrder;
+  const strongContainer = featureOrderMode === "significance" && features.some(feature => (metrics.get(feature)?.absRho || 0) >= 0.3)
+    ? chart.append("div").attr("class", "importance-strong-group")
+    : null;
+  features.forEach(feature => {
     const meta = DATA.features.featureMeta[feature];
-    if (meta.category !== lastCategory) {
+    if (featureOrderMode === "category" && meta.category !== lastCategory) {
       chart.append("div").attr("class", "importance-group-label").text(TEXT.featureCategories[meta.category] || meta.category);
       lastCategory = meta.category;
     }
     const metric = metrics.get(feature) || {};
     const width = Math.min(100, Math.max(0, (metric.absRho || 0) * 200));
-    const button = chart.append("button")
+    const strong = featureOrderMode === "significance" && (metric.absRho || 0) >= 0.3;
+    const negativeActive = selectedFeatureKey === feature && (metric.rho || 0) < 0;
+    const button = (strong ? strongContainer : chart).append("button")
       .attr("type", "button")
-      .attr("class", `importance-row${selectedFeatureKey === feature ? " active" : ""}`)
+      .attr("class", `importance-row${selectedFeatureKey === feature ? " active" : ""}${negativeActive ? " negative-active" : ""}`)
       .attr("aria-pressed", selectedFeatureKey === feature ? "true" : "false")
-      .attr("title", `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)
+      .attr("title", strong ? TEXT.featureStrongTooltip : `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)
       .on("click", () => {
         selectedFeatureKey = selectedFeatureKey === feature ? null : feature;
         drawFeatureHeatmaps();
       });
+    button.append("span").attr("class", `correlation-marker ${(metric.rho || 0) < 0 ? "negative" : "positive"}`);
     button.append("span").attr("class", "importance-label").text(featureLabel(feature));
     button.append("span").attr("class", "importance-bar-track")
-      .append("span").attr("class", `importance-bar ${(metric.rho || 0) < 0 ? "negative" : "positive"}`).style("display", "block").style("width", `${width}%`);
+      .append("span").attr("class", "importance-bar").style("display", "block").style("width", `${width}%`);
   });
-  d3.select("#feature-method").html(replaceFeatureText(TEXT.featureMethod, {threshold: d3.format(".2f")(DATA.features.minimumEffect)}));
-  d3.select("#feature-footnotes").text(TEXT.featureFootnotes);
+  const tabs = document.getElementById("feature-footnote-tabs");
+  tabs.innerHTML = "";
+  [
+    [TEXT.featureSourcesTopic, TEXT.featureSourcesNote],
+    [TEXT.featureRankingTopic, replaceFeatureText(TEXT.featureRankingNote, {threshold: d3.format(".2f")(DATA.features.minimumEffect)})],
+  ].forEach(([labelText, content]) => {
+    const topic = document.createElement("span");
+    topic.className = "feature-footnote-topic";
+    topic.append(document.createTextNode(labelText), makeInfoButton(content, {label: `${labelText}: ${TEXT.informationTooltipLabel}`}));
+    tabs.appendChild(topic);
+  });
 }
 
 function drawFeatureMedianLine() {
-  d3.select(".feature-line-pane").classed("scatter-active", false);
+  d3.select(".feature-line-pane").classed("scatter-active", false).classed("scatter-negative", false);
   d3.select("#feature-chart-title").text(TEXT.featureLineTitle);
   d3.select("#feature-relationship").attr("hidden", true);
   drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, marginRight: 82, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
@@ -3363,7 +3534,9 @@ function drawFeatureScatter(feature) {
   const [xLow, xHigh] = iqrBounds(allRows.map(d => d.x));
   const [yLow, yHigh] = iqrBounds(allRows.map(d => d.y));
   const rows = allRows.filter(d => d.x >= xLow && d.x <= xHigh && d.y >= yLow && d.y <= yHigh);
-  d3.select(".feature-line-pane").classed("scatter-active", true);
+  const metric = activeFeatureMetric(feature) || {};
+  const rho = metric.rho || 0;
+  d3.select(".feature-line-pane").classed("scatter-active", true).classed("scatter-negative", rho < 0);
   const svg = d3.select("#feature-event-window");
   const width = svg.node().clientWidth || 700, height = svg.node().clientHeight || 500;
   const margin = {top: 24, right: 24, bottom: 58, left: 68};
@@ -3376,8 +3549,8 @@ function drawFeatureScatter(feature) {
   svg.append("g").selectAll("circle").data(rows).join("circle")
     .attr("cx", d => x(d.x)).attr("cy", d => y(d.y)).attr("r", 3.2)
     .attr("fill", RISK_COLORS[selectedFeatureRisk]).attr("opacity", .55)
-    .on("mousemove", (event, d) => tooltip.style("display", "block").style("left", `${event.clientX + 12}px`).style("top", `${event.clientY + 12}px`).html(`<strong>${d.fips}</strong><br>${featureLabel(feature)}: ${featureTickFormatter(feature)(d.x)}<br>${TEXT.featureScatterYAxis}: ${fmtPct(d.y)}`))
-    .on("mouseleave", () => tooltip.style("display", "none"));
+    .on("mousemove", (event, d) => showTooltip(event, `<strong>${d.fips}</strong><br>${featureLabel(feature)}: ${featureTickFormatter(feature)(d.x)}<br>${TEXT.featureScatterYAxis}: ${fmtPct(d.y)}`))
+    .on("mouseleave", () => hideTooltip());
   if (rows.length >= 2) {
     const meanX = d3.mean(rows, d => d.x), meanY = d3.mean(rows, d => d.y);
     const denominator = d3.sum(rows, d => (d.x - meanX) ** 2);
@@ -3392,71 +3565,246 @@ function drawFeatureScatter(feature) {
   }
   svg.append("text").attr("x", width / 2).attr("y", height - 9).attr("text-anchor", "middle").attr("fill", "#66717b").attr("font-size", 12).text(featureLabel(feature));
   svg.append("text").attr("transform", "rotate(-90)").attr("x", -height / 2).attr("y", 18).attr("text-anchor", "middle").attr("fill", "#66717b").attr("font-size", 12).text(TEXT.featureScatterYAxis);
-  d3.select("#feature-chart-title").text(replaceFeatureText(TEXT.featureScatterTitle, {feature: featureLabel(feature)}));
+  const chartTitle = document.getElementById("feature-chart-title");
+  chartTitle.innerHTML = "";
+  const outcomeLabel = document.createElement("span");
+  outcomeLabel.textContent = TEXT.featureOutcomeTerm;
+  const comparisonLabel = document.createElement("span");
+  comparisonLabel.textContent = ` vs. ${featureLabel(feature)}`;
+  chartTitle.append(outcomeLabel, makeInfoButton(TEXT.featureOutcomeTooltip), comparisonLabel);
   d3.select("#feature-line-legend").html("");
-  const metric = activeFeatureMetric(feature) || {};
-  const rho = metric.rho || 0;
-  const relationshipKey = Math.abs(rho) < DATA.features.minimumEffect ? "weak" : rho > 0 ? "positive" : "negative";
-  const ci = metric.ciLow == null ? "n/a" : `${d3.format("+.2f")(metric.ciLow)} to ${d3.format("+.2f")(metric.ciHigh)}`;
-  d3.select("#feature-relationship").attr("hidden", null).text(replaceFeatureText(TEXT.featureRelationship[relationshipKey], {risk: selectedFeatureRisk, feature: featureLabel(feature), rho: d3.format("+.2f")(rho), ci}));
-}
-
-function drawFeatureRiskStory() {
-  const story = d3.select("#feature-risk-story");
-  story.selectAll("*").remove();
-  const ranked = [...(DATA.features.importanceByRisk[selectedFeatureRisk] || [])].sort((a, b) => (b.absRho || 0) - (a.absRho || 0)).slice(0, 3);
-  if (ranked.length < 3) return;
-  story.append("p").style("border-left-color", RISK_COLORS[selectedFeatureRisk]).text(replaceFeatureText(TEXT.featureStoryRisk, {
-    risk: selectedFeatureRisk,
-    first: featureLabel(ranked[0].feature), second: featureLabel(ranked[1].feature), third: featureLabel(ranked[2].feature),
+  const strengthKey = Math.abs(rho) > 0.5 ? "strong" : Math.abs(rho) >= 0.3 ? "moderate" : "weak";
+  const directionKey = rho >= 0 ? "positive" : "negative";
+  d3.select("#feature-relationship").attr("hidden", null).text(replaceFeatureText(TEXT.featureRelationship, {
+    feature: featureLabel(feature),
+    strength: TEXT.featureRelationshipStrength[strengthKey],
+    direction: TEXT.featureRelationshipDirection[directionKey],
   }));
 }
 
-const FEATURE_SUBGROUP_COLORS = ["#2b6f8d", "#63a5a0", "#e0a934", "#c9573f"];
+const FEATURE_SUBGROUP_COLORS = ["#54278f", "#807dba", "#6baed6", "#2171b5"];
 
-function subgroupName(group, count, risk = selectedFeatureRisk) {
-  const label = count === 3
-    ? [TEXT.subgroupNames[0], TEXT.subgroupNames[2], TEXT.subgroupNames[3]][group.index] || TEXT.subgroupNames[group.index]
-    : TEXT.subgroupNames[group.index] || replaceFeatureText(TEXT.subgroupFallback, {number: group.index + 1});
-  return risk === "Very High" && label === "Upper-Middle" ? "Middle" : label;
+function subgroupName(group, count) {
+  const names = count === 3 ? TEXT.subgroupNamesThree : TEXT.subgroupNamesFour;
+  return names[group.index] || replaceFeatureText(TEXT.subgroupFallback, {number: group.index + 1});
 }
 
 function subgroupProseName(label) {
   return String(label || "").toLowerCase();
 }
 
-function drawFeatureSubgroupPanel() {
-  const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: [], excludedOutliers: 0};
-  if (selectedFeatureSubgroup == null || !payload.groups.some(d => d.index === selectedFeatureSubgroup)) selectedFeatureSubgroup = payload.groups[0]?.index ?? null;
-  const list = d3.select("#feature-subgroup-list");
-  list.selectAll("*").remove();
-  const group = payload.groups.find(d => d.index === selectedFeatureSubgroup);
-  if (!group) return;
-  const card = list.append("div").attr("class", "subgroup-card active");
-  card.append("strong").text(subgroupName(group, payload.groups.length, selectedFeatureRisk));
-  card.append("p").attr("class", "sub").style("margin-top", "8px").text(TEXT.subgroupIqrIntro);
-  const ranges = card.append("div").attr("class", "subgroup-iqr");
-  group.traits.forEach(trait => {
-    const format = DATA.features.featureMeta[trait.feature]?.format;
-    const row = ranges.append("div").attr("class", "subgroup-iqr-row");
-    row.append("strong").text(featureLabel(trait.feature));
-    row.append("span").attr("class", "subgroup-iqr-value").text(replaceFeatureText(TEXT.subgroupIqrRange, {
-      low: formatFeatureVal(trait.q1, format), high: formatFeatureVal(trait.q3, format),
-    }));
-  });
+function subgroupPerformanceName(label) {
+  return String(label || "")
+    .replace(/^(Strong|Mild)\s+/i, "")
+    .toLowerCase();
 }
 
-function selectFeatureSubgroup(index) {
+function playbookPerformanceName(label) {
+  const names = {
+    "Strong Overperformers": "strong overperformer",
+    "Mild Overperformers": "mild overperformer",
+    "Mild Underperformers": "mild underperformer",
+    "Strong Underperformers": "strong underperformer",
+    "Overperformers": "overperformer",
+    "Average Performers": "average performer",
+    "Underperformers": "underperformer",
+  };
+  return names[label] || subgroupProseName(label).replace(/s$/, "");
+}
+
+function mostImportantFeatureMetrics(risk) {
+  const metrics = [...(DATA.features.importanceByRisk[risk] || [])]
+    .filter(metric => metric.rho != null)
+    .sort((a, b) => (b.absRho || 0) - (a.absRho || 0));
+  const strongest = metrics.filter(metric => (metric.absRho || 0) >= 0.3);
+  return strongest.length ? strongest : metrics.slice(0, 1);
+}
+
+function subgroupFeatureRelations(risk, subgroup) {
+  if (!subgroup) return [];
+  const peerRows = DATA.features.countyRowsByRisk[risk] || [];
+  return (subgroup.traits || []).map(trait => {
+    const peerValues = peerRows
+      .map(row => row.values?.[trait.feature])
+      .filter(Number.isFinite)
+      .sort(d3.ascending);
+    if (!Number.isFinite(trait.median) || !peerValues.length) return null;
+    const peerMedian = d3.quantileSorted(peerValues, .5);
+    const peerQ1 = d3.quantileSorted(peerValues, .25);
+    const peerQ3 = d3.quantileSorted(peerValues, .75);
+    const tolerance = Math.max((peerQ3 - peerQ1) * .15, Math.abs(peerMedian) * .02, 1e-6);
+    const relation = trait.median > peerMedian + tolerance
+      ? "higher"
+      : trait.median < peerMedian - tolerance
+        ? "lower"
+        : "close";
+    return {...trait, relation};
+  }).filter(Boolean);
+}
+
+function drawFeatureSubgroupSummary() {
+  const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
+  const group = payload.groups.find(d => d.index === selectedFeatureSubgroup);
+  const groupLabel = group ? subgroupName(group, payload.groups.length) : "";
+  const relations = subgroupFeatureRelations(selectedFeatureRisk, group);
+  const summary = d3.select("#feature-subgroup-summary").html("");
+  summary.append("h3").text(replaceFeatureText(TEXT.featureFrame3Title, {
+    subgroup: groupLabel,
+    risk: selectedFeatureRisk,
+  }));
+  if (!relations.length) {
+    summary.append("p").attr("class", "feature-subgroup-summary-intro").text(TEXT.featureSubgroupSummaryUnavailable);
+    return;
+  }
+  summary.append("p").attr("class", "feature-subgroup-summary-intro").text(replaceFeatureText(TEXT.featureSubgroupSummaryIntro, {
+    subgroup: groupLabel,
+    risk: selectedFeatureRisk,
+  }));
+  const rowScroller = summary.append("div").attr("class", "feature-subgroup-summary-rows");
+  const rows = rowScroller.selectAll("div.feature-subgroup-summary-row").data(relations, d => d.feature).join("div")
+    .attr("class", "feature-subgroup-summary-row");
+  rows.append("strong").text(d => featureLabel(d.feature));
+  rows.append("span").attr("class", d => `feature-peer-relation ${d.relation}`).text(d => TEXT.featurePeerRelation[d.relation]);
+}
+
+function featureDistributionOptions(payload) {
+  return mostImportantFeatureMetrics(selectedFeatureRisk);
+}
+
+function drawFeatureSubgroupPanel() {
+  const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: [], excludedOutliers: 0};
+  if (selectedFeatureSubgroup == null || !payload.groups.some(d => d.index === selectedFeatureSubgroup)) {
+    selectedFeatureSubgroup = [...payload.groups].sort((a, b) => b.index - a.index)[0]?.index ?? null;
+  }
+  const options = featureDistributionOptions(payload);
+  if (!options.some(metric => metric.feature === selectedDistributionFeature)) selectedDistributionFeature = options[0]?.feature || null;
+  const controls = d3.select("#feature-distribution-controls");
+  controls.classed("single-feature", options.length <= 1).selectAll("*").remove();
+  if (!payload.hasStrongFeatures) controls.append("span").attr("class", "feature-click-hint").style("grid-column", "1 / -1").text(TEXT.featureDistributionFallback);
+  const rotateFeature = direction => {
+    const current = Math.max(0, options.findIndex(metric => metric.feature === selectedDistributionFeature));
+    selectedDistributionFeature = options[(current + direction + options.length) % options.length]?.feature || null;
+    drawFeatureSubgroupPanel();
+  };
+  if (options.length > 1) controls.append("button").attr("type", "button").attr("aria-label", TEXT.featureDistributionPrevious)
+    .attr("title", TEXT.featureDistributionPrevious).text("←").on("click", () => rotateFeature(-1));
+  controls.append("span").attr("class", "feature-distribution-current").text(featureLabel(selectedDistributionFeature));
+  if (options.length > 1) controls.append("button").attr("type", "button").attr("aria-label", TEXT.featureDistributionNext)
+    .attr("title", TEXT.featureDistributionNext).text("→").on("click", () => rotateFeature(1));
+  const group = payload.groups.find(d => d.index === selectedFeatureSubgroup);
+  if (!group || !selectedDistributionFeature) return;
+  const rows = DATA.features.countyRowsByRisk[selectedFeatureRisk] || [];
+  const allValues = rows.map(row => row.values[selectedDistributionFeature]).filter(Number.isFinite).sort(d3.ascending);
+  const rawSubgroupPoints = rows
+    .filter(row => DATA.features.subgroupByFips[row.fips] === selectedFeatureSubgroup)
+    .map(row => ({fips: row.fips, value: row.values[selectedDistributionFeature]}))
+    .filter(point => Number.isFinite(point.value)).sort((a, b) => d3.ascending(a.value, b.value));
+  const rawSubgroupValues = rawSubgroupPoints.map(point => point.value);
+  const q1All = d3.quantileSorted(allValues, .25), q3All = d3.quantileSorted(allValues, .75);
+  const spread = q3All - q1All;
+  const lowerBound = spread > 0 ? q1All - 1.5 * spread : d3.min(allValues);
+  const upperBound = spread > 0 ? q3All + 1.5 * spread : d3.max(allValues);
+  const removeOutliers = selectedFeatureRisk !== "Very High";
+  const displayedValues = removeOutliers
+    ? allValues.filter(value => value >= lowerBound && value <= upperBound)
+    : allValues;
+  const subgroupPoints = removeOutliers
+    ? rawSubgroupPoints.filter(point => point.value >= lowerBound && point.value <= upperBound)
+    : rawSubgroupPoints;
+  const subgroupValues = subgroupPoints.map(point => point.value);
+  const svg = d3.select("#feature-distribution-chart");
+  const width = svg.node().clientWidth || 320, height = svg.node().clientHeight || 210;
+  const margin = {top: 8, right: 18, bottom: 34, left: 10};
+  svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
+  if (!displayedValues.length || !subgroupValues.length) return;
+  const x = d3.scaleLinear().domain(d3.extent(displayedValues)).nice().range([margin.left, width - margin.right]);
+  const selectedColor = FEATURE_SUBGROUP_COLORS[group.index];
+  const drawDistribution = (points, y, color, opacity) => {
+    const values = points.map(point => point.value).sort(d3.ascending);
+    svg.append("g").selectAll("circle").data(points).join("circle")
+      .attr("cx", d => x(d.value)).attr("cy", (d, i) => y + ((i % 7) - 3) * 1.6)
+      .attr("r", 2.8).attr("fill", color).attr("opacity", opacity)
+      .style("cursor", "pointer")
+      .on("mousemove", (event, d) => {
+        const county = countyByFips.get(d.fips);
+        showTooltip(event, `<strong>${countyDisplayName(county) || d.fips}</strong><br>${featureLabel(selectedDistributionFeature)}: ${featureTickFormatter(selectedDistributionFeature)(d.value)}`);
+      })
+      .on("mouseleave", () => hideTooltip());
+    const q1 = d3.quantileSorted(values, .25), medianValue = d3.quantileSorted(values, .5), q3 = d3.quantileSorted(values, .75);
+    svg.append("rect").attr("x", x(q1)).attr("y", y - 11).attr("width", Math.max(1, x(q3) - x(q1))).attr("height", 22).attr("fill", color).attr("opacity", .2).attr("stroke", color);
+    svg.append("line").attr("x1", x(medianValue)).attr("x2", x(medianValue)).attr("y1", y - 13).attr("y2", y + 13).attr("stroke", color).attr("stroke-width", 3);
+  };
+  drawDistribution(subgroupPoints, (margin.top + height - margin.bottom) / 2, selectedColor, .48);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height - margin.bottom})`).call(d3.axisBottom(x).ticks(5).tickFormat(featureTickFormatter(selectedDistributionFeature)));
+  const distributionTitle = document.getElementById("feature-distribution-title");
+  const distributionTitleKey = `${selectedFeatureRisk}:${selectedDistributionFeature}`;
+  if (distributionTitle.dataset.feature !== distributionTitleKey) {
+    if (activeInfoTooltipTrigger && distributionTitle.contains(activeInfoTooltipTrigger)) closeInfoTooltip();
+    distributionTitle.innerHTML = "";
+    distributionTitle.dataset.feature = distributionTitleKey;
+    distributionTitle.append(
+      document.createTextNode(replaceFeatureText(TEXT.featureDistributionTitle, {feature: featureLabel(selectedDistributionFeature)})),
+      makeInfoButton(removeOutliers ? TEXT.featureDistributionOutlierTooltip : TEXT.featureDistributionVeryHighTooltip, {label: TEXT.informationTooltipLabel}),
+    );
+  }
+  const levelKey = d3.median(rawSubgroupValues) >= d3.median(allValues) ? "higher" : "lower";
+  const level = TEXT.featureDistributionLevel[levelKey];
+  d3.select("#feature-subgroup-takeaway").text(replaceFeatureText(TEXT.featureSubgroupTakeaway, {
+    level,
+    feature: featureLabel(selectedDistributionFeature),
+    subgroup: subgroupPerformanceName(subgroupName(group, payload.groups.length)),
+    risk: selectedFeatureRisk,
+  }));
+  d3.select("#feature-sequence-resume").text(TEXT.featureResumeSequence).classed("visible", featureSubgroupSequencePaused)
+    .on("click", () => {
+      featureSubgroupSequencePaused = false;
+      startFeatureSubgroupSequence();
+      drawFeatureSubgroupDetail();
+    });
+}
+
+function drawFeatureSubgroupDetail() {
+  const state = document.querySelector("#features .story-stage")?.dataset.storyState;
+  if (state === "feature-frame-3") drawFeatureSubgroupSummary();
+  else drawFeatureSubgroupPanel();
+  d3.select("#feature-sequence-resume").text(TEXT.featureResumeSequence).classed("visible", featureSubgroupSequencePaused)
+    .on("click", () => {
+      featureSubgroupSequencePaused = false;
+      startFeatureSubgroupSequence();
+      drawFeatureSubgroupDetail();
+    });
+}
+
+function selectFeatureSubgroup(index, userInitiated = true) {
   selectedFeatureSubgroup = index;
-  drawFeatureSubgroupPanel();
+  if (userInitiated) {
+    featureSubgroupSequencePaused = true;
+    clearInterval(featureSubgroupSequenceTimer);
+  }
+  drawFeatureSubgroupDetail();
   drawFeatureSubgroupLines();
+}
+
+function startFeatureSubgroupSequence() {
+  clearInterval(featureSubgroupSequenceTimer);
+  const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
+  const sequence = [...payload.groups].sort((a, b) => b.index - a.index);
+  if (!sequence.length) return;
+  if (selectedFeatureSubgroup == null) selectedFeatureSubgroup = sequence[0].index;
+  if (featureSubgroupSequencePaused) return;
+  featureSubgroupSequenceTimer = setInterval(() => {
+    const current = sequence.findIndex(group => group.index === selectedFeatureSubgroup);
+    selectedFeatureSubgroup = sequence[(current + 1) % sequence.length].index;
+    drawFeatureSubgroupDetail();
+    drawFeatureSubgroupLines();
+  }, 3200);
 }
 
 function drawFeatureSubgroupLines() {
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
   const domainValues = payload.groups.flatMap(group => group.values.map(d => d.value).filter(Number.isFinite));
-  d3.select(".feature-line-pane").classed("scatter-active", false);
-  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, marginRight: 24, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
+  d3.select(".feature-line-pane").classed("scatter-active", false).classed("scatter-negative", false);
+  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, upperDomainPadding: 0.16, marginRight: 24, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
   const svg = d3.select("#feature-event-window");
   const line = d3.line().defined(d => d.value != null).x(d => chart.x(d.month)).y(d => chart.y(d.value));
   svg.selectAll("path.feature-subgroup-line").data(payload.groups).join("path")
@@ -3464,9 +3812,9 @@ function drawFeatureSubgroupLines() {
     .attr("stroke-width", d => d.index === selectedFeatureSubgroup ? 4.5 : 2.5)
     .attr("opacity", d => selectedFeatureSubgroup == null || d.index === selectedFeatureSubgroup ? 1 : .16)
     .attr("d", d => line(d.values)).style("cursor", "pointer")
-    .on("click", (event, d) => selectFeatureSubgroup(d.index));
-  const orderedGroups = [...payload.groups].sort((a, b) => b.index - a.index);
-  d3.select("#feature-subgroup-toggles")
+    .on("click", (event, d) => selectFeatureSubgroup(d.index, true));
+  const orderedGroups = [...payload.groups].sort((a, b) => a.index - b.index);
+  const subgroupButtons = d3.select("#feature-subgroup-toggles")
     .classed("visible", true)
     .selectAll("button.feature-subgroup-control")
     .data(orderedGroups, d => d.index)
@@ -3476,11 +3824,23 @@ function drawFeatureSubgroupLines() {
     .attr("aria-pressed", d => d.index === selectedFeatureSubgroup ? "true" : "false")
     .attr("aria-label", d => `${subgroupName(d, payload.groups.length, selectedFeatureRisk)} subgroup${d.index === selectedFeatureSubgroup ? ", selected" : ""}`)
     .style("--subgroup-color", d => FEATURE_SUBGROUP_COLORS[d.index])
-    .text(d => subgroupName(d, payload.groups.length, selectedFeatureRisk))
-    .on("click", (event, d) => {
+    .on("pointerdown", (event, d) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
       event.stopPropagation();
-      selectFeatureSubgroup(Number(d.index));
+      selectFeatureSubgroup(Number(d.index), true);
+    })
+    .on("click", (event, d) => {
+      if (event.detail !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectFeatureSubgroup(Number(d.index), true);
   });
+  subgroupButtons.selectAll("span.feature-subgroup-control-label")
+    .data(d => [d], d => d.index)
+    .join("span")
+    .attr("class", "feature-subgroup-control-label")
+    .text(d => subgroupName(d, payload.groups.length, selectedFeatureRisk));
   d3.select("#feature-chart-title").text(TEXT.featureLineTitle);
   d3.select("#feature-relationship").attr("hidden", true);
   d3.select("#feature-line-legend").html("");
@@ -3490,17 +3850,27 @@ function drawFeatureHeatmaps() {
   d3.select("#feature-risk-sidebar").selectAll("button").classed("active", d => d === selectedFeatureRisk)
     .style("background", d => d === selectedFeatureRisk ? RISK_COLORS[d] : null);
   drawFeatureImportanceV2();
-  drawFeatureRiskStory();
-  drawFeatureSubgroupPanel();
   const state = document.querySelector("#features .story-stage")?.dataset.storyState || "feature-frame-1";
   d3.select("#feature-detail-title").text(replaceFeatureText(
-    state === "feature-frame-3" ? TEXT.featureFrame3Title : TEXT.featureFrame1Title,
-    {risk: selectedFeatureRisk},
+    state === "feature-frame-2" ? TEXT.featureFrame2Title : state === "feature-frame-3" ? TEXT.featureFrame3Title : TEXT.featureFrame1Title,
+    {risk: selectedFeatureRisk, subgroup: ""},
   ));
-  if (state === "feature-frame-3") drawFeatureSubgroupLines();
+  const detailStack = document.querySelector(".feature-detail-stack");
+  const detailTitle = document.getElementById("feature-detail-title");
+  detailStack?.style.setProperty("--feature-frame-top", `${(detailTitle?.offsetHeight || 25) + 8}px`);
+  if (state === "feature-frame-2" || state === "feature-frame-3") {
+    if (selectedFeatureSubgroup == null) {
+      const groups = DATA.features.subgroupsByRisk[selectedFeatureRisk]?.groups || [];
+      selectedFeatureSubgroup = [...groups].sort((a, b) => b.index - a.index)[0]?.index ?? null;
+    }
+    drawFeatureSubgroupDetail();
+    drawFeatureSubgroupLines();
+    startFeatureSubgroupSequence();
+  }
   else {
+    clearInterval(featureSubgroupSequenceTimer);
     d3.select("#feature-subgroup-toggles").classed("visible", false).selectAll("*").remove();
-    if (state === "feature-frame-1" && selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
+    if ((state === "feature-frame-1" || state === "takeaway-feature") && selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
     else drawFeatureMedianLine();
   }
 }
@@ -3543,12 +3913,9 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
     .on("mousemove", (event, d) => {
       const profile = playbookCountyByFips.get(d.properties.fips);
       if (!profile) return;
-      tooltip.style("display", "block")
-        .style("left", `${event.clientX + 12}px`)
-        .style("top", `${event.clientY + 12}px`)
-        .html(`<strong>${countyDisplayName(profile)}</strong>`);
+      showTooltip(event, `<strong>${countyDisplayName(profile)}</strong>`);
     })
-    .on("mouseleave", () => tooltip.style("display", "none"))
+    .on("mouseleave", () => hideTooltip())
     .on("click", (event, d) => {
       if (!interactive) return;
       const profile = playbookCountyByFips.get(d.properties.fips);
@@ -3628,9 +3995,7 @@ function interpolateInternalHistory(source) {
 }
 
 function playbookFeatureProfile(county) {
-  const metrics = [...(DATA.features.importanceByRisk[county.riskRating] || [])]
-    .sort((a, b) => (b.absRho || 0) - (a.absRho || 0))
-    .slice(0, 3);
+  const metrics = mostImportantFeatureMetrics(county.riskRating);
   const row = (DATA.features.countyRowsByRisk[county.riskRating] || []).find(d => d.fips === county.fips);
   const subgroupIndex = DATA.features.subgroupByFips?.[county.fips];
   const payload = DATA.features.subgroupsByRisk[county.riskRating] || {groups: []};
@@ -3638,21 +4003,43 @@ function playbookFeatureProfile(county) {
   return {metrics, row, subgroup, subgroupName: subgroup ? subgroupName(subgroup, payload.groups.length, county.riskRating) : null};
 }
 
-function renderPlaybookFeatureSummary(county) {
+function renderPlaybookFeatureSummary(county, summarizeSubgroup = false) {
   const profile = playbookFeatureProfile(county);
-  d3.select("#playbook-feature-title").text(replaceFeatureText(TEXT.playbookFeatureTitle, {risk: county.riskRating || "Unknown"}));
-  const hasFeatureData = Boolean(
-    profile.row
-    && profile.metrics.length
-    && profile.subgroupName
-    && profile.metrics.every(metric => Number.isFinite(profile.row.values?.[metric.feature]))
-  );
+  const subgroupRelations = subgroupFeatureRelations(county.riskRating, profile.subgroup);
+  const featureTitle = summarizeSubgroup && profile.subgroupName
+    ? replaceFeatureText(TEXT.playbookSubgroupFeatureTitle, {
+      subgroup: profile.subgroupName,
+      risk: county.riskRating || "Unknown",
+    })
+    : replaceFeatureText(TEXT.playbookFeatureTitle, {risk: county.riskRating || "Unknown"});
+  d3.select("#playbook-feature-title").text(featureTitle);
+  const hasFeatureData = summarizeSubgroup
+    ? Boolean(profile.subgroupName && subgroupRelations.length)
+    : Boolean(
+      profile.row
+      && profile.metrics.length
+      && profile.subgroupName
+      && profile.metrics.every(metric => Number.isFinite(profile.row.values?.[metric.feature]))
+    );
   if (!hasFeatureData) {
     const insufficientCopy = !profile.row
       ? TEXT.playbookInsufficientEventWindowData
       : TEXT.playbookInsufficientFeatureData;
     d3.select("#playbook-feature-summary").html(`<div class="playbook-feature-insufficient">${replaceFeatureText(insufficientCopy, {county: countyDisplayName(county)})}</div>`);
     d3.select("#playbook-subgroup-summary").style("display", "none").text("");
+  } else if (summarizeSubgroup) {
+    const summary = d3.select("#playbook-feature-summary").html("");
+    const rows = summary.selectAll("div.playbook-feature-row").data(subgroupRelations, d => d.feature).join("div")
+      .attr("class", "playbook-feature-row");
+    rows.append("strong").text(d => featureLabel(d.feature));
+    rows.append("span").attr("class", d => `feature-peer-relation ${d.relation}`).text(d => TEXT.featurePeerRelation[d.relation]);
+    d3.select("#playbook-subgroup-summary")
+      .style("display", null)
+      .text(replaceFeatureText(TEXT.playbookSubgroup, {
+        county: countyDisplayName(county),
+        subgroup: playbookPerformanceName(profile.subgroupName),
+        risk: county.riskRating || "Unknown",
+      }));
   } else {
     d3.select("#playbook-feature-summary").html(profile.metrics.map(metric => {
       const value = profile.row.values?.[metric.feature];
@@ -3663,7 +4050,7 @@ function renderPlaybookFeatureSummary(county) {
       .style("display", null)
       .text(replaceFeatureText(TEXT.playbookSubgroup, {
         county: countyDisplayName(county),
-        subgroup: subgroupProseName(profile.subgroupName),
+        subgroup: playbookPerformanceName(profile.subgroupName),
         risk: county.riskRating || "Unknown",
       }));
   }
@@ -3762,10 +4149,8 @@ function drawPlaybookHistory(county, compareRisk = false) {
     .attr("width", d => Math.max(3, x(d3.min([d.endDate, chartEnd])) - x(d3.max([d.startDate, chartStart]))))
     .attr("height", height - margin.top - margin.bottom)
     .attr("fill", "#df7d2f").attr("opacity", .16)
-    .on("mousemove", (event, d) => tooltip.style("display", "block")
-      .style("left", `${event.clientX + 12}px`).style("top", `${event.clientY + 12}px`)
-      .html(`<strong>${normalCase(d.name || d.type)}</strong><br>${d3.utcFormat("%b %Y")(d.startDate)} to ${d3.utcFormat("%b %Y")(d.endDate)}<br>${normalCase(d.source)}`))
-    .on("mouseleave", () => tooltip.style("display", "none"));
+    .on("mousemove", (event, d) => showTooltip(event, `<strong>${normalCase(d.name || d.type)}</strong><br>${d3.utcFormat("%b %Y")(d.startDate)} to ${d3.utcFormat("%b %Y")(d.endDate)}<br>${normalCase(d.source)}`))
+    .on("mouseleave", () => hideTooltip());
 
   const riskArea = d3.area().defined(d => d.q1 != null && d.q3 != null)
     .x(d => x(parseMonth(d.month))).y0(d => y(d.q1)).y1(d => y(d.q3));
@@ -3779,9 +4164,10 @@ function drawPlaybookHistory(county, compareRisk = false) {
       .attr("stroke", RISK_COLORS[county.riskRating] || "#66717b").attr("stroke-width", 2)
       .attr("stroke-dasharray", "6 4").attr("opacity", .9).attr("d", riskLine);
   }
+  const countyLinePath = d3.line().defined(d => d.value != null).x(d => x(d.date)).y(d => y(d.value));
   const countyLine = plot.append("path").datum(history).attr("class", "line playbook-county-line")
-    .attr("stroke", "#0f766e").attr("stroke-width", 2.4)
-    .attr("d", d3.line().defined(d => d.value != null).x(d => x(d.date)).y(d => y(d.value)));
+    .attr("stroke", COUNTY_LINE_COLOR).attr("stroke-width", 2.4)
+    .attr("d", countyLinePath);
   svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height - margin.bottom})`)
     .call(d3.axisBottom(x).ticks(d3.utcYear.every(1)).tickFormat(d3.utcFormat("%Y")));
   const yAxis = svg.append("g").attr("class", "axis").attr("transform", `translate(${margin.left},0)`)
@@ -3789,7 +4175,7 @@ function drawPlaybookHistory(county, compareRisk = false) {
   svg.append("text").attr("x", margin.left).attr("y", 13).attr("fill", "#66717b").attr("font-size", 11)
     .text("Median PPSF YoY");
   const legendItems = [
-    {label: TEXT.playbookSeriesLegend, color: "#0f766e", opacity: 1, line: true},
+    {label: TEXT.playbookSeriesLegend, color: COUNTY_LINE_COLOR, opacity: 1, line: true},
   ];
   if (compareRisk) legendItems.push({label: replaceFeatureText(TEXT.playbookRiskSeriesLegend, {risk: county.riskRating}), color: RISK_COLORS[county.riskRating] || "#66717b", opacity: .85, line: true});
   if (events.length) legendItems.push({label: TEXT.playbookEventLegend, color: "#df7d2f", opacity: .22});
@@ -4077,7 +4463,7 @@ function renderPlaybookFrame() {
   }
   d3.select("#playbook-selected-county-name").style("display", "block").text(countyDisplayName(county));
   renderPlaybookHazards(county);
-  renderPlaybookFeatureSummary(county);
+  renderPlaybookFeatureSummary(county, state === "history-events" || state === "history-compare");
   if (state === "profile") {
     drawPlaybookMap("#playbook-profile-map", county, true, false);
     return;
@@ -4157,6 +4543,7 @@ const STORY_CONFIG = {
     {state: "title"},
     {state: "copy"},
     {state: "feature-frame-1"},
+    {state: "takeaway-feature", takeaway: "#feature-takeaway"},
     {state: "feature-frame-2"},
     {state: "feature-frame-3"},
   ],
@@ -4170,6 +4557,19 @@ const STORY_CONFIG = {
 };
 
 const takeawayTransitionTimers = new WeakMap();
+
+function syncTakeawaySpace(section, takeaway) {
+  const panel = section.querySelector(":scope > .story-stage > .panel");
+  if (!panel) return;
+  if (!takeaway) {
+    panel.style.removeProperty("--takeaway-space");
+    return;
+  }
+  requestAnimationFrame(() => {
+    const height = Math.ceil(takeaway.getBoundingClientRect().height);
+    if (height > 0) panel.style.setProperty("--takeaway-space", `${height}px`);
+  });
+}
 
 function activateStoryTakeaway(section, step, direction) {
   clearTimeout(takeawayTransitionTimers.get(section));
@@ -4199,6 +4599,7 @@ function activateStoryTakeaway(section, step, direction) {
     const transitionTimer = setTimeout(() => {
       previousContent.classList.remove("story-active-segment", "story-slide-out-up", "story-slide-out-down");
       previousTakeaway.classList.remove("story-active-takeaway", "story-outgoing-takeaway");
+      syncTakeawaySpace(section, null);
     }, 430);
     takeawayTransitionTimers.set(section, transitionTimer);
     return;
@@ -4209,6 +4610,7 @@ function activateStoryTakeaway(section, step, direction) {
     section.querySelectorAll(".takeaway-section").forEach(segment => segment.classList.remove("story-active-segment"));
     nextTakeaway.classList.add("story-active-takeaway");
     if (nextSegment) nextSegment.classList.add("story-active-segment");
+    syncTakeawaySpace(section, nextTakeaway);
     nextContent.classList.add(direction >= 0 ? "story-slide-in-up" : "story-slide-in-down");
     const transitionTimer = setTimeout(() => {
       nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
@@ -4217,8 +4619,23 @@ function activateStoryTakeaway(section, step, direction) {
     return;
   }
 
+  if (previousTakeaway === nextTakeaway && previousContent !== nextContent) {
+    previousContent.classList.remove("story-active-segment");
+    nextTakeaway.classList.add("story-active-takeaway");
+    if (nextSegment) nextSegment.classList.add("story-active-segment");
+    syncTakeawaySpace(section, nextTakeaway);
+    nextContent.classList.add(direction >= 0 ? "story-slide-in-up" : "story-slide-in-down");
+    const transitionTimer = setTimeout(() => {
+      nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
+      syncTakeawaySpace(section, nextTakeaway);
+    }, 430);
+    takeawayTransitionTimers.set(section, transitionTimer);
+    return;
+  }
+
   nextTakeaway.classList.add("story-active-takeaway");
   if (nextSegment) nextSegment.classList.add("story-active-segment");
+  syncTakeawaySpace(section, nextTakeaway);
   if (previousContent === nextContent) return;
   previousTakeaway.classList.add("story-outgoing-takeaway");
   const movingDownPage = direction >= 0;
@@ -4235,6 +4652,7 @@ function activateStoryTakeaway(section, step, direction) {
     }
     previousTakeaway.classList.remove("story-outgoing-takeaway");
     nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
+    syncTakeawaySpace(section, nextTakeaway);
   }, 430);
   takeawayTransitionTimers.set(section, transitionTimer);
 }
@@ -4473,6 +4891,9 @@ window.addEventListener("resize", () => {
     if (playbookSectionRendered) {
       renderPlaybookFrame();
     }
+    document.querySelectorAll(".slide[data-story-ready='true']").forEach(section => {
+      syncTakeawaySpace(section, section.querySelector(".takeaway.story-active-takeaway"));
+    });
   }, 150);
 });
 </script>
