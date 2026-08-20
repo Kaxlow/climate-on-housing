@@ -2599,7 +2599,7 @@ const TEXT = {
   featureOutcomeTooltip: "This value is each county's average monthly Median PPSF YoY across its complete event windows, from month -12 through the event start and months 1–36 after the event end. Counties with multiple qualifying events contribute one observation.",
   featureFrame1Title: "Which data types matter most to {risk} Risk counties?",
   featureFrame2Title: "What types of counties exist within the {risk} Risk group?",
-  featureFrame3Title: "What features define {subgroup} in the {risk} Risk group?",
+  featureFrame3Title: "What factors define {subgroup} in the {risk} Risk group?",
   featureGroupByCategory: "Group by Category",
   featureOrderBySignificance: "Order by Significance",
   featureClickHint: "Select any feature to reveal its relationship with Median PPSF YoY around events.",
