@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from unittest.mock import patch
 
 import duckdb
 import pandas as pd
@@ -21,7 +22,14 @@ from housing_climate_risk.page_data.climate_risk_housing import (
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
-    def test_event_analysis_keeps_only_current_state_and_dc_counties(self) -> None:
+    @patch(
+        "housing_climate_risk.page_data.climate_risk_housing.current_county_fips",
+        return_value=frozenset({"06037", "11001", "72001", "09003"}),
+    )
+    def test_event_analysis_keeps_only_current_state_and_dc_counties(
+        self,
+        _mock_current_county_fips,
+    ) -> None:
         events = pd.DataFrame(
             {
                 "fips": ["06037", "11001", "06000", "72001", "09001", "99137"],
