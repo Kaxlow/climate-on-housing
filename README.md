@@ -83,7 +83,9 @@ build-climate-risk-housing
    the `feature` schema, and persists event-window inputs and summaries in the
    `analysis` schema in `data/quoll.duckdb`. The FEMA
    declaration mart represents unique county-incidents while preserving the
-   declaration-level source rows in `raw`. Use
+   declaration-level source rows in `raw`. `mart.climate_events` then reconciles
+   matching FEMA and billion-dollar NOAA records into one canonical incident,
+   retaining the contributing source identifiers and duplicate counts. Use
    `build-database --marts-only` when the raw tables are already current and only the
    reference and mart layers need rebuilding.
 
@@ -96,7 +98,9 @@ build-climate-risk-housing
    `src/housing_climate_risk/page_data/event_windows.py` combine FEMA declarations and
    qualifying NOAA events with monthly Redfin observations. They align each county's
    housing history from 12 months before event start through the configured post-event
-   horizons, then retain complete observations for grouped plots. The database build
+   horizons. Page aggregates retain affected county trajectories with at least one
+   observation in the displayed window and compute every month from its available
+   non-null values. The database build
    persists the publication-notebook cohort and aggregate diagnostics under `analysis`.
 
 5. **Attach geography.** The builder reads

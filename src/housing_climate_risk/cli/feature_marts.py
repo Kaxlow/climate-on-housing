@@ -130,9 +130,9 @@ def _catalog_rows() -> list[dict[str, object]]:
         ("county_demographic_annual", "net_migration_rate_pct", "Demographic", "Net domestic plus international migration as a share of population.", "percent", "mart.statsamerica_population_components_annual; mart.acs_county_demographic_annual", "Total net migration divided by same-year positive ACS population and multiplied by 100.", "annual", "Feature comparison: Net Migration Rate"),
         ("county_climate_monthly", "avg_temperature_f", "Climate and hazard", "Monthly county average temperature.", "degrees Fahrenheit", "mart.ncei_county_weather_monthly", "NCEI parameter pivot.", "monthly", "Feature comparison: Temperature"),
         ("county_climate_monthly", "precipitation_inches", "Climate and hazard", "Monthly county precipitation.", "inches", "mart.ncei_county_weather_monthly", "NCEI parameter pivot.", "monthly", "Feature comparison: Precipitation"),
-        ("county_climate_monthly", "fema_event_count", "Climate and hazard", "Qualifying FEMA county-events beginning in the month.", "county-events", "mart.fema_disaster_declarations", "Distinct disaster/county/start records after incident-type exclusions.", "monthly", "Event definition and Climate Playbook"),
-        ("county_climate_monthly", "noaa_extreme_event_count", "Climate and hazard", "NOAA county-events beginning in the month with at least $1B total damage.", "county-events", "mart.noaa_storm_events", "Distinct NOAA event/county/start records above the project damage threshold.", "monthly", "Event definition and Climate Playbook"),
-        ("county_climate_monthly", "extreme_event_count", "Climate and hazard", "Combined qualifying FEMA and billion-dollar NOAA county-events beginning in the month.", "county-events", "mart.fema_disaster_declarations; mart.noaa_storm_events", "Sum of FEMA and NOAA qualifying county-event counts.", "monthly", "Feature comparison: Combined Extreme Event Count"),
+        ("county_climate_monthly", "fema_event_count", "Climate and hazard", "Canonical qualifying county-events with FEMA provenance beginning in the month.", "county-events", "mart.climate_events", "Semantic incident count after FEMA EM/DR and cross-source reconciliation.", "monthly", "Event definition and Climate Playbook"),
+        ("county_climate_monthly", "noaa_extreme_event_count", "Climate and hazard", "Canonical billion-dollar county-events with NOAA provenance beginning in the month.", "county-events", "mart.climate_events", "Semantic incident count after within-source and cross-source reconciliation.", "monthly", "Event definition and Climate Playbook"),
+        ("county_climate_monthly", "extreme_event_count", "Climate and hazard", "Unique qualifying climate incidents beginning in the month.", "county-events", "mart.climate_events", "Each canonical incident is counted once even when represented by FEMA and NOAA records.", "monthly", "Feature comparison: Combined Extreme Event Count"),
         ("county_housing_monthly", "median_ppsf_yoy", "Housing market", "Year-over-year change in median sale price per square foot.", "proportion", "mart.redfin_county_monthly", "Redfin Data Center percentage divided by 100 for All Residential rows.", "monthly", "Primary housing outcome"),
         ("county_housing_monthly", "housing_market_index", "Housing market", "Composite standardized housing-market movement index.", "z-score", "mart.redfin_county_monthly", "Mean of global z-scores for PPSF YOY, sale-to-list YOY, homes sold YOY, and inverted inventory YOY.", "monthly", "Event-window supporting outcome"),
         ("county_housing_monthly", "avg_sale_to_list_yoy", "Housing market", "Year-over-year percentage-point change in average sale-to-list ratio.", "proportion", "mart.redfin_county_monthly", "Redfin Data Center percentage points divided by 100.", "monthly", "Event-window metric"),
@@ -439,39 +439,30 @@ def create_feature_marts(con) -> None:
     con.execute(
         f"""
         CREATE TABLE feature.county_climate_monthly AS
-        WITH fema AS (
+        WITH events AS (
             SELECT
                 fips,
-                date_trunc('month', incident_begin_date)::DATE AS climate_month,
-                count(DISTINCT concat_ws(
-                    '|', cast(disasterNumber AS VARCHAR), fips, cast(incident_begin_date AS VARCHAR)
-                )) AS fema_event_count
-            FROM mart.fema_disaster_declarations
+                event_start_month AS climate_month,
+                count(*) FILTER (
+                    WHERE has_fema AND event_type NOT IN ({excluded_fema})
+                ) AS fema_event_count,
+                count(*) FILTER (WHERE has_noaa) AS noaa_extreme_event_count,
+                count(*) AS extreme_event_count,
+                sum(CASE WHEN has_noaa THEN coalesce(total_damage_amount, 0) ELSE 0 END)
+                    AS noaa_extreme_damage_usd
+            FROM mart.climate_events
             WHERE fips IS NOT NULL
-              AND incident_begin_date IS NOT NULL
-              AND incidentType NOT IN ({excluded_fema})
-            GROUP BY fips, climate_month
-        ),
-        noaa AS (
-            SELECT
-                fips,
-                date_trunc('month', begin_timestamp)::DATE AS climate_month,
-                count(DISTINCT concat_ws(
-                    '|', cast(event_id AS VARCHAR), fips, cast(begin_timestamp AS VARCHAR)
-                )) AS noaa_extreme_event_count,
-                sum(total_damage_amount) AS noaa_extreme_damage_usd
-            FROM mart.noaa_storm_events
-            WHERE fips IS NOT NULL
-              AND begin_timestamp IS NOT NULL
-              AND total_damage_amount >= {NOAA_DAMAGE_THRESHOLD}
+              AND event_start_month IS NOT NULL
+              AND (
+                    (has_fema AND event_type NOT IN ({excluded_fema}))
+                    OR has_noaa
+              )
             GROUP BY fips, climate_month
         ),
         keys AS (
             SELECT fips, weather_month AS climate_month FROM mart.ncei_county_weather_monthly
             UNION
-            SELECT fips, climate_month FROM fema
-            UNION
-            SELECT fips, climate_month FROM noaa
+            SELECT fips, climate_month FROM events
         )
         SELECT
             lpad(keys.fips, 5, '0') AS fips,
@@ -484,21 +475,16 @@ def create_feature_marts(con) -> None:
             weather.precipitation_inches,
             weather.avg_temperature_anomaly_f,
             weather.precipitation_anomaly_inches,
-            coalesce(fema.fema_event_count, 0)::INTEGER AS fema_event_count,
-            coalesce(noaa.noaa_extreme_event_count, 0)::INTEGER AS noaa_extreme_event_count,
-            (
-                coalesce(fema.fema_event_count, 0)
-                + coalesce(noaa.noaa_extreme_event_count, 0)
-            )::INTEGER AS extreme_event_count,
-            coalesce(noaa.noaa_extreme_damage_usd, 0) AS noaa_extreme_damage_usd,
+            coalesce(events.fema_event_count, 0)::INTEGER AS fema_event_count,
+            coalesce(events.noaa_extreme_event_count, 0)::INTEGER AS noaa_extreme_event_count,
+            coalesce(events.extreme_event_count, 0)::INTEGER AS extreme_event_count,
+            coalesce(events.noaa_extreme_damage_usd, 0) AS noaa_extreme_damage_usd,
             weather.fips IS NOT NULL AS has_ncei_weather
         FROM keys
         LEFT JOIN mart.ncei_county_weather_monthly AS weather
             ON keys.fips = weather.fips AND keys.climate_month = weather.weather_month
-        LEFT JOIN fema
-            ON keys.fips = fema.fips AND keys.climate_month = fema.climate_month
-        LEFT JOIN noaa
-            ON keys.fips = noaa.fips AND keys.climate_month = noaa.climate_month
+        LEFT JOIN events
+            ON keys.fips = events.fips AND keys.climate_month = events.climate_month
         WHERE keys.fips IS NOT NULL AND keys.climate_month IS NOT NULL
         """
     )

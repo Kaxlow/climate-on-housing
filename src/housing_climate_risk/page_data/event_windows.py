@@ -35,62 +35,22 @@ def load_disaster_events(
     include_fema: bool = True,
     include_noaa: bool = True,
 ) -> pd.DataFrame:
-    """Load the disaster event scope used by the housing market event-window views."""
+    """Load canonical incidents used by all downstream event analyses."""
 
-    frames: list[pd.DataFrame] = []
+    source_conditions: list[str] = []
+    params: list[object] = []
     if include_fema:
         excluded_types = tuple(excluded_fema_incident_types)
-        exclusion_clause = ""
-        params: list[object] = []
+        fema_condition = "has_fema"
         if excluded_types:
             placeholders = ", ".join("?" for _ in excluded_types)
-            exclusion_clause = f"AND incidentType NOT IN ({placeholders})"
+            fema_condition += f" AND event_type NOT IN ({placeholders})"
             params.extend(excluded_types)
-        frames.append(
-            con.execute(
-                f"""
-                SELECT
-                    'fema' AS event_source,
-                    disasterNumber AS source_event_id,
-                    fips,
-                    incidentType AS event_type,
-                    declarationTitle AS event_name,
-                    incident_begin_date AS event_start,
-                    coalesce(incident_end_date, incident_begin_date) AS event_end,
-                    CAST(NULL AS DOUBLE) AS total_damage_amount
-                FROM mart.fema_disaster_declarations
-                WHERE fips IS NOT NULL
-                  AND incident_begin_date IS NOT NULL
-                  {exclusion_clause}
-                """,
-                params,
-            ).df()
-        )
-
+        source_conditions.append(f"({fema_condition})")
     if include_noaa:
-        frames.append(
-            con.execute(
-                """
-                SELECT
-                    'noaa' AS event_source,
-                    event_id AS source_event_id,
-                    fips,
-                    event_type,
-                    event_type AS event_name,
-                    begin_timestamp AS event_start,
-                    coalesce(end_timestamp, begin_timestamp) AS event_end,
-                    total_damage_amount
-                FROM mart.noaa_storm_events
-                WHERE fips IS NOT NULL
-                  AND begin_timestamp IS NOT NULL
-                  AND total_damage_amount >= ?
-                """,
-                [noaa_damage_threshold],
-            ).df()
-        )
-
-    frames = [frame for frame in frames if not frame.empty]
-    if not frames:
+        source_conditions.append("(has_noaa AND total_damage_amount >= ?)")
+        params.append(noaa_damage_threshold)
+    if not source_conditions:
         return pd.DataFrame(
             columns=[
                 "event_source",
@@ -106,23 +66,39 @@ def load_disaster_events(
                 "event_key",
             ]
         )
-
-    events = pd.concat(frames, ignore_index=True)
+    events = con.execute(
+        f"""
+        SELECT
+            event_source,
+            source_event_id,
+            fips,
+            event_type,
+            event_name,
+            event_start,
+            event_end,
+            total_damage_amount,
+            event_start_month,
+            event_end_month,
+            event_key,
+            event_sources,
+            associated_source_event_keys,
+            source_event_count,
+            source_record_count,
+            semantic_duplicate_count,
+            canonicalization_reason
+        FROM mart.climate_events
+        WHERE {" OR ".join(source_conditions)}
+        """,
+        params,
+    ).df()
+    if events.empty:
+        return events
     events["fips"] = events["fips"].astype(str).str.zfill(5)
     events["event_start"] = pd.to_datetime(events["event_start"])
     events["event_end"] = pd.to_datetime(events["event_end"]).fillna(events["event_start"])
     events = events.loc[events["event_end"].ge(events["event_start"])].copy()
     events["event_start_month"] = events["event_start"].dt.to_period("M").dt.to_timestamp()
     events["event_end_month"] = events["event_end"].dt.to_period("M").dt.to_timestamp()
-    events["event_key"] = (
-        events["event_source"].astype(str)
-        + ":"
-        + events["source_event_id"].fillna("").astype(str)
-        + ":"
-        + events["fips"].astype(str)
-        + ":"
-        + events["event_start_month"].astype(str)
-    )
     return events
 
 

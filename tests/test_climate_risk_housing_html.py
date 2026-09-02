@@ -10,15 +10,32 @@ from housing_climate_risk.page_data.climate_risk_housing import (
     FEATURE_FOCUS_EVENTS,
     HTML_TEMPLATE,
     RISK_ORDER,
+    STATE_AND_DC_FIPS,
     STATES_PATH,
     _county_average_event_window_target,
     _select_story_peer_candidates,
     build_state_geojson,
+    filter_current_state_county_events,
     latest_complete_calendar_window,
 )
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    def test_event_analysis_keeps_only_current_state_and_dc_counties(self) -> None:
+        events = pd.DataFrame(
+            {
+                "fips": ["06037", "11001", "06000", "72001", "09001", "99137"],
+                "event_key": ["ca", "dc", "aggregate", "pr", "legacy", "special"],
+            }
+        )
+        current_nri_fips = {"06037", "11001", "72001", "09003"}
+
+        result = filter_current_state_county_events(events, current_nri_fips)
+
+        self.assertEqual(result["fips"].tolist(), ["06037", "11001"])
+        self.assertIn("11", STATE_AND_DC_FIPS)
+        self.assertNotIn("72", STATE_AND_DC_FIPS)
+
     def test_feature_target_is_average_event_window_level_by_county(self) -> None:
         rows = pd.DataFrame(
             [
@@ -104,21 +121,20 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertNotIn('id="event-arrow-right"', HTML_TEMPLATE)
         self.assertNotIn("switchEventWindow(", HTML_TEMPLATE)
 
-    def test_rating_sequence_uses_two_second_frames(self) -> None:
-        self.assertIn("}, 2000);", HTML_TEMPLATE)
+    def test_rating_and_event_sequences_share_faster_frames(self) -> None:
+        self.assertIn("const RISK_SEQUENCE_INTERVAL = 1200;", HTML_TEMPLATE)
+        self.assertGreaterEqual(HTML_TEMPLATE.count("RISK_SEQUENCE_INTERVAL"), 3)
 
-    def test_rating_sequence_separates_visual_and_callout_frames(self) -> None:
-        self.assertIn("const RATING_SEQUENCE_FRAMES = [", HTML_TEMPLATE)
-        self.assertIn("{risk, callout: false}", HTML_TEMPLATE)
-        self.assertIn("{risk, callout: true}", HTML_TEMPLATE)
-        self.assertIn('classed("visible", Boolean(callout) && frame.callout)', HTML_TEMPLATE)
+    def test_rating_sequence_uses_clickable_legend_without_callouts(self) -> None:
+        self.assertIn("const RATING_SEQUENCE_FRAMES = RISK_ORDER.map(risk => ({risk}));", HTML_TEMPLATE)
+        self.assertIn('id="rating-risk-legend"', HTML_TEMPLATE)
+        self.assertIn('id="rating-play-button"', HTML_TEMPLATE)
+        self.assertNotIn("ratingSequenceCallouts", HTML_TEMPLATE)
+        self.assertNotIn('id="rating-sequence-callout"', HTML_TEMPLATE)
         self.assertIn("riskIndex < activeRiskIndex", HTML_TEMPLATE)
-        self.assertNotIn("sequence-callout-frame", HTML_TEMPLATE)
-        self.assertIn('.sequence-callout { position: relative;', HTML_TEMPLATE)
-        self.assertIn('margin: 4px 24px 0 58px;', HTML_TEMPLATE)
 
     def test_pricing_takeaway_pauses_rating_sequence(self) -> None:
-        self.assertIn("function pauseRatingSequence()", HTML_TEMPLATE)
+        self.assertIn("function pauseRatingSequence(manual = false)", HTML_TEMPLATE)
         self.assertIn('section.id === "pricing-grouping"', HTML_TEMPLATE)
         self.assertIn("pauseRatingSequence();", HTML_TEMPLATE)
 
@@ -281,7 +297,7 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
     def test_feature_subgroup_labels_are_performance_based_and_ordered(self) -> None:
         self.assertIn('subgroupNamesFour: ["Strong Overperformers", "Mild Overperformers", "Mild Underperformers", "Strong Underperformers"]', HTML_TEMPLATE)
         self.assertIn('subgroupNamesThree: ["Overperformers", "Average Performers", "Underperformers"]', HTML_TEMPLATE)
-        self.assertIn('const orderedGroups = [...payload.groups].sort((a, b) => a.index - b.index)', HTML_TEMPLATE)
+        self.assertIn('const orderedGroups = [...payload.groups].sort((a, b) => b.index - a.index)', HTML_TEMPLATE)
         self.assertIn('attr("aria-pressed"', HTML_TEMPLATE)
         self.assertIn('startFeatureSubgroupSequence()', HTML_TEMPLATE)
 
@@ -290,9 +306,9 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('id="feature-subgroup-toggles"', HTML_TEMPLATE)
         self.assertIn('button.feature-subgroup-control', HTML_TEMPLATE)
         self.assertIn('selectFeatureSubgroup(Number(d.index), true)', HTML_TEMPLATE)
-        self.assertIn('.feature-subgroup-controls.visible { display: grid; }', HTML_TEMPLATE)
+        self.assertIn('.feature-subgroup-controls.visible { display: flex; }', HTML_TEMPLATE)
         self.assertIn('class="feature-plot-shell"', HTML_TEMPLATE)
-        self.assertIn('grid-template-columns: minmax(0, 1fr) 146px;', HTML_TEMPLATE)
+        self.assertIn('class="feature-subgroup-control-stack"', HTML_TEMPLATE)
         self.assertIn('cursor: pointer !important;', HTML_TEMPLATE)
         self.assertIn('pointer-events: auto; touch-action: manipulation;', HTML_TEMPLATE)
         self.assertIn('cursor: pointer; pointer-events: none;', HTML_TEMPLATE)
@@ -320,7 +336,7 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('style("display", "none").text("")', HTML_TEMPLATE)
         self.assertIn("Insufficient feature data available for {county}.", HTML_TEMPLATE)
         self.assertIn(
-            "could not be determined because there were insufficient housing data to form a complete event window for analysis.",
+            "could not be determined because no housing observations were available in the event-window analysis period.",
             HTML_TEMPLATE,
         )
         self.assertIn('class="playbook-feature-insufficient"', HTML_TEMPLATE)
@@ -339,19 +355,35 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn(".playbook-feature-summary { display: grid; gap: 6px; max-height:", HTML_TEMPLATE)
         self.assertIn("overflow-y: auto;", HTML_TEMPLATE)
 
-    def test_later_playbook_frames_use_the_subgroup_feature_summary(self) -> None:
-        self.assertIn("function renderPlaybookFeatureSummary(county, summarizeSubgroup = false)", HTML_TEMPLATE)
-        self.assertIn('state === "history-events" || state === "history-compare"', HTML_TEMPLATE)
-        self.assertIn('playbookSubgroupFeatureTitle:', HTML_TEMPLATE)
+    def test_later_playbook_frames_use_performance_status_and_warning_dashboard(self) -> None:
+        self.assertIn("function renderPlaybookPerformanceStatus(county, compact = false)", HTML_TEMPLATE)
+        self.assertIn('if (state === "history-compare")', HTML_TEMPLATE)
+        self.assertIn('renderPlaybookPerformanceStatus(county, false);', HTML_TEMPLATE)
+        self.assertIn('renderPlaybookPerformanceTakeaway(county);', HTML_TEMPLATE)
+        self.assertIn('class="playbook-warning-grid"', HTML_TEMPLATE)
         self.assertIn('const subgroupRelations = subgroupFeatureRelations(county.riskRating, profile.subgroup);', HTML_TEMPLATE)
 
     def test_playbook_history_profile_card_has_fixed_chrome_and_scrollable_traits(self) -> None:
         self.assertIn('playbookSubgroupFeatureTitle: "County Traits"', HTML_TEMPLATE)
-        self.assertIn('.playbook-back-button { align-self: flex-start;', HTML_TEMPLATE)
+        self.assertIn('.playbook-back-button { position: absolute;', HTML_TEMPLATE)
         self.assertIn('padding: 5px 8px; font-size: 10px;', HTML_TEMPLATE)
         self.assertIn('[data-story-state^="history-"] #playbook-selected-county-name { display: none !important; }', HTML_TEMPLATE)
-        self.assertIn('[data-story-state^="history-"] .playbook-feature-summary { flex: 1 1 auto; min-height: 0; max-height: none; }', HTML_TEMPLATE)
-        self.assertIn('[data-story-state^="history-"] .playbook-subgroup-badge { flex: 0 0 auto; margin: auto 0 0; }', HTML_TEMPLATE)
+        self.assertIn('[data-story-state="history-compare"] .playbook-performance-pane { display: flex;', HTML_TEMPLATE)
+        self.assertIn('.attr("class", "playbook-performance-takeaway")', HTML_TEMPLATE)
+
+    def test_monthly_lines_keep_gaps_and_controls_are_icon_only(self) -> None:
+        self.assertNotIn("interpolateInternalHistory", HTML_TEMPLATE)
+        self.assertIn('d3.line().defined(d => d.value != null)', HTML_TEMPLATE)
+        self.assertIn('function setSequenceButton(selector, paused)', HTML_TEMPLATE)
+        self.assertIn('.text(paused ? "\\u25B6" : "\\u275A\\u275A")', HTML_TEMPLATE)
+        self.assertNotIn('"▶ Resume"', HTML_TEMPLATE)
+        self.assertNotIn('"❚❚ Pause"', HTML_TEMPLATE)
+
+    def test_event_overview_is_a_full_width_bar_chart(self) -> None:
+        self.assertIn('function drawEventRiskBars()', HTML_TEMPLATE)
+        self.assertIn('.event-overview-chart { width: 100%;', HTML_TEMPLATE)
+        self.assertIn('rect.event-risk-bar', HTML_TEMPLATE)
+        self.assertNotIn('function drawEventRiskPie()', HTML_TEMPLATE)
 
     def test_playbook_county_history_line_is_distinct_from_risk_colors(self) -> None:
         self.assertIn('const COUNTY_LINE_COLOR = "#2456a6";', HTML_TEMPLATE)
@@ -376,7 +408,7 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('.state-boundary { fill: none; stroke: #173f37; stroke-width: 1.4;', HTML_TEMPLATE)
 
     def test_playbook_event_list_scrolls_within_frame_three(self) -> None:
-        self.assertIn('.playbook-events-pane { display: flex; flex-direction: column; }', HTML_TEMPLATE)
+        self.assertIn('[data-story-state="history-events"] .playbook-events-pane { display: flex;', HTML_TEMPLATE)
         self.assertIn('overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;', HTML_TEMPLATE)
 
     def test_state_boundaries_are_dissolved_from_displayed_counties(self) -> None:
@@ -405,11 +437,11 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertEqual(result["features"][0]["geometry"]["type"], "Polygon")
         self.assertEqual(len(result["features"][0]["geometry"]["coordinates"]), 1)
 
-    def test_playbook_has_four_frames_and_risk_group_comparison(self) -> None:
-        for state in ('"search"', '"profile"', '"history-events"', '"history-compare"'):
+    def test_playbook_has_five_requested_frames_and_risk_group_comparison(self) -> None:
+        for state in ('"search"', '"history-map"', '"history-events"', '"history-compare"', '"history-outlook"'):
             self.assertIn(f"state: {state}", HTML_TEMPLATE)
         self.assertIn("function buildRiskGroupSeries(county)", HTML_TEMPLATE)
-        self.assertIn("function drawPlaybookHistory(county, compareRisk = false)", HTML_TEMPLATE)
+        self.assertIn("function drawPlaybookHistory(county, compareRisk = false, showEvents = true)", HTML_TEMPLATE)
         self.assertIn("d.q1 - .5 * (d.q3 - d.q1)", HTML_TEMPLATE)
         self.assertIn("d.q3 + .5 * (d.q3 - d.q1)", HTML_TEMPLATE)
         self.assertIn('.duration(900)', HTML_TEMPLATE)

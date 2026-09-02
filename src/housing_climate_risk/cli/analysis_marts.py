@@ -62,7 +62,9 @@ def _empty_analysis_tables(con) -> None:
             event_source VARCHAR, source_event_id VARCHAR, fips VARCHAR, event_type VARCHAR,
             event_name VARCHAR, event_start TIMESTAMP, event_end TIMESTAMP,
             total_damage_amount DOUBLE, event_start_month DATE, event_end_month DATE,
-            event_key VARCHAR
+            event_key VARCHAR, event_sources VARCHAR, associated_source_event_keys VARCHAR,
+            source_event_count INTEGER, source_record_count INTEGER,
+            semantic_duplicate_count INTEGER, canonicalization_reason VARCHAR
         )
         """
     )
@@ -105,7 +107,7 @@ def create_analysis_marts(con) -> None:
         ("noaa_damage_threshold_usd", str(DEFAULT_NOAA_DAMAGE_THRESHOLD)),
         ("included_event_sources", "FEMA declarations and NOAA Storm Events"),
         ("excluded_fema_incident_types", ", ".join(DEFAULT_EXCLUDED_FEMA_INCIDENT_TYPES)),
-        ("county_event_deduplication", "Exact event_key: source + source event id + county FIPS + event start month"),
+        ("county_event_deduplication", "Canonical mart incident: FEMA EM/DR semantic matching, NOAA episode matching, and cross-source county/family/date matching"),
         ("event_start_definition", "Calendar month containing incident/event begin timestamp"),
         ("event_end_definition", "Calendar month containing incident/event end timestamp; start used when absent"),
         ("window_axis", "Negative months and month 0 are relative to event start; positive months are relative to event end"),
@@ -179,6 +181,12 @@ def create_analysis_marts(con) -> None:
         "event_start_month",
         "event_end_month",
         "event_key",
+        "event_sources",
+        "associated_source_event_keys",
+        "source_event_count",
+        "source_record_count",
+        "semantic_duplicate_count",
+        "canonicalization_reason",
     ]
     con.register("_analysis_events_df", events[event_columns])
     con.register("_analysis_windows_df", windows)

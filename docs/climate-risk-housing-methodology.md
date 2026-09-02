@@ -127,7 +127,14 @@ price-drop shares. The mart is restricted to January 2012 through December 2025,
 matching the former extract's period.
 
 Historical charts show monthly observations at the county level across the latest ten
-complete calendar years. In charts where counties are grouped by NRI risk rating, only counties with complete monthly observations across the corresponding period are included. For each group, counties are aggregated and the median and 25th–75th percentile interval are calculated for each month. The median, 25th, and 75th percentile values over time are used to create a line plot with a surrounding band that represents the group's house price growth trajectory over time.
+complete calendar years. All present-day county and county-equivalent FIPS in the 50
+states and District of Columbia are eligible; Puerto Rico, other U.S. territories,
+state/aggregate codes ending in `000`, and legacy or special codes that do not match a
+present-day county are excluded. An individual county line retains null months as
+visible gaps. For an NRI group, each month is calculated independently from every
+available non-null county observation in that month. The line is the monthly median,
+and its surrounding band is the monthly 25th–75th percentile interval. A county does
+not need a complete ten-year trajectory to contribute.
 
 ## Disaster event selection
 
@@ -139,19 +146,31 @@ The event analysis combines:
 
 FEMA types Biological, Dam/Levee Break, Chemical, Terrorist, Other, and Toxic
 Substances are excluded from the intended climate and destructive-weather
-scope. The raw FEMA declaration table preserves the source rows, while
-`mart.fema_disaster_declarations` is incident-level: declarations with the same
-county, incident type, title, start date, and end date are treated as one
-incident. When both emergency (`EM`) and major-disaster (`DR`) declarations
-describe that incident, the `DR` declaration is retained as its canonical
-record; the shared incident dates are unchanged. The mart also retains the
-declaration count and lists of associated disaster numbers and declaration
-types.
+scope. The raw FEMA declaration table preserves every provider row.
+Deduplication begins at the mart boundary. `mart.fema_disaster_declarations`
+normalizes declaration titles and clusters records for the same county when
+their like-named incident periods overlap or are separated by no more than seven
+days. When emergency (`EM`) and major-disaster (`DR`) declarations describe that
+incident, the `DR` declaration is retained as its canonical record. The
+canonical interval spans the contributing records, and the mart retains source
+row counts plus lists of associated disaster numbers, declaration types, and
+source record IDs.
+
+`mart.noaa_storm_events` removes repeated source records with the same event ID,
+county, type, and interval. Qualifying NOAA billion-dollar records are then
+compared with canonical FEMA incidents in `mart.climate_events`. Records in the
+same county and broad event family are treated as one physical incident when
+their periods overlap within three days; FEMA is the canonical display record,
+while NOAA damage and both sources' identifiers are retained as lineage. NOAA
+records from the same county and NOAA episode are also treated as one incident.
+All feature, analysis, page, and Climate Playbook event processing reads this
+unified canonical mart.
 A missing event end is set to its start; an end before the start causes the
-record to be removed. Dates are reduced to calendar months. Each
-county-source-event-start combination receives a unique key. The page retains
-events starting within the same latest-ten-complete-calendar-years period used
-for the housing histories.
+record to be removed. Dates are reduced to calendar months. Each canonical
+county-incident receives a unique key, and its contributing provider keys remain
+available in `associated_source_event_keys`. The page retains events starting
+within the same latest-ten-complete-calendar-years period used for the housing
+histories.
 
 That dynamically derived period defines the page view. The reusable `analysis`
 layer also persists complete-window summaries for post-event horizons of 12,
@@ -173,12 +192,14 @@ The raw page-data build retains the 12 pre-start months required by both display
 windows and up to 60 months after the event end. Months between the event's
 start and end are not part of either display window.
 
-The charts grouped by NRI risk rating include only county-event trajectories
-with a non-null median PPSF year-over-year value at every required month in the
-corresponding window: months -12 through 0 and 1 through 36 for Window A, or
-months -12 through 0 and 1 through 60 for Window B. Completeness is evaluated
-separately for each window, so a county-event trajectory can qualify for Window
-A but not Window B.
+The charts grouped by NRI risk rating include an affected county when it has at
+least one non-null median PPSF year-over-year observation in the displayed
+window: months -12 through 0 for the pre-event frame, months -12 through 0 and 1
+through 36 for Window A, or months -12 through 0 and 1 through 60 for Window B.
+Eligibility is evaluated separately for each frame. At each relative month, the
+median and interquartile range use all available non-null observations; missing
+months neither remove a county from the rest of the frame nor enter that month's
+calculation.
 
 At each relative month, trajectories are grouped by overall NRI rating. The
 page reports their median and interquartile range. A county associated with
@@ -206,13 +227,13 @@ receipts. The homeowners-insurance, property-tax, and utility cost shares instea
 use county median annual household income as their denominator. Each is averaged
 over the latest ten years available in its mart before the county comparison.
 
-The feature-analysis outcome is each county's arithmetic mean of monthly median
-PPSF YoY across all of its complete event-window observations: month -12 through
-the event start (month 0) and months 1 through 36 after the event end. Every
-county contributes one observation to this analysis. Because all qualifying
-events have the same complete window, multiple events receive equal weight
-within a county; overlapping event windows can repeat the same calendar housing
-observation.
+The feature-analysis outcome is each county's arithmetic mean of every available
+monthly median PPSF YoY observation in its event windows: month -12 through the
+event start (month 0) and months 1 through 36 after the event end. An affected
+county with an NRI rating enters this analysis when at least one observation is
+available, and contributes one county-level outcome even when its monthly record
+is incomplete. Multiple events therefore contribute according to their available
+months; overlapping event windows can repeat the same calendar housing observation.
 
 For each NRI risk group, the page ranks retained features by the absolute
 Spearman correlation between the county feature value and this county-level
@@ -225,29 +246,34 @@ when that interval lies entirely above +0.10 or below -0.10. Features with
 absolute point correlation greater than or equal to 0.30 receive the strongest-correlation
 visual treatment.
 
-For the performance view, counties are sorted in descending order of their
-county-level average PPSF YoY around events and divided into four approximately
-equal-sized groups. The smaller Very High-risk sample is divided into three
-groups. Each trend is the month-level median after first collapsing multiple
-qualifying events to one county-month value, so every county receives equal
-weight. The companion distribution plot shows strongly correlated feature
-values for the selected performance group after excluding values beyond 1.5
-times the risk group's interquartile range.
+For the performance view, every affected, NRI-rated county with at least one
+available observation is sorted in descending order of its county-level average
+PPSF YoY around events. Counties are divided deterministically into four
+approximately equal-sized groups: Strong Overperformers, Mild Overperformers,
+Mild Underperformers, and Strong Underperformers. Ties are resolved by FIPS for
+stable assignment. The smaller Very High-risk sample is divided into three groups:
+Overperformers, Average Performers, and Underperformers. Thus incomplete monthly
+coverage does not prevent an otherwise in-scope county from receiving a performer
+subgroup. Each trend is the month-level median after first collapsing multiple
+qualifying events to one county-month value, so every observed county receives
+equal weight in that month. The companion distribution plot shows strongly
+correlated feature values for the selected performance group after excluding
+values beyond 1.5 times the risk group's interquartile range.
 Because the performance groups are defined directly from the outcome, their
 separation is descriptive and in-sample; it is not evidence of prediction or
 causation.
 
 ## County Climate Playbook
 
-The lookup combines overall and hazard-specific NRI measures, the leading
-within-risk-group county features and performance-group assignment, monthly county median
-PPSF year-over-year history, and qualifying FEMA/NOAA event periods from
-2016–2025. Its comparison view overlays the selected risk group's monthly median
-and IQR. Event narratives assess how closely the county's post-event change
-matches its risk-group expectation and how closely its relative PPSF YoY level
-matches the performance-group expectation shown in the profile. Highly volatile
-histories are reported as inconclusive. Counties without a qualifying event
-receive a risk-group and subgroup-based expectation instead.
+The lookup combines overall NRI risk, the within-risk performer subgroup, monthly
+county median PPSF year-over-year history, and qualifying FEMA/NOAA event periods
+from 2016–2025. Missing county months remain breaks rather than being interpolated.
+The comparison view overlays the selected risk group's monthly median and IQR and
+describes the county's overall level relative to that group without using event
+timing. The final frame uses the feature relationships that define the county's
+performer subgroup to show a compact warning-factor dashboard. Its introduction
+changes according to whether a qualifying past event exists. Counties without an
+NRI rating receive an explicit insufficient-data message instead.
 
 ## Geography and generated page
 

@@ -17,6 +17,10 @@ from housing_climate_risk.cli.redfin_housing_data import (
     ANALYSIS_PERIOD_START as REDFIN_PERIOD_START,
     REDFIN_COUNTY_FILES,
 )
+from housing_climate_risk.event_deduplication import (
+    canonicalize_climate_events,
+    canonicalize_fema_declarations,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data"
@@ -1124,6 +1128,104 @@ def _create_statsamerica_bea_cew_marts(con) -> None:
         )
 
 
+def _canonicalize_event_marts(con) -> None:
+    """Canonicalize source events and materialize the unified climate-event mart.
+
+    The raw schema remains untouched. Source-specific marts remove duplicate
+    source records, while ``mart.climate_events`` additionally reconciles FEMA
+    declarations and qualifying NOAA records that describe the same incident.
+    """
+
+    fema = con.execute("SELECT * FROM mart.fema_disaster_declarations").df()
+    canonical_fema = canonicalize_fema_declarations(fema)
+    con.register("_canonical_fema_df", canonical_fema)
+    try:
+        con.execute("CREATE OR REPLACE TABLE mart.fema_disaster_declarations AS SELECT * FROM _canonical_fema_df")
+    finally:
+        con.unregister("_canonical_fema_df")
+
+    con.execute("DROP TABLE IF EXISTS mart._noaa_storm_events_deduplicated")
+    con.execute(
+        """
+        CREATE TABLE mart._noaa_storm_events_deduplicated AS
+        SELECT * EXCLUDE (_duplicate_rank)
+        FROM (
+            SELECT
+                source_events.*,
+                count(*) OVER (
+                    PARTITION BY event_id, fips, begin_timestamp, end_timestamp, event_type
+                ) AS source_record_count,
+                row_number() OVER (
+                    PARTITION BY event_id, fips, begin_timestamp, end_timestamp, event_type
+                    ORDER BY total_damage_amount DESC NULLS LAST, episode_id, event_id
+                ) AS _duplicate_rank
+            FROM mart.noaa_storm_events AS source_events
+        )
+        WHERE _duplicate_rank = 1
+        """
+    )
+    con.execute("DROP TABLE mart.noaa_storm_events")
+    con.execute("ALTER TABLE mart._noaa_storm_events_deduplicated RENAME TO noaa_storm_events")
+
+    fema_events = con.execute(
+        """
+        SELECT
+            'fema' AS event_source,
+            cast(disasterNumber AS VARCHAR) AS source_event_id,
+            fips,
+            incidentType AS event_type,
+            declarationTitle AS event_name,
+            incident_begin_date AS event_start,
+            incident_end_date AS event_end,
+            CAST(NULL AS DOUBLE) AS total_damage_amount,
+            source_record_count,
+            associated_disaster_numbers AS associated_source_event_ids
+        FROM mart.fema_disaster_declarations
+        WHERE fips IS NOT NULL AND incident_begin_date IS NOT NULL
+        """
+    ).df()
+    noaa_events = con.execute(
+        """
+        SELECT
+            'noaa' AS event_source,
+            cast(event_id AS VARCHAR) AS source_event_id,
+            fips,
+            event_type,
+            event_type AS event_name,
+            begin_timestamp AS event_start,
+            coalesce(end_timestamp, begin_timestamp) AS event_end,
+            total_damage_amount,
+            source_record_count,
+            cast(event_id AS VARCHAR) AS associated_source_event_ids,
+            cast(episode_id AS VARCHAR) AS episode_id
+        FROM mart.noaa_storm_events
+        WHERE fips IS NOT NULL
+          AND begin_timestamp IS NOT NULL
+          AND total_damage_amount >= 1000000000
+        """
+    ).df()
+    climate_events = canonicalize_climate_events(fema_events, noaa_events)
+    con.register("_canonical_climate_events_df", climate_events)
+    try:
+        con.execute("CREATE OR REPLACE TABLE mart.climate_events AS SELECT * FROM _canonical_climate_events_df")
+    finally:
+        con.unregister("_canonical_climate_events_df")
+
+    duplicate_keys = con.execute(
+        """
+        SELECT count(*)
+        FROM (
+            SELECT event_key
+            FROM mart.climate_events
+            GROUP BY event_key
+            HAVING count(*) > 1
+        )
+        """
+    ).fetchone()[0]
+    if duplicate_keys:
+        raise RuntimeError(f"mart.climate_events contains {duplicate_keys:,} duplicate event keys")
+
+
 def _create_core_marts(con) -> None:
     con.execute("CREATE SCHEMA IF NOT EXISTS mart")
     con.create_function(
@@ -1377,6 +1479,8 @@ def _create_core_marts(con) -> None:
         FROM noaa_resolved
         """
     )
+
+    _canonicalize_event_marts(con)
 
     con.execute("DROP TABLE IF EXISTS mart.ncei_county_weather_monthly")
     con.execute(
@@ -1976,6 +2080,7 @@ def _create_indexes(con) -> None:
         ("idx_fema_fips_year", "mart.fema_disaster_declarations", "fips, declared_year"),
         ("idx_fema_financial_assistance_disaster_number", "mart.fema_disaster_financial_assistance", "disaster_number"),
         ("idx_noaa_fips_year", "mart.noaa_storm_events", "fips, event_year"),
+        ("idx_climate_events_fips_start", "mart.climate_events", "fips, event_start_month"),
         ("idx_ncei_weather_fips_month", "mart.ncei_county_weather_monthly", "fips, weather_month"),
         ("idx_acs_econ_fips_year", "mart.acs_county_economic_annual", "fips, year"),
         ("idx_acs_demo_fips_year", "mart.acs_county_demographic_annual", "fips, year"),
