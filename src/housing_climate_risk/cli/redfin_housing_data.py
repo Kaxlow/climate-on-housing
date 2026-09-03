@@ -21,11 +21,6 @@ S3_BASE_URL = (
 RECEIPT_PATH = DATA_DIR / "download_receipt.yaml"
 USER_AGENT = "quoll-intelligence/redfin-data-center-downloader"
 
-# The prior county extract covered this exact interval. The raw provider files
-# are retained as downloaded; build_database applies this window to the mart.
-ANALYSIS_PERIOD_START = "2012-01-01"
-ANALYSIS_PERIOD_END = "2025-12-31"
-
 REDFIN_COUNTY_FILES = {
     "redfin_housing_market_monthly_counties": {
         "url": f"{S3_BASE_URL}/housing_market/monthly/all_counties.csv",
@@ -157,8 +152,7 @@ def download_redfin_county_monthly(*, force: bool = False) -> list[Path]:
                     "provider_last_modified": last_modified,
                     "version_specific_url": False,
                     "future_results_may_differ": True,
-                    "analysis_period_start": ANALYSIS_PERIOD_START,
-                    "analysis_period_end": ANALYSIS_PERIOD_END,
+                    "analysis_period": "Latest ten complete calendar years are selected when the page is built.",
                     "attribution": "Data provided by Redfin, a national real estate brokerage.",
                 },
                 RECEIPT_PATH,

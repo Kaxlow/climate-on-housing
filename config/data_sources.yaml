@@ -109,7 +109,7 @@ sources:
       - data/housing/redfin_data_center/housing_market_monthly_counties.csv
       - data/housing/redfin_data_center/property_types_monthly_counties.csv
       - data/housing/redfin_data_center/price_drops_monthly_counties.csv
-    version_or_date_range: Public mutable monthly county files; mart restricted to 2012-01-01 through 2025-12-31 to match the prior analysis period
+    version_or_date_range: Public mutable monthly county files; the mart retains all available months and the page selects the latest ten complete calendar years
     expected_columns: [FREQUENCY, PERIOD BEGIN, PERIOD END, REGION TYPE, REGION NAME, PROPERTY TYPE, MEDIAN SALE PRICE PER SQ.FT. ($), MEDIAN SALE PRICE PER SQ.FT. YOY (%), PERCENT ACTIVE WITH PRICE DROPS (%)]
     api_credentials_required: false
     provider_terms_or_attribution: Data provided by Redfin, a national real estate brokerage; link the first reference to Redfin

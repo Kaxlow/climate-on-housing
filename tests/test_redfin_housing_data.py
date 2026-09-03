@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import io
+import inspect
 
 import duckdb
 import pandas as pd
 
 from housing_climate_risk.cli import redfin_housing_data
 from housing_climate_risk.cli.build_database import (
+    _create_core_marts,
     _normalize_place_name,
     _redfin_fips_expr,
     _redfin_normalized_select,
@@ -29,6 +31,15 @@ class _Response(io.BytesIO):
 
     def __exit__(self, *args) -> None:
         self.close()
+
+
+def test_redfin_mart_does_not_apply_a_fixed_calendar_cutoff() -> None:
+    source = inspect.getsource(_create_core_marts)
+    assert "REDFIN_PERIOD_START" not in source
+    assert "REDFIN_PERIOD_END" not in source
+    assert "WHERE try_cast(PERIOD_BEGIN AS DATE)" not in source
+    assert not hasattr(redfin_housing_data, "ANALYSIS_PERIOD_START")
+    assert not hasattr(redfin_housing_data, "ANALYSIS_PERIOD_END")
 
 
 def test_download_csv_streams_validated_provider_file(tmp_path, monkeypatch) -> None:

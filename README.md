@@ -49,9 +49,9 @@ The bootstrap does not download the following packaged or optional inputs:
 Set `CENSUS_API_KEY` before bootstrapping. The pipeline intentionally selects
 the latest available data. Annual versioned provider URLs are recorded where
 available; mutable APIs and unversioned downloads can change future results.
-Redfin's mutable files are downloaded at their current revision, while the
-housing mart retains January 2012 through December 2025 to preserve the existing
-analysis period.
+Redfin's mutable files are downloaded at their current revision and retained in
+the housing mart. The page dynamically selects the latest ten complete calendar
+years available in that mart.
 
 Rebuild the infographic:
 

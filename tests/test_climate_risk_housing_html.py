@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+import inspect
 import unittest
 from unittest.mock import patch
 
 import duckdb
 import pandas as pd
 
+from housing_climate_risk.page_data import climate_risk_housing as page_builder
 from housing_climate_risk.page_data.climate_risk_housing import (
     FEATURE_FOCUS_EVENTS,
     HTML_TEMPLATE,
@@ -91,6 +93,53 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
             self.assertEqual(end, pd.Timestamp("2026-01-01"))
         finally:
             con.close()
+
+    def test_analysis_window_advances_when_a_new_complete_year_is_available(self) -> None:
+        con = duckdb.connect()
+        try:
+            con.execute("CREATE SCHEMA mart")
+            con.execute(
+                """
+                CREATE TABLE mart.redfin_county_monthly (
+                    property_type VARCHAR,
+                    period_begin DATE
+                )
+                """
+            )
+            con.execute(
+                """
+                INSERT INTO mart.redfin_county_monthly
+                SELECT 'All Residential', month
+                FROM generate_series(
+                    DATE '2025-01-01',
+                    DATE '2026-12-01',
+                    INTERVAL 1 MONTH
+                ) AS dates(month)
+                """
+            )
+
+            start, end = latest_complete_calendar_window(con)
+
+            self.assertEqual(start, pd.Timestamp("2017-01-01"))
+            self.assertEqual(end, pd.Timestamp("2027-01-01"))
+        finally:
+            con.close()
+
+    def test_page_main_shares_one_maximum_event_context(self) -> None:
+        source = inspect.getsource(page_builder.main)
+        self.assertEqual(source.count("build_max_affected_event_context(con)"), 1)
+        self.assertIn("build_feature_payload(con, event_context=event_context)", source)
+        self.assertIn("build_event_windows(con, event_context=event_context)", source)
+        context_source = inspect.getsource(page_builder.build_max_affected_event_context)
+        self.assertIn("post_event_months=60", context_source)
+        self.assertNotIn(
+            "build_affected_event_windows",
+            inspect.getsource(page_builder.build_feature_payload),
+        )
+        self.assertNotIn(
+            "build_affected_event_windows",
+            inspect.getsource(page_builder.build_event_windows),
+        )
 
     def test_nri_link_does_not_break_javascript_string(self) -> None:
         self.assertIn(
@@ -369,7 +418,33 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('renderPlaybookPerformanceStatus(county, false);', HTML_TEMPLATE)
         self.assertIn('renderPlaybookPerformanceTakeaway(county);', HTML_TEMPLATE)
         self.assertIn('class="playbook-warning-grid"', HTML_TEMPLATE)
-        self.assertIn('const subgroupRelations = subgroupFeatureRelations(county.riskRating, profile.subgroup);', HTML_TEMPLATE)
+        self.assertIn('const metrics = mostImportantFeatureMetrics(risk);', HTML_TEMPLATE)
+        self.assertIn('grid-template-columns: repeat(3, minmax(0, 1fr))', HTML_TEMPLATE)
+        self.assertIn('class="playbook-warning-takeaway"', HTML_TEMPLATE)
+        self.assertNotIn('"\\u2191 rising"', HTML_TEMPLATE)
+        self.assertNotIn('"\\u2193 falling"', HTML_TEMPLATE)
+
+    def test_playbook_drops_outlook_for_counties_without_performer_assignment(self) -> None:
+        self.assertIn("function playbookHasPerformanceGroup(county)", HTML_TEMPLATE)
+        self.assertIn('config.filter(step => step.state !== "history-outlook")', HTML_TEMPLATE)
+        self.assertIn("syncPlaybookStoryLength(county);", HTML_TEMPLATE)
+        self.assertIn("playbookInsufficientPerformance:", HTML_TEMPLATE)
+        self.assertIn(
+            "had insufficient data so its housing market performance could not be reliably determined",
+            HTML_TEMPLATE,
+        )
+
+    def test_playbook_outlook_is_full_width_without_history_plot(self) -> None:
+        self.assertIn('[data-story-state="history-outlook"] .playbook-history-pane { display: none; }', HTML_TEMPLATE)
+        self.assertIn(
+            '[data-story-state="history-outlook"] .playbook-selected-layout { grid-template-columns: minmax(0, 1fr);',
+            HTML_TEMPLATE,
+        )
+        branch_start = HTML_TEMPLATE.index('if (state === "history-outlook")')
+        branch_end = HTML_TEMPLATE.index("function initPlaybook()", branch_start)
+        outlook_branch = HTML_TEMPLATE[branch_start:branch_end]
+        self.assertIn("renderPlaybookOutlook(county);", outlook_branch)
+        self.assertNotIn("drawPlaybookHistory", outlook_branch)
 
     def test_playbook_history_profile_card_has_fixed_chrome_and_scrollable_traits(self) -> None:
         self.assertIn('playbookSubgroupFeatureTitle: "County Traits"', HTML_TEMPLATE)
@@ -392,6 +467,24 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         self.assertIn('.event-overview-chart { width: 100%;', HTML_TEMPLATE)
         self.assertIn('rect.event-risk-bar', HTML_TEMPLATE)
         self.assertNotIn('function drawEventRiskPie()', HTML_TEMPLATE)
+
+    def test_event_overview_takeaways_are_separate_scroll_steps(self) -> None:
+        self.assertIn(
+            "Extreme climate events have affected counties across the board, even the low risk ones.",
+            HTML_TEMPLATE,
+        )
+        first = '{state: "takeaway-overview-0", takeaway: "#event-overview-takeaway", segment: 0'
+        second = '{state: "takeaway-overview-1", takeaway: "#event-overview-takeaway", segment: 1'
+        self.assertIn(first, HTML_TEMPLATE)
+        self.assertIn(second, HTML_TEMPLATE)
+        self.assertLess(HTML_TEMPLATE.index(first), HTML_TEMPLATE.index(second))
+
+    def test_feature_scatter_uses_named_rows_and_short_performer_controls(self) -> None:
+        self.assertIn("DATA.features.scatterRowsByRisk[selectedFeatureRisk]", HTML_TEMPLATE)
+        self.assertIn("countyDisplayName(d)", HTML_TEMPLATE)
+        self.assertIn('subgroupShortNamesFour: ["Strong", "Mildly Strong", "Mildly Weak", "Weak"]', HTML_TEMPLATE)
+        self.assertIn('id="feature-very-high-info-slot"', HTML_TEMPLATE)
+        self.assertIn("TEXT.featureVeryHighGroupTooltip", HTML_TEMPLATE)
 
     def test_playbook_county_history_line_is_distinct_from_risk_colors(self) -> None:
         self.assertIn('const COUNTY_LINE_COLOR = "#2456a6";', HTML_TEMPLATE)

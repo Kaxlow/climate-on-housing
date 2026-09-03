@@ -12,11 +12,7 @@ import pandas as pd
 
 from housing_climate_risk.cli.analysis_marts import create_analysis_marts
 from housing_climate_risk.cli.feature_marts import create_feature_marts
-from housing_climate_risk.cli.redfin_housing_data import (
-    ANALYSIS_PERIOD_END as REDFIN_PERIOD_END,
-    ANALYSIS_PERIOD_START as REDFIN_PERIOD_START,
-    REDFIN_COUNTY_FILES,
-)
+from housing_climate_risk.cli.redfin_housing_data import REDFIN_COUNTY_FILES
 from housing_climate_risk.event_deduplication import (
     canonicalize_climate_events,
     canonicalize_fema_declarations,
@@ -1286,9 +1282,6 @@ def _create_core_marts(con) -> None:
         LEFT JOIN resolved_counties AS resolved
           ON raw_redfin.REGION = resolved.REGION
          AND raw_redfin.STATE_CODE = resolved.STATE_CODE
-        WHERE try_cast(PERIOD_BEGIN AS DATE)
-              BETWEEN DATE {_quote_literal(REDFIN_PERIOD_START)}
-                  AND DATE {_quote_literal(REDFIN_PERIOD_END)}
         """
     )
 

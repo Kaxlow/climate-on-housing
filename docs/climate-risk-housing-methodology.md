@@ -15,7 +15,7 @@ Way the Wind Blows: Climate Risk and U.S. Housing Markets**
 - `config/data_sources.yaml`
 
 The page explores whether county housing-market performance varies with
-measured climate risk and around major disaster events. It is descriptive and
+measured climate risk and around major disaster events over the last 10 complete calendar years. It is descriptive and
 exploratory. Its associations are not causal estimates of the effect of climate
 risk or disasters on housing prices.
 
@@ -35,7 +35,7 @@ the fields that view requires, so sample sizes can differ between charts.
 | Source | Use |
 | --- | --- |
 | [Redfin Data Center](https://www.redfin.com/news/data-center/downloads/) | Monthly county Housing Market Tracker, property-type, and price-drop measures; see Redfin's [methodology](https://www.redfin.com/news/data-center/methodology/) |
-| FEMA National Risk Index (NRI) | Overall and hazard-specific county risk scores and ratings |
+| FEMA National Risk Index (NRI) | Overall county risk scores and ratings |
 | FEMA disaster declarations | Event locations, types, and dates |
 | NOAA Storm Events | County storm events, dates, and estimated damage |
 | NCEI Climate at a Glance | County monthly weather measures |
@@ -67,8 +67,7 @@ can change after retrieval, so later runs may not exactly reproduce earlier
 results.
 
 The county FIPS master at `data/fipsgeo/fips_master_v2.csv` is committed with
-the repository. Redfin's mutable public county CSVs are downloaded into the
-ignored local workspace. The county processed Feather snapshot is optional;
+the repository. The county processed Feather snapshot is optional;
 when absent, its private insurance premium and non-renewal features are not
 available. `download-data all` reports missing manual inputs together at the
 end.
@@ -101,9 +100,7 @@ DuckDB read-only.
 
 ## Climate-risk definitions
 
-The page presents overall FEMA NRI risk and five hazard-specific measures:
-riverine flooding, tornado, wildfire, hail, and earthquake. Source labels are
-normalized for display:
+The page presents FEMA NRI risk. Source labels are normalized for display:
 
 | FEMA label | Display group | Ordinal value |
 | --- | --- | ---: |
@@ -123,18 +120,20 @@ year-over-year change** (`MEDIAN_PPSF_YOY`) for `All Residential` properties.
 The ingestion layer converts Redfin's percentages and percentage-point changes
 to proportions. It combines the all-residential Housing Market Tracker with the
 property-type file and joins the separate Price Drops file for all-residential
-price-drop shares. The mart is restricted to January 2012 through December 2025,
-matching the former extract's period.
+price-drop shares.
 
 Historical charts show monthly observations at the county level across the latest ten
-complete calendar years. All present-day county and county-equivalent FIPS in the 50
+complete calendar years. The builder identifies the most recent year for which the
+all-residential mart contains all 12 calendar months, then selects January 1 of the
+ninth preceding year through January 1 following that latest complete year. Months
+from a newer incomplete year remain in the mart but do not enter the page analysis.
+All present-day county and county-equivalent FIPS in the 50
 states and District of Columbia are eligible; Puerto Rico, other U.S. territories,
 state/aggregate codes ending in `000`, and legacy or special codes that do not match a
 present-day county are excluded. An individual county line retains null months as
 visible gaps. For an NRI group, each month is calculated independently from every
 available non-null county observation in that month. The line is the monthly median,
-and its surrounding band is the monthly 25th–75th percentile interval. A county does
-not need a complete ten-year trajectory to contribute.
+and its surrounding band is the monthly 25th–75th percentile interval.
 
 ## Disaster event selection
 
@@ -173,42 +172,39 @@ within the same latest-ten-complete-calendar-years period used for the housing
 histories.
 
 That dynamically derived period defines the page view. The reusable `analysis`
-layer also persists complete-window summaries for post-event horizons of 12,
+layer also persists window summaries for post-event horizons of 12,
 24, 36, 48, and 60 months when the available housing coverage permits them.
 
 ## Event-window analysis
 
-Events are matched to Redfin observations for the same county. Two windows are
-built around median PPSF year-over-year change:
+Events are matched to Redfin observations for the same county once, using the
+maximum range required by the page: 12 months before event start through 60
+months after event end. Three analytical views are derived from that shared
+county-event-month table:
 
+- **Pre-event view:** 12 months before the event start through its start month.
 - **Window A:** 12 months before the event start through its start month, then
   months 1–36 after the event end.
 - **Window B:** the same start-relative 12-month pre-event observations, then
   months 1–60 measured after the event end.
 
-Both windows use a split-anchored month index: nonpositive months are measured
+All views use a split-anchored month index: nonpositive months are measured
 from the event start, while positive months are measured from the event end.
-The raw page-data build retains the 12 pre-start months required by both display
-windows and up to 60 months after the event end. Months between the event's
-start and end are not part of either display window.
+The shared maximum affected-event intermediate retains the 12 pre-start months
+required by all display views and up to 60 months after the event end. That table
+is passed to both the event-frame and feature-analysis payload builders. Months between the event's start and end are not
+part of any display window.
 
 The charts grouped by NRI risk rating include an affected county when it has at
 least one non-null median PPSF year-over-year observation in the displayed
 window: months -12 through 0 for the pre-event frame, months -12 through 0 and 1
 through 36 for Window A, or months -12 through 0 and 1 through 60 for Window B.
-Eligibility is evaluated separately for each frame. At each relative month, the
-median and interquartile range use all available non-null observations; missing
-months neither remove a county from the rest of the frame nor enter that month's
-calculation.
-
-At each relative month, trajectories are grouped by overall NRI rating. The
-page reports their median and interquartile range. A county associated with
-multiple qualifying events can contribute multiple trajectories.
-
-To illustrate within-group differences, the page compares two configured focus
-county-event lines for each risk group when those lines meet coverage and
-feature-eligibility requirements. Selection logic supplies eligible fallbacks
-when a configured example is unavailable. These examples are descriptive rather than being statistically significant in terms of difference.
+At each relative month, the median and interquartile range for each risk group use
+all available non-null observations within that group. Each trajectory corresponds
+to a unique county-event observation. Although the monthly Window A aggregates are
+equivalent to the matching subset of Window B, window-dependent affected-county
+counts, county averages, percentile ranks, and example selections are recalculated
+for the applicable view.
 
 ## Within-risk-group feature analysis
 
@@ -246,34 +242,37 @@ when that interval lies entirely above +0.10 or below -0.10. Features with
 absolute point correlation greater than or equal to 0.30 receive the strongest-correlation
 visual treatment.
 
-For the performance view, every affected, NRI-rated county with at least one
-available observation is sorted in descending order of its county-level average
-PPSF YoY around events. Counties are divided deterministically into four
-approximately equal-sized groups: Strong Overperformers, Mild Overperformers,
-Mild Underperformers, and Strong Underperformers. Ties are resolved by FIPS for
-stable assignment. The smaller Very High-risk sample is divided into three groups:
-Overperformers, Average Performers, and Underperformers. Thus incomplete monthly
-coverage does not prevent an otherwise in-scope county from receiving a performer
-subgroup. Each trend is the month-level median after first collapsing multiple
-qualifying events to one county-month value, so every observed county receives
-equal weight in that month. The companion distribution plot shows strongly
-correlated feature values for the selected performance group after excluding
-values beyond 1.5 times the risk group's interquartile range.
-Because the performance groups are defined directly from the outcome, their
-separation is descriptive and in-sample; it is not evidence of prediction or
-causation.
+To obtain the county performance view, each NRI-rated county with at least 60 of
+the 120 historical monthly Median PPSF YoY observations in the latest ten complete
+calendar years is summarized by the median of its available monthly values. All
+such counties are then sorted in descending order within their NRI group. The counties
+are divided deterministically into four approximately equal-sized
+groups: Strong Overperformers, Mild Overperformers, Mild Underperformers, and
+Strong Underperformers. Ties are resolved by FIPS for stable assignment. The
+smaller Very High-risk sample is divided into three groups: Overperformers,
+Average Performers, and Underperformers.
+
+The performer-group trend chart describes housing performance around
+events. It includes the available event-window observations for assigned counties
+that experienced an event, and each trend is the month-level median after first
+collapsing multiple qualifying events to one county-month value. The companion
+distribution plot shows strongly correlated feature values for the selected
+performance group after excluding values beyond 1.5 times the risk group's
+interquartile range.
 
 ## County Climate Playbook
 
-The lookup combines overall NRI risk, the within-risk performer subgroup, monthly
+The lookup combines NRI risk, the ten-year within-risk performer subgroup, monthly
 county median PPSF year-over-year history, and qualifying FEMA/NOAA event periods
-from 2016–2025. Missing county months remain breaks rather than being interpolated.
+from the dynamically selected latest ten complete calendar years. Missing county
+months show as breaks rather than being interpolated.
 The comparison view overlays the selected risk group's monthly median and IQR and
-describes the county's overall level relative to that group without using event
-timing. The final frame uses the feature relationships that define the county's
-performer subgroup to show a compact warning-factor dashboard. Its introduction
-changes according to whether a qualifying past event exists. Counties without an
-NRI rating receive an explicit insufficient-data message instead.
+describes the county's overall level relative to that group without considering events.
+
+The final frame shows the main takeaway for the selected county: A dashboard indicating the most significant factors to watch for the selected county when an extreme climate events occur. The dashboard indicates which direction for each factor is associated with
+weaker price growth. Counties with an NRI rating but less than 50% historical
+housing coverage end on the comparison frame with an insufficient-performance-data
+message and do not receive the warning-factor frame.
 
 ## Geography and generated page
 
@@ -303,10 +302,12 @@ resources.
   income, insurance, policy, and other factors are not isolated.
 - **Uneven source coverage:** missing Redfin, NRI, event, or feature data changes
   the sample in each view.
-- **Complete-case selection:** requiring every event-window month can materially
-  reduce and bias longer-horizon samples.
-- **Event duplication and overlap:** FEMA and NOAA can represent the same event,
-  event windows can overlap, and observations are not necessarily independent.
+- **Minimum historical coverage:** performer assignment excludes counties with
+  fewer than 60 observed months in the latest ten complete calendar years, which
+  may create selection differences.
+- **Event duplication and overlap:** Despite deduplication efforts, some FEMA and
+  NOAA records may represent the same event. Event windows can overlap, and
+  observations are not necessarily independent.
 - **Damage threshold:** NOAA selection depends on a $1 billion cutoff and the
   accuracy and completeness of recorded damage.
 - **County aggregation:** county summaries conceal neighborhood-level exposure
@@ -320,17 +321,15 @@ resources.
 - **Correlation-based feature ranking:** rank and direction depend on the
   available features, aggregation window, and counties represented in each risk
   group. Correlation does not establish a causal contribution.
-- **Illustrative examples:** configured county-event examples and fallback
-  selection are descriptive; their differences are not formal significance
-  findings.
 - **Mutable Redfin source:** Redfin's public county files can be revised. The
   download receipt records retrieval time and provider response metadata, but a
   later clean rebuild may not reproduce byte-identical source data.
 - **Optional insurance input:** insurance premium and non-renewal features are
   unavailable when the private county Feather snapshot is not supplied.
-- **Fixed Redfin analysis period:** the downloaded Redfin files may contain newer
-  observations, but the housing mart remains fixed at January 2012 through
-  December 2025 to preserve the analysis period requested for this publication.
+- **Dynamic Redfin analysis period:** Redfin's mutable files can add or revise
+  observations. A rebuild retains all available mart history and moves the page's
+  ten-year window forward when a newer complete calendar year is present, so
+  results and the displayed period can change over time.
 - **Static extracts:** results can change when inputs are revised and rebuilt.
 
 ## Reproduction
