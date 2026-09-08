@@ -428,9 +428,11 @@
     #playbook .story-stage[data-story-state="history-outlook"] .playbook-profile-panel { width: 100%; }
     #playbook .story-stage[data-story-state="history-outlook"] .playbook-profile-panel .hazard-rating-grid { width: 100%; }
     #playbook .story-stage[data-story-state="history-outlook"] #playbook-performance-status { display: none; }
-    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary-pane { display: flex; flex-direction: column; gap: 12px; grid-column: 1; grid-row: 2; overflow-y: auto; padding: 0 3px 8px; }
-    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary-pane > * { flex-shrink: 0; }
-    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary { height: auto; margin-top: 0; padding: 10px; overflow: visible; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary-pane { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; grid-column: 1; grid-row: 2; overflow: hidden; padding: 0 3px 8px; }
+    #playbook .story-stage[data-story-state="history-outlook"] #playbook-warning-intro { grid-row: 1; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary { grid-row: 2; min-height: 0; height: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; overflow-y: auto; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-warning-grid { min-height: 100%; align-content: stretch; align-items: stretch; }
+    #playbook .story-stage[data-story-state="history-outlook"] #playbook-warning-takeaway { grid-row: 3; margin-top: 0; align-self: end; }
     #playbook .story-stage[data-story-state^="history-"] #playbook-selected-county-name { display: none !important; }
     #playbook .story-stage[data-story-state="history-compare"] .playbook-subgroup-badge { display: block !important; margin: 0; padding: 14px; font-size: 14px; }
     .playbook-performance-status { display: grid; justify-items: center; gap: 3px; margin: 6px 0; text-align: center; line-height: 1.2; }
@@ -439,8 +441,8 @@
     .playbook-performance-status.compact strong { font-size: 13px; }
     .playbook-performance-takeaway { margin-top: 10px; padding: 16px 17px; border: 1px solid #a9cfc2; border-left: 5px solid var(--teal); background: #edf7f3; font-size: 15px; line-height: 1.5; box-shadow: 0 12px 28px rgba(23,51,45,.18), 0 2px 7px rgba(23,51,45,.12); }
     .playbook-warning-intro { margin: 0; font-size: 14px; line-height: 1.45; }
-    .playbook-warning-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 0; }
-    .playbook-warning-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line); background: white; font-size: 11px; line-height: 1.3; }
+    .playbook-warning-grid { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 7px; margin: 0; }
+    .playbook-warning-row { flex: 1 1 calc((100% - 21px) / 4); min-width: 0; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 72px; padding: clamp(10px, 2vh, 24px) clamp(10px, 1.5vw, 22px); border: 1px solid var(--line); background: white; font-size: clamp(12px, 1.1vw, 16px); line-height: 1.4; }
     .playbook-warning-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
     .playbook-feature-category-icon { display: inline-block; width: 18px; height: 18px; margin-right: 5px; vertical-align: -4px; color: var(--teal); }
     .playbook-event-definition { display: inline; }
@@ -1694,7 +1696,7 @@ function drawFeatureImportanceV2() {
       .attr("type", "button")
       .attr("class", `importance-row${selectedFeatureKey === feature ? " active" : ""}${negativeActive ? " negative-active" : ""}`)
       .attr("aria-pressed", selectedFeatureKey === feature ? "true" : "false")
-      .attr("title", strong ? TEXT.featureStrongTooltip : `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)
+      .attr("title", `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)
       .on("click", () => {
         selectedFeatureKey = selectedFeatureKey === feature ? null : feature;
         drawFeatureHeatmaps();

@@ -743,7 +743,14 @@ return [profile.subgroupName, profile.assignmentSource];
         self.assertIn(
             "const metrics = mostImportantFeatureMetrics(risk);", HTML_TEMPLATE
         )
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr))", HTML_TEMPLATE)
+        self.assertIn("flex: 1 1 calc((100% - 21px) / 4)", HTML_TEMPLATE)
+        self.assertIn(".playbook-warning-grid { display: flex; flex-wrap: wrap; justify-content: space-between;", HTML_TEMPLATE)
+        self.assertIn('grid-template-rows: auto minmax(0, 1fr) auto;', HTML_TEMPLATE)
+        self.assertIn('.playbook-warning-grid { min-height: 100%; align-content: stretch; align-items: stretch; }', HTML_TEMPLATE)
+        self.assertIn('padding: 0; border: 0; background: transparent; box-shadow: none; overflow-y: auto;', HTML_TEMPLATE)
+        self.assertIn('#playbook-warning-takeaway { grid-row: 3; margin-top: 0; align-self: end; }', HTML_TEMPLATE)
+        self.assertNotIn('.attr("title", strong ? TEXT.featureStrongTooltip', HTML_TEMPLATE)
+        self.assertIn('.attr("title", `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)', HTML_TEMPLATE)
         self.assertIn('class="playbook-warning-takeaway"', HTML_TEMPLATE)
         self.assertNotIn('"\\u2191 rising"', HTML_TEMPLATE)
         self.assertNotIn('"\\u2193 falling"', HTML_TEMPLATE)
