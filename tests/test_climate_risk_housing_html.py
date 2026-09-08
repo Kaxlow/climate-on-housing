@@ -28,6 +28,27 @@ from housing_climate_risk.page_data.climate_risk_housing import (
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    def test_significant_factor_selection_retains_threshold_matches_and_tops_up(self):
+        cases = [
+            ([.2, -.1, .05, .01], [0, 1, 2]),
+            ([.5, .2, -.1, .01], [0, 1, 2]),
+            ([.5, -.3, .2, .01], [0, 1, 2]),
+            ([.5, -.4, .3, .2], [0, 1, 2]),
+            ([.5, -.4, .3, -.35, .2], [0, 1, 3, 2]),
+            ([None, .2, -.2], [1, 2]),
+            ([None, None], []),
+        ]
+        for values, expected in cases:
+            metrics = [{"feature": str(i), "rho": v, "absRho": abs(v) if v is not None else None} for i, v in enumerate(values)]
+            selected = page_builder._select_significant_feature_metrics(metrics)
+            self.assertEqual([int(m["feature"]) for m in selected], expected)
+            if shutil.which("node"):
+                function = "function mostImportantFeatureMetrics" + HTML_TEMPLATE.split("function mostImportantFeatureMetrics", 1)[1].split("function subgroupFeatureRelations", 1)[0]
+                script = "const DATA={features:{importanceByRisk:{Low:" + json.dumps(metrics) + "}}};" + function + "console.log(JSON.stringify(mostImportantFeatureMetrics('Low').map(m=>Number(m.feature))));"
+                result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(result.stdout), expected)
+        self.assertEqual(page_builder._select_significant_feature_metrics([{"rho": float("nan")}]), [])
+
     def test_correlation_target_collapses_events_before_summarizing_months(self):
         rows = pd.DataFrame({
             "fips": ["01001"] * 6 + ["01003"] * 3,

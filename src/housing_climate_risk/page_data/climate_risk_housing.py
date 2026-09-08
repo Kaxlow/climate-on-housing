@@ -2257,6 +2257,16 @@ FEATURE_PERFORMANCE_TARGET_COLUMN = "complete_event_window_trajectory_median_pps
 FEATURE_SUBGROUP_TARGET_COLUMN = "complete_event_window_median_ppsf_yoy"
 
 
+def _select_significant_feature_metrics(metrics: list[dict]) -> list[dict]:
+    """Keep threshold matches, topping up to three finite correlations by rank."""
+    ranked = sorted(
+        [item for item in metrics if item.get("rho") is not None and np.isfinite(item["rho"])],
+        key=lambda item: abs(item["rho"]), reverse=True,
+    )
+    threshold_count = sum(abs(item["rho"]) >= 0.30 for item in ranked)
+    return ranked[:max(3, threshold_count)]
+
+
 def _county_median_trajectory_target(complete: pd.DataFrame) -> pd.DataFrame:
     """Median across complete events at each relative month, then across months."""
     monthly = (
@@ -2549,15 +2559,7 @@ def build_feature_payload(
         if performance_group.empty:
             subgroup_payload[risk] = {"groups": [], "excludedOutliers": 0}
             continue
-        ranked_metrics = sorted(
-            [item for item in metrics if item["rho"] is not None],
-            key=lambda item: float(item["absRho"] or 0),
-            reverse=True,
-        )
-        strong_metrics = [
-            item for item in ranked_metrics if float(item["absRho"] or 0) >= 0.3
-        ]
-        distribution_metrics = strong_metrics or ranked_metrics[:1]
+        distribution_metrics = _select_significant_feature_metrics(metrics)
         distribution_features = [str(item["feature"]) for item in distribution_metrics]
 
         subgroup_count = 4
@@ -2638,7 +2640,7 @@ def build_feature_payload(
             )
         subgroup_payload[risk] = {
             "features": distribution_features,
-            "hasStrongFeatures": bool(strong_metrics),
+            "hasStrongFeatures": bool(distribution_metrics),
             "groups": group_entries,
             "excludedOutliers": 0,
         }
@@ -3428,11 +3430,11 @@ const TEXT = {
   featureGroupByCategory: "Group by Category",
   featureOrderBySignificance: "Order by Significance",
   featureClickHint: "Select a type of data to reveal its relationship with Median PPSF YoY around events.",
-  featureStrongTooltip: "Strongest correlation: |ρ| ≥ 0.30",
+  featureStrongTooltip: "Selected factor: |ρ| ≥ 0.30, or next-highest |ρ| to reach at least three factors.",
   featureSourcesTopic: "Sources",
   featureRankingTopic: "Ranking",
   featureSourcesNote: '<a href="https://www.redfin.com/news/data-center/downloads/" target="_blank" rel="noopener">Redfin monthly county Housing Market Tracker</a>; <a href="https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries" target="_blank" rel="noopener">OpenFEMA Disaster Declarations Summaries</a>; <a href="https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/" target="_blank" rel="noopener">NOAA Storm Events details</a>; <a href="https://hazards.fema.gov/nri/data-resources" target="_blank" rel="noopener">FEMA National Risk Index county data</a>; <a href="https://api.census.gov/data.html" target="_blank" rel="noopener">Census ACS 5-year county tables</a>; <a href="https://www.statsamerica.org/downloads/default.aspx" target="_blank" rel="noopener">StatsAmerica BEA Personal Income and Components of Population Change</a>.',
-  featureRankingNote: "Data types are ranked by descending absolute Spearman correlation (|ρ|). A correlation is significant if its bootstrapped 95% confidence intervals meet the minimum-effect threshold of |ρ| ≥ {threshold}. Economic and demographic features use ten-year county averages.",
+  featureRankingNote: "Data types are ranked by descending absolute Spearman correlation (|ρ|). Select all factors with |ρ| ≥ 0.30; if fewer than three qualify, add the next-highest correlations to reach three. Economic and demographic features use ten-year county averages.",
   featureCategories: {
     Economic: "Economic Data",
     Demographic: "Demographic Data",
@@ -3461,7 +3463,7 @@ const TEXT = {
   subgroupShortNamesThree: ["Strong", "Average", "Weak"],
   subgroupFallback: "Subgroup {number}",
   subgroupCount: "{count} counties",
-  featureDistributionFallback: "No feature reaches |ρ| ≥ 0.30 for this risk group; the strongest available feature is shown.",
+  featureDistributionFallback: "No valid feature correlations are available for this risk group.",
   featureDistributionTitle: "County Distribution",
   featureDistributionOutlierTooltip: "Outlier values beyond 1.5 times the interquartile range are not shown in this plot.",
   featureDistributionVeryHighTooltip: "All available values are shown for the Very High Risk group because this group has relatively few counties.",
@@ -4356,7 +4358,8 @@ function drawFeatureImportanceV2() {
   const features = featureOrderMode === "significance"
     ? [...DATA.features.featureOrder].sort((a, b) => (metrics.get(b)?.absRho || 0) - (metrics.get(a)?.absRho || 0))
     : DATA.features.featureOrder;
-  const strongContainer = featureOrderMode === "significance" && features.some(feature => (metrics.get(feature)?.absRho || 0) >= 0.3)
+  const significantFeatures = new Set(mostImportantFeatureMetrics(selectedFeatureRisk).map(metric => metric.feature));
+  const strongContainer = featureOrderMode === "significance" && significantFeatures.size > 0
     ? chart.append("div").attr("class", "importance-strong-group")
     : null;
   features.forEach(feature => {
@@ -4367,7 +4370,7 @@ function drawFeatureImportanceV2() {
     }
     const metric = metrics.get(feature) || {};
     const width = Math.min(100, Math.max(0, (metric.absRho || 0) * 200));
-    const strong = featureOrderMode === "significance" && (metric.absRho || 0) >= 0.3;
+    const strong = featureOrderMode === "significance" && significantFeatures.has(feature);
     const negativeActive = selectedFeatureKey === feature && (metric.rho || 0) < 0;
     const button = (strong ? strongContainer : chart).append("button")
       .attr("type", "button")
@@ -4518,10 +4521,10 @@ function playbookPerformanceDisplayName(label) {
 
 function mostImportantFeatureMetrics(risk) {
   const metrics = [...(DATA.features.importanceByRisk[risk] || [])]
-    .filter(metric => metric.rho != null)
+    .filter(metric => Number.isFinite(metric.rho))
     .sort((a, b) => (b.absRho || 0) - (a.absRho || 0));
   const strongest = metrics.filter(metric => (metric.absRho || 0) >= 0.3);
-  return strongest.length ? strongest : metrics.slice(0, 1);
+  return metrics.slice(0, Math.max(3, strongest.length));
 }
 
 function subgroupFeatureRelations(risk, subgroup) {

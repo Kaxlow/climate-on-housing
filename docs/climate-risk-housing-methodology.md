@@ -224,8 +224,9 @@ outliers using the interquartile range rule and add an overall linear trend
 line. A 95% percentile confidence interval is calculated from 160 bootstrap
 samples drawn with replacement. A feature clears the minimum-effect filter only
 when that interval lies entirely above +0.10 or below -0.10. Features with
-absolute point correlation greater than or equal to 0.30 receive the strongest-correlation
-visual treatment.
+absolute point correlation greater than or equal to 0.30 are selected as significant
+factors for the page. If fewer than three meet that threshold within a risk group,
+add factors in descending absolute-correlation order until three are selected.
 
 To obtain the county performance view, the analysis uses the same complete
 county-event trajectories selected for the one-year-before through three-years-after
