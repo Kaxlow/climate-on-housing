@@ -10,6 +10,7 @@ Way the Wind Blows: Climate Risk and U.S. Housing Markets**
 - `src/housing_climate_risk/cli/build_database.py`
 - `src/housing_climate_risk/cli/feature_marts.py`
 - `src/housing_climate_risk/cli/analysis_marts.py`
+- `src/housing_climate_risk/event_deduplication.py`
 - `src/housing_climate_risk/page_data/climate_risk_housing.py`
 - `src/housing_climate_risk/page_data/event_windows.py`
 - `config/data_sources.yaml`
@@ -57,7 +58,7 @@ forecast-zone-to-county crosswalk; and validates required filenames and schemas.
 It writes resolved URLs, provider versions, and UTC retrieval timestamps to the
 ignored local `data/download_receipt.yaml`. Metadata and expected schemas are
 committed in `config/data_sources.yaml`. Mutable APIs and unversioned downloads
-can change after retrieval, affecting future reproducability.
+can change after retrieval, affecting future reproducibility.
 
 The county FIPS master at `data/fipsgeo/fips_master_v2.csv` is committed with
 the repository. The county processed Feather snapshot is optional;
@@ -119,7 +120,12 @@ Historical charts show monthly observations at the county level across the lates
 complete calendar years. The builder identifies the most recent year for which the
 all-residential mart contains all 12 calendar months, then selects January 1 of the
 ninth preceding year through January 1 following that latest complete year. Months
-from a newer incomplete year remain in the mart but do not enter the page analysis.
+from a newer incomplete year remain in the mart but do not enter the ten-year
+calendar-history charts.
+Here, a complete year means that all 12 months occur somewhere in the
+all-residential mart, not that every county has observations in those months.
+The incomplete-year exclusion applies to calendar-history charts; event-relative
+windows can use any available mart months needed for their selected horizon.
 All present-day county and county-equivalent FIPS in the 50
 states and District of Columbia are eligible; Puerto Rico, other U.S. territories,
 state/aggregate codes ending in `000`, and legacy or special codes that do not match a
@@ -127,6 +133,12 @@ present-day county are excluded. An individual county line retains null months a
 visible gaps. The NRI-group line plot uses only counties with a valid observation in
 all 120 displayed months. For that fixed cohort, the line is the monthly median and
 its surrounding band is the monthly 25th–75th percentile interval.
+
+The all-county history chart caps displayed values at the pooled 10th and 90th
+percentiles of the eligible county-month observations. This is a display cap,
+not deletion or imputation of observations, and does not change the underlying
+values used for NRI-group summaries or Playbook comparisons. Nulls still break
+the county lines.
 
 ## Disaster event selection
 
@@ -136,9 +148,16 @@ The event analysis combines:
 - NOAA storm events with a valid county FIPS and start date and at least **$1
   billion** in recorded total damage.
 
+The page's phrase "NOAA billion-dollar storm events" refers to this filter on
+NOAA Storm Events records, not to a separate national billion-dollar-disasters
+catalog. The threshold is applied before canonical cross-source merging.
+Duplicate or related NOAA records are not summed to create a qualifying event;
+canonicalization retains the maximum contributing damage amount.
+
 FEMA types Biological, Dam/Levee Break, Chemical, Terrorist, Other, and Toxic
 Substances are excluded from the intended climate and destructive-weather
-scope. The raw FEMA declaration table preserves every provider row.
+scope. Raw FEMA and NOAA tables preserve duplicate provider entries; semantic
+event deduplication is not applied during raw loading.
 Deduplication begins at the mart boundary. `mart.fema_disaster_declarations`
 normalizes declaration titles and clusters records for the same county when
 their like-named incident periods overlap or are separated by no more than seven
@@ -185,17 +204,35 @@ All views use a split-anchored month index: nonpositive months are measured
 from the event start, while positive months are measured from the event end.
 The shared maximum affected-event intermediate retains the 12 pre-start months
 required by all display views and up to 60 months after the event end. That table
-is passed to both the event-frame and feature-analysis payload builders. Months between the event's start and end are not part of any display window.
+is passed to both the event-frame and feature-analysis payload builders. Month 0
+is the event-start month. For multi-month events, subsequent months through the
+event-end month are omitted; positive month 1 is the month after the event end.
 
 The charts grouped by NRI risk rating include only county-event trajectories with
 a non-null median PPSF year-over-year observation in every displayed month: months
 -12 through 0 for the pre-event frame, months -12 through 0 and 1 through 36 for
 Window A, or months -12 through 0 and 1 through 60 for Window B. Each trajectory
 corresponds to a unique county-event observation. For the resulting fixed cohort,
-the median and interquartile range are calculated at each relative month. Although
-the monthly Window A aggregates are equivalent to the matching subset of Window B,
-window-dependent affected-county counts, county averages, percentile ranks, and
-example selections are recalculated for the applicable view.
+the median and interquartile range are calculated at each relative month across
+county-event trajectories. A county with several qualifying events therefore
+contributes several observations at a relative month. Map/legend county counts
+count unique counties, not trajectories.
+
+Completeness is evaluated independently for each view: 13 observations for the
+pre-event view, 49 for Window A, and 73 for Window B. Window A does **not** require
+five years of post-event data. Its cohort can be larger than Window B's, so its
+aggregates are **not generally equal** to a subset of Window B's aggregates.
+Only the raw maximum intermediate is shared. Affected-county counts, county-event
+averages, percentile ranks, and example selections are recomputed for each view.
+The pre-event frame displays median lines without IQR bands; A and B display both.
+
+The overview counts distinct counties with at least one qualifying canonical
+event starting in the ten-year period, regardless of housing-window completeness.
+The page's event-context filter also requires a matching county record in the
+NRI mart, although that record need not have a usable risk-rating label.
+Its percentage denominator is the current county/county-equivalent set in the
+50 states and DC. The bar chart counts those affected counties by NRI rating.
+Consequently, overview counts need not match any line-plot cohort.
 
 ## Within-risk-group feature analysis
 
@@ -214,64 +251,179 @@ receipts. The homeowners-insurance, property-tax, and utility cost shares use co
 over the latest ten years available in its mart before the county comparison.
 
 The feature-analysis cohort is the same cohort used by the displayed three-year
-event-window line plot: NRI-rated counties that had an event and a valid Median PPSF YoY observation in every month from month -12 through
-the event start (month 0) and months 1 through 36 after the event end. If a county had multiple events and complete event-window data for those events, it is represented by a single event window whose Median PPSF YoY values are aggregated across the multiple events by taking the median of all monthly observations. It should be noted that the county's multiple event windows may overlap and lead to repeated Median PPSF YoY observations.
+event-window line plot: NRI-rated counties with at least one complete trajectory
+covering months -12 through 0 and 1 through 36. Incomplete trajectories are excluded,
+even when another trajectory from the same county qualifies. Feature-specific
+correlations additionally require a non-null value for that feature.
+
+If a county had multiple unique events, the target Median PPSF YoY used to compute feature correlations is calculated by taking the median across a county's complete
+events **at each relative month**, then take the median of those 49 monthly
+medians. Each county contributes one pair to each feature correlation. Note that overlapping event windows can still reuse the same calendar observation.
 
 For each NRI risk group, the page ranks retained features by the absolute
-Spearman correlation between the county feature value and the median of the county's median PPSF YoY across the one-year-before through three-years-after event window. The sign of the correlation indicates whether the
-descriptive relationship is positive or negative. Scatterplots trim feature
-outliers using the interquartile range rule and add an overall linear trend
-line. A 95% percentile confidence interval is calculated from 160 bootstrap
-samples drawn with replacement. A feature clears the minimum-effect filter only
-when that interval lies entirely above +0.10 or below -0.10. Features with
-absolute point correlation greater than or equal to 0.30 are selected as significant
+Spearman correlation between the county feature value and the county's
+median-of-monthly-medians housing target defined above. The sign indicates whether the
+descriptive relationship is positive or negative. Scatterplots exclude points
+outside the 1.5-IQR fences on **either** the feature or the housing target and add
+a linear trend fitted to the displayed points. This display trimming does not
+change the Spearman coefficient computed from the original non-null pairs.
+Spearman requires at least three pairs and variation in both variables.
+
+A 95% percentile interval is stored when there are at least 12 pairs. The current
+implementation draws 160 bootstrap samples of the already-computed paired ranks
+and correlates those sampled ranks; it does not re-rank within each replicate.
+Seeds are fixed by risk and feature. The stored `passesThreshold` flag is true
+when the interval lies entirely above +0.10 or below -0.10, but this flag does
+**not** filter the displayed feature ranking or significant-factor selection.
+Features with absolute point correlation greater than or equal to 0.30 are selected as significant
 factors for the page. If fewer than three meet that threshold within a risk group,
 add factors in descending absolute-correlation order until three are selected.
+If fewer than three finite correlations exist, use all that are available.
+"Significant" is therefore a page-selection label, not a hypothesis-test result:
+top-up features can have an absolute correlation below 0.30.
 
 To obtain the county performance view, the analysis uses the same complete
 county-event trajectories selected for the one-year-before through three-years-after
-line plot. Each included county is represented by the median of all its monthly
-Median PPSF YoY observations pooled across those complete trajectories. Overlapping windows
-can repeat a calendar observation, as before. Counties are sorted in descending
-order by that median within their NRI group and divided deterministically into four approximately equal-sized
+line plot. If a county had multiple unique events, those trajectories are collapsed into a single, median value at each relative
+month, then the county's target Median PPSF YoY is computed by taking the median of those 49 monthly medians. The target is computed
+once and reused, rather than separately pooling all event-month observations.
+Overlapping windows can still repeat a calendar observation. Counties are sorted
+in descending order by this target within their NRI group and divided
+deterministically into four approximately equal-sized
 groups: Strong Overperformers, Mild Overperformers, Mild Underperformers, and
-Strong Underperformers. These are labelled as "Weak", "Mildly Weak", "Mildly Strong", and "Strong" respectively in `climate-risk-housing.html`. Ties are resolved by FIPS for stable assignment. The smaller Very High-risk sample is divided into three groups: Overperformers,
-Average Performers, and Underperformers. Counties without qualifying events or
-without at least one complete event-window trajectory are not assigned a subgroup in this feature analysis.
+Strong Underperformers. Ties are
+resolved by FIPS for stable assignment. Counties without qualifying events or
+without at least one complete event-window trajectory are not assigned a subgroup in this feature analysis,
+their subgroup assignment comes later in [County Climate Playbook](#county-climate-playbook).
 
-The performer-group trend chart describes housing performance around
-events for each performer group within each risk group. Each performer group is represented by a trend line which is the month-level median across all group members. The companion
-distribution plot shows strongly correlated feature values for the selected
-performance group after excluding values beyond 1.5 times the risk group's
-interquartile range.
+The performer-group trend chart first takes each county's median across complete
+events at each relative month, then the median across member counties. This gives
+counties equal weight at each month.
+
+The companion distribution plot shows selected significant features for the
+active subgroup. Values outside the risk-group 1.5-IQR fences are hidden except
+for Very High, where they remain visible. The takeaway is feature-wide: negative
+correlation means higher feature values are associated with poorer growth;
+positive correlation means lower values are associated with poorer growth.
+
+The list of defining factors for a performer subgroup within a risk group assigns a "higher" or "lower" label
+to each significant factor. The label is determined by the feature's correlation sign and subgroup:
+
+| Correlation sign | Overperformer subgroup | Underperformer subgroup |
+| --- | --- | --- |
+| Positive | Higher | Lower |
+| Negative | Lower | Higher |
 
 ## County Climate Playbook
 
-Through a county search interface in the first frame, the user selects a target county.
+### Frame sequence and coverage gate
 
-The second frame shows the selected county's historic Median PPSF YoY line plot, with missing monthly data appearing as breaks in the line.
+1. **County search/map:** select a county from the U.S. map or search results.
+2. **History/local map:** display the county's ten-year Median PPSF YoY history
+   without event overlays, alongside a zoomed local map.
+3. **Past events:** retain the history plot, add canonical event overlays, and
+   show the overall NRI rating and scrollable event list on the right.
+4. **Peer comparison:** overlay the risk group's monthly median and IQR on the
+   county history and zoom in on the plot to compare if needed. The expanded NRI card
+   displays the county's performer subgroup, with a tooltip explaining the
+   assignment method.
+5. **Top factors and scorecard:** a series of cards highlighting the top factors associated
+   with the county's performance and a scorecard that concludes the county's likely performance
+   when an extreme climate event occurs.
 
-The third frame displays the county's NRI risk and past extreme weather events over the last ten years.
+A county is not assigned a performer subgroup if it does not have non-null Median PPSF YoY values
+for at least 50% of the months across the past 10 calendar years. In this case, peer comparison in
+terms of performance is not available, and neither can a conclusion be drawn about its top factors
+and likely performance when an extreme climate event occurs, thus for such counties frame 5 is not
+applicable.
 
-The fourth frame overlays the selected risk group's monthly median and IQR, and describes the relative position of the county's Median PPSF YoY within its risk group over the last ten years. The relative position is determined by the following rules:
-- Upper Range: Closer to 75th percentile than median, or above 75th percentile
-- Lower Range: Closer to 25th percentile than median, or below 25th percentile
-- Mid Range: Everything else
+### Performer assignment in Frame 4
 
-The fifth frame first assigns performer groups to counties that were not given one in the [Within-risk-group feature analysis](#within-risk-group-feature-analysis) section because they lacked an event-window with complete monthly Median PPSF YoY across that period. The performer group is determined through this method:
-1. Compute the following:
-- County's median of its non-null median PPSF YoY values over the last ten years
-- County's risk group's medians of:
-    - its monthly median values of median PPSF YoY over the last 10 years
-    - its monthly 75th percentile values of median PPSF YoY over the last 10 years
-    - its monthly 25th percentile values of median PPSF YoY over the last 10 years
-2. Assign the performer group based on these rules:
-- If county's median is above risk group's median and closer to the group's 75th percentile than the group's median, or greater than the group's 75th percentile, it is a Strong Overperformer
-- If county's median is above the risk group's median and is closer to the group's median than the group's 75th percentile, it is a Mild Overperformer
-- If county's median is below the risk group's median and is closer to the group's median than the group's 25th percentile, it is a Mild Underperformer
-- If county's median is below risk group's median and closer to the group's 25th percentile than the group's median, or less than the group's 25th percentile, it is a Strong Underperformer
-Next, it indicates the selected county's performer group within its risk group.
-Finally, a dashboard highlights the factors significantly correlated to Median PPSF YoY for the county's risk group, and indicates the movement direction for each factor that is associated with decreasing Median PPSF YoY.
+The Playbook first reuses the feature-analysis subgroup for a county with a
+qualifying event and an observed complete-window assignment. Otherwise, it uses
+a historical fallback for the Playbook only; it does not add that county to the
+feature-analysis training/comparison cohort.
+
+Define these summaries over the selected ten-year history:
+
+| Symbol | Summary |
+| --- | --- |
+| `a` | Median of the selected county's non-null monthly Median PPSF YoY values |
+| `b` | Median across months of its risk group's monthly county median |
+| `c` | Median across months of its risk group's monthly county 75th percentile |
+| `d` | Median across months of its risk group's monthly county 25th percentile |
+
+At each month, risk-group quartiles use all available finite observations in
+the Playbook's risk group, including the selected county. Peer counties need not
+have complete histories or pass the selected county's 50% gate. Months without
+observations are omitted from the relevant across-month median. These are
+**medians of monthly summaries**, not pooled quantiles over county-month records.
+They differ from the earlier climate-risk history plot, whose cohort must have
+all 120 observations.
+
+The fallback rules are:
+
+| Condition | Assignment |
+| --- | --- |
+| `a > b` and `a - b < 0.5 * (c - b)` | Mild Overperformer |
+| `a > b` and `a - b >= 0.5 * (c - b)` | Strong Overperformer |
+| `a < b` and `b - a < 0.5 * (b - d)` | Mild Underperformer |
+| `a < b` and `b - a >= 0.5 * (b - d)` | Strong Underperformer |
+| `a == b` | Mild Overperformer (implementation tie convention) |
+| Any of `a`, `b`, `c`, `d` unavailable | No fallback assignment |
+
+### Top factor cards in Frame 5
+
+For each significant factor, the county's value is compared against the median of all counties within the same risk group. 
+The first arrow is up for a value strictly above the
+peer median and down otherwise. A second arrow next to "Median PPSF YoY" combines
+that position with the sign of the complete-event-cohort correlation:
+
+| County feature position | Positive correlation | Negative correlation |
+| --- | --- | --- |
+| Above peer median | Growth arrow up | Growth arrow down |
+| At or below peer median | Growth arrow down | Growth arrow up |
+
+An exact median tie takes the below-median display branch. A zero correlation
+produces a down growth arrow. Missing
+feature values or non-finite correlations display "Data unavailable" instead
+of arrows. Tooltips provide qualitative context and the correlation direction.
+
+### County performance scorecard
+
+Three component cards each contribute one up/down signal:
+
+| Card | Up signal | Down signal |
+| --- | --- | --- |
+| NRI risk rating | Very Low or Low | Medium, High, or Very High |
+| Performance subgroup | Mild or Strong Overperformer | Mild or Strong Underperformer |
+| Significant county data | Strict majority of selected features match overperformer subgroups | Half or fewer match overperformer subgroups |
+
+For the third signal, the implementation compares each county feature with the
+observed feature ranges of the event-cohort performer subgroups within its NRI
+risk group:
+
+1. Prefer subgroups whose inclusive minimum–maximum range contains the value.
+2. If ranges overlap, choose the subgroup whose median is closest to the value.
+3. If no range contains it, choose the nearest range boundary, then the nearest
+   subgroup median to break a distance tie.
+4. An exact overperformer/underperformer tie favors underperformers.
+
+The three equally weighted signals produce the displayed overall score:
+
+| Up signals | Display label | Display takeaway |
+| ---: | --- | --- |
+| 3 | Low Risk | Safer environment that can benefit from steps to reduce potential climate damage |
+| 2 | Moderate Risk | Climate damage is a real possibility, know the steps to reduce it |
+| 0 or 1 | High Risk | Take steps to reduce climate damage |
+
+If required feature comparisons are unavailable, the overall card instead shows
+"Insufficient data".
+
+This score is a **rule-based presentation heuristic**, rather than a
+trained prediction model, an official FEMA rating, or a calibrated estimate of
+climate damage or housing returns. Its Low/Moderate/High labels are distinct
+from the five-category NRI scale.
 
 ## Geography and generated page
 
@@ -302,10 +454,12 @@ resources.
 - **Uneven source coverage:** missing Redfin, NRI, event, or feature data changes
   the sample in each view.
 - **Performer cohort and fallback:** the feature-analysis subgroups represent only
-  event-affected counties with observed event-window housing data. A Playbook-only
+  event-affected counties with complete event-window housing data. A Playbook-only
   fallback compares a county's ten-year median with its risk group's typical
   monthly quartiles. Direct assignments and fallback labels use different periods
   and definitions and should not be interpreted as interchangeable event responses.
+  The 50% Playbook coverage threshold is a display eligibility rule, not validation
+  that the observed months represent the missing months.
 - **Event duplication and overlap:** Despite deduplication efforts, some FEMA and
   NOAA records may represent the same event. Event windows can overlap, and
   observations are not necessarily independent.
@@ -321,7 +475,15 @@ resources.
   because each compares with the previous year.
 - **Correlation-based feature ranking:** rank and direction depend on the
   available features, aggregation window, and counties represented in each risk
-  group. Correlation does not establish a causal contribution.
+  group. Correlation does not establish a causal contribution. Feature averages
+  may cover different calendar years from the housing/event data and are not
+  restricted to pre-event information. Top-up selection can include weak
+  correlations; the stored bootstrap interval does not control the selection.
+- **Playbook arrows and overall score:** group-level associations need not match
+  an individual county's historical performance. Median-based factor arrows and
+  performer-range matching use different reference rules. The equal-weight score
+  is not a validated classifier or a calibrated risk probability, and cannot
+  establish the damage claims implied by its short display takeaways.
 - **Mutable Redfin source:** Redfin's public county files can be revised. The
   download receipt records retrieval time and provider response metadata, but a
   later clean rebuild may not reproduce byte-identical source data.

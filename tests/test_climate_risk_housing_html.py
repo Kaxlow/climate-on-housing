@@ -28,6 +28,194 @@ from housing_climate_risk.page_data.climate_risk_housing import (
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    def test_feature_payload_reuses_correlation_target_for_subgroups(self):
+        from types import SimpleNamespace
+
+        fips = ["01001", "01003", "01005", "01007"]
+        features = [item[2] for item in page_builder.WITHIN_GROUP_FEATURES]
+        frames = {
+            "feature.county_economic_annual": pd.DataFrame({"fips": fips, **{key: [1., 2., 3., 4.] for key in features[:8]}}),
+            "feature.county_demographic_annual": pd.DataFrame({"fips": fips, **{key: [1., 2., 3., 4.] for key in features[8:]}}),
+            "feature.county_risk": pd.DataFrame({"fips": fips, "risk_rating": ["Relatively Low"] * 4}),
+            "mart.redfin_county_monthly": pd.DataFrame({"fips": fips, "county": fips, "state": ["AL"] * 4, "historical_average_ppsf_yoy": [1.] * 4}),
+        }
+
+        class Connection:
+            def execute(self, sql, *_):
+                return SimpleNamespace(df=lambda: next(frame.copy() for table, frame in frames.items() if f"FROM {table}" in sql))
+
+        months = list(range(-12, 37))
+        trajectories = [
+            (fips[0], "a", [0.] + [20.] * 48),
+            (fips[0], "b", [2.] * 49),
+            (fips[1], "c", [5.] * 49),
+            (fips[2], "d", [7.] * 49),
+            (fips[3], "e", [1.] * 49),
+        ]
+        rows = [{"fips": county, "line_id": event, "event_key": event, "event_window_month": month, "median_ppsf_yoy": value}
+                for county, event, values in trajectories for month, value in zip(months, values)]
+        context = SimpleNamespace(analysis_start=pd.Timestamp("2016-01-01"), analysis_end=pd.Timestamp("2026-01-01"), affected=pd.DataFrame(rows))
+        with patch.object(page_builder, "current_county_fips", return_value=frozenset(fips)), patch.object(page_builder, "_bootstrap_spearman_ci", return_value=(float("nan"), float("nan"))):
+            payload = page_builder.build_feature_payload(Connection(), event_context=context)
+        correlation_targets = {row["fips"]: row["target"] for row in payload["scatterRowsByRisk"]["Low"]}
+        subgroup_targets = {row["fips"]: row["target"] for row in payload["countyRowsByRisk"]["Low"]}
+        self.assertEqual(correlation_targets, subgroup_targets)
+        self.assertEqual(subgroup_targets[fips[0]], 11.)
+        self.assertEqual(payload["subgroupByFips"], {fips[0]: 0, fips[2]: 1, fips[1]: 2, fips[3]: 3})
+        self.assertEqual(payload["playbookSubgroupByFips"], payload["subgroupByFips"])
+        strongest = payload["subgroupsByRisk"]["Low"]["groups"][0]
+        self.assertEqual((strongest["targetMin"], strongest["targetMedian"], strongest["targetMax"]), (11., 11., 11.))
+        self.assertEqual(strongest["values"][0]["value"], 1.)
+        self.assertEqual(strongest["values"][1]["value"], 11.)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for rendering tests")
+    def test_playbook_insufficient_history_replaces_performance_text(self):
+        function = "function renderPlaybookPerformanceTakeaway" + HTML_TEMPLATE.split("function renderPlaybookPerformanceTakeaway", 1)[1].split("function renderPlaybookFeatureSummary", 1)[0]
+        script = '''
+let output='';
+const TEXT={playbookInsufficientHistory:'Insufficient housing data available for selected county to comment on local housing market performance.'};
+const d3={select:()=>({text:s=>{output=s}})};
+const playbookHasSufficientHistory=()=>false;
+const playbookFeatureProfile=()=>{throw Error('Must not display a subgroup with insufficient history')};
+''' + function + "renderPlaybookPerformanceTakeaway({fips:'test'});console.log(JSON.stringify(output));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), "Insufficient housing data available for selected county to comment on local housing market performance.")
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for coverage tests")
+    def test_playbook_half_history_threshold_and_last_frame(self):
+        functions = "function playbookHasSufficientHistory" + HTML_TEMPLATE.split("function playbookHasSufficientHistory", 1)[1].split("function syncPlaybookStoryLength", 1)[0]
+        script = '''
+const DATA={playbook:{monthlyHistoryMonths:Array(120).fill('month'),monthlyHistoryValuesByFips:{}}};
+const STORY_CONFIG={playbook:[{state:'history-compare'},{state:'history-outlook'}]};
+let selectedCountyFips='test';
+const playbookCountyByFips=new Map([['test',{fips:'test'}]]);
+const playbookFeatureProfile=()=>({subgroupName:'Strong Overperformers'});
+''' + functions + '''
+console.log(JSON.stringify([0,59,60,61,120].map(count=>{
+DATA.playbook.monthlyHistoryValuesByFips.test=Array(120).fill(null).map((v,i)=>i<count?0:v);
+return [playbookHasSufficientHistory({fips:'test'}),storyConfigForSection('playbook').at(-1).state];
+})));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [
+            [False, "history-compare"], [False, "history-compare"],
+            [True, "history-outlook"], [True, "history-outlook"], [True, "history-outlook"],
+        ])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for arrow tests")
+    def test_playbook_factor_arrows_combine_county_position_and_correlation(self):
+        function = "function playbookFactorArrows" + HTML_TEMPLATE.split("function playbookFactorArrows", 1)[1].split("function renderPlaybookOutlook", 1)[0]
+        script = "const playbookCountyFeaturePosition=c=>c.position;" + function + "console.log(JSON.stringify(['Higher','Lower','At peer median','Data unavailable'].map(position=>[.5,-.5,0].map(rho=>playbookFactorArrows({position},{rho,feature:'x'})))));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        pairs = [[(r["factorUp"], r["growthUp"]) for r in row] for row in json.loads(result.stdout)]
+        self.assertEqual(pairs, [
+            [(True, True), (True, False), (True, False)],
+            [(False, False), (False, True), (False, False)],
+            [(False, False), (False, True), (False, False)],
+            [(None, None), (None, None), (None, None)],
+        ])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for sizing tests")
+    def test_scatter_height_fills_available_space_without_repeat_redraw(self):
+        function = "function fitFeatureScatterToTakeaway" + HTML_TEMPLATE.split("function fitFeatureScatterToTakeaway", 1)[1].split("function drawFeatureScatter", 1)[0]
+        script = '''
+let height=220,draws=0,active=true;
+const selectedFeatureKey='income';
+const svg={getBoundingClientRect:()=>({top:150,height})};
+const relationship={getBoundingClientRect:()=>({top:570})};
+const stage={querySelector:s=>s.includes('scatter-active')?svg:relationship,style:{setProperty:(key,value)=>{height=parseInt(value)}}};
+const document={querySelector:()=>active?stage:null};
+const drawFeatureScatter=()=>{draws++};
+''' + function + '''
+fitFeatureScatterToTakeaway();fitFeatureScatterToTakeaway();active=false;fitFeatureScatterToTakeaway();
+console.log(JSON.stringify([height,draws]));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [414, 1])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for score tests")
+    def test_scorecard_range_matching_and_arrow_scores(self):
+        functions = "function playbookScorecard" + HTML_TEMPLATE.split("function playbookScorecard", 1)[1].split("function renderPlaybookOutlook", 1)[0]
+        script = '''
+const rows=[{fips:'o1',values:{x:2}},{fips:'o2',values:{x:8}},{fips:'u1',values:{x:6}},{fips:'u2',values:{x:12}}];
+const DATA={features:{countyRowsByRisk:{Low:rows},allCountyRowsByRisk:{Low:[...rows,{fips:'test',values:{x:7}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}},subgroupByFips:{o1:0,o2:0,u1:3,u2:3}}};
+const d3={ascending:(a,b)=>a-b,median:a=>{const v=[...a].sort((a,b)=>a-b);return (v[Math.floor((v.length-1)/2)]+v[Math.floor(v.length/2)])/2}};
+const subgroupName=g=>g.index===0?'Strong Overperformers':'Strong Underperformers';
+const playbookPerformanceDisplayName=n=>n;
+const playbookEvents=c=>c.events||[];
+const countyDisplayName=()=> 'Test County';
+const featureLabel=f=>f;
+''' + functions + '''
+const county={fips:'test',riskRating:'Low'};
+const testRow=DATA.features.allCountyRowsByRisk.Low.at(-1);
+const matches=[3,6,7,8,14,-2,null].map(x=>{testRow.values.x=x;return playbookFeatureSubgroupMatch(county,'x')});
+testRow.values.x=3;
+const labels=[];
+for(const risk of ['Low','High']) for(const subgroup of ['Strong Overperformers','Strong Underperformers']) {
+const html=playbookScorecard(county,{subgroupName:subgroup,assignmentSource:'event-window'},[{feature:'x'}],risk);
+labels.push(html.match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
+}
+testRow.values.x=7;
+labels.push(playbookScorecard(county,{subgroupName:'Strong Underperformers'},[{feature:'x'}],'High').match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
+labels.push(playbookScorecard(county,{subgroupName:'Strong Overperformers'},[{feature:'missing'}],'Low').match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
+console.log(JSON.stringify({matches,labels}));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        result = json.loads(result.stdout)
+        self.assertEqual(result["matches"], [True, True, False, False, False, True, None])
+        self.assertEqual(result["labels"], ["Low Risk", "Moderate Risk", "Moderate Risk", "High Risk", "High Risk", "Insufficient data"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for story tests")
+    def test_question_cards_and_event_context_precede_their_charts(self):
+        config = "const STORY_CONFIG =" + HTML_TEMPLATE.split("const STORY_CONFIG =", 1)[1].split("function playbookHasPerformanceGroup", 1)[0]
+        result = subprocess.run(["node", "-e", config + "console.log(JSON.stringify(STORY_CONFIG));"], capture_output=True, text=True, check=True)
+        story = json.loads(result.stdout)
+        pricing = story["pricing-grouping"]
+        self.assertEqual(pricing[-1]["takeaway"], "#pricing-question")
+        events = story["events"]
+        states = [step["state"] for step in events]
+        self.assertEqual(states.index("card-before"), states.index("card-before-intro") + 1)
+        self.assertEqual(states.index("card-short"), states.index("card-after-intro") + 1)
+        self.assertEqual(states.index("takeaway-after-question"), states.index("takeaway-before") + 1)
+        self.assertEqual(states.index("card-after-intro"), states.index("takeaway-after-question") + 1)
+        self.assertEqual(events[-1]["takeaway"], "#event-variation-question")
+        self.assertNotIn("segment", events[-1])
+        for target in ["pricing-question", "event-overview-question", "event-future-prompt", "event-variation-question"]:
+            self.assertIn(f'class="takeaway question-card" id="{target}"', HTML_TEMPLATE)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for scorecard tests")
+    def test_scorecard_uses_all_county_peers_and_distinguishes_fallback(self):
+        functions = "function playbookCountyFeaturePosition" + HTML_TEMPLATE.split("function playbookCountyFeaturePosition", 1)[1].split("function renderPlaybookOutlook", 1)[0]
+        script = '''
+const DATA={features:{allCountyRowsByRisk:{Low:[{fips:'a',values:{x:1}},{fips:'b',values:{x:3}},{fips:'c',values:{x:5}}]},countyRowsByRisk:{Low:[]},subgroupsByRisk:{Low:{groups:[]}}}};
+const d3={median:a=>a.slice().sort((a,b)=>a-b)[Math.floor(a.length/2)]};
+const TEXT={playbookScorecardNote:'Not a forecast'};
+const playbookEvents=c=>c.events;
+const featureLabel=f=>f;
+const countyDisplayName=()=> 'Example County';
+const playbookPerformanceDisplayName=n=>n;
+''' + functions + '''
+const a={fips:'a',riskRating:'Low',events:[]};
+const observed=playbookScorecard({...a,events:[{}]},{subgroupName:'Strong',assignmentSource:'event-window'},[{feature:'x'}],'Low');
+const fallback=playbookScorecard(a,{subgroupName:'Weak',assignmentSource:'ten-year-median-quartiles'},[{feature:'x'}],'Low');
+console.log(JSON.stringify([playbookCountyFeaturePosition(a,'x'),playbookCountyFeaturePosition({...a,fips:'c'},'x'),playbookCountyFeaturePosition(a,'missing'),observed.includes('performance when'),fallback.includes('performance if'),fallback.includes('Historical-median fallback'),observed.includes('Observed complete-event-window subgroup')]));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), ["Lower", "Higher", "Data unavailable", True, True, False, False])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for feature summary tests")
+    def test_feature_summary_uses_only_two_peer_categories(self):
+        function = "function subgroupFeatureRelations" + HTML_TEMPLATE.split("function subgroupFeatureRelations", 1)[1].split("function drawFeatureSubgroupSummary", 1)[0]
+        script = '''
+const DATA={features:{countyRowsByRisk:{Low:[{values:{x:1}},{values:{x:3}},{values:{x:5}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}}}};
+const d3={ascending:(a,b)=>a-b,quantileSorted:values=>values[1]};
+const subgroupName=g=>g.index===0?'Strong Overperformers':'Strong Underperformers';
+let rho = 0;
+const mostImportantFeatureMetrics=()=>[{feature:'x',rho}];
+''' + function + "console.log(JSON.stringify([0,3].map(index=>[-.5,0,.5].map(r=>{rho=r;return subgroupFeatureRelations('Low',{index,traits:[{feature:'x',median:3}]} )[0].relation;}))));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [["lower", "lower", "higher"], ["higher", "higher", "lower"]])
+
     def test_significant_factor_selection_retains_threshold_matches_and_tops_up(self):
         cases = [
             ([.2, -.1, .05, .01], [0, 1, 2]),
@@ -64,29 +252,28 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for rendering tests")
     def test_warning_intro_limits_event_claim_to_observed_assignments(self):
-        names = ["playbookWarningIntroNoEvents", "playbookWarningIntroWithEvents"]
-        copy = {name: json.loads(re.search(r'  ' + name + r': (".*"),', HTML_TEMPLATE).group(1)) for name in names}
-        body = HTML_TEMPLATE.split('  const introTemplate = playbookEvents(county).length', 1)[1].split('  introElement.property', 1)[0]
-        script = "const TEXT=" + json.dumps(copy) + ";\n" + '''
-const playbookEvents = c => c.events;
-const countyDisplayName = () => 'Example County';
-const playbookPerformanceName = () => 'mild overperformer';
-const fillTextTemplate = (s,values) => s.replace(/\\{(\\w+)\\}/g, (_,key) => values[key] ?? '');
-function intro(county,profile){const risk='Low'; const introTemplate = playbookEvents(county).length
-''' + body + '''return intro;}
-console.log(JSON.stringify([
-intro({events:[{}]},{assignmentSource:'event-window'}),
-intro({events:[{}]},{assignmentSource:'ten-year-median-quartiles'}),
-intro({events:[]},{assignmentSource:'ten-year-median-quartiles'})]));
+        function = "function renderPlaybookPerformanceTakeaway" + HTML_TEMPLATE.split("function renderPlaybookPerformanceTakeaway", 1)[1].split("function renderPlaybookFeatureSummary", 1)[0]
+        script = '''
+let output='',tooltip='';
+const d3={select:()=>({html:s=>{output=s},text:s=>{output=s},node:()=>({querySelector:()=>({append:t=>{tooltip=t}})})})};
+const makeInfoButton=s=>s;
+const TEXT={playbookHistoryComparisonUnavailable:'Unavailable'};
+const playbookFeatureProfile=c=>c.profile;
+const playbookHasSufficientHistory=()=>true;
+const countyDisplayName=()=> 'Example County';
+const playbookPerformanceDisplayName=n=>n;
+''' + function + '''
+console.log(JSON.stringify(['event-window','ten-year-median-quartiles',null].map(source=>{
+tooltip='';renderPlaybookPerformanceTakeaway({riskRating:'Low',profile:{assignmentSource:source,subgroupName:source?'Mild Overperformers':null}}); return [output,tooltip];
+})));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        observed, fallback, no_events = json.loads(result.stdout)
-        self.assertIn("around extreme climate events", observed)
-        self.assertNotIn("around extreme climate events", fallback)
-        self.assertNotIn("around extreme climate events", no_events)
-        self.assertIn("When an event happens", fallback)
-        self.assertIn("If an event were to happen", no_events)
-        self.assertNotIn("{eventContext}", observed)
+        observed, fallback, unavailable = json.loads(result.stdout)
+        self.assertIn("complete event-window", observed[1])
+        self.assertIn("past ten years", fallback[1])
+        self.assertNotIn("Based on", observed[0])
+        self.assertIn("<strong>Mild Overperformers</strong>", observed[0])
+        self.assertEqual(unavailable, ["Unavailable", ""])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for rendering tests")
     def test_relative_position_ranges_and_category_icons(self):
@@ -117,10 +304,14 @@ console.log(JSON.stringify([
 const nodes = {};
 const d3 = {select: id => nodes[id] ||= {content:'', hidden:false,
  attr(){return this;}, property(key,value){this[key]=value; return this;},
- html(value){this.content=value; return this;}, text(value){this.content=value; return this;}}};
+ html(value){this.content=value; return this;}, text(value){this.content=value; return this;},
+ selectAll(){return {each(){}};}}};
 const RISK_ORDER = ['Low'];
-const TEXT = {playbookWarningIntroWithEvents:'With events',playbookWarningIntroNoEvents:'No events',playbookWarningTakeaway:'Takeaway',playbookOutlookInsufficientRisk:'Missing risk',playbookOutlookInsufficientFeatures:'Missing features'};
+const TEXT = {playbookTopFactorsTitle:'Top factors',playbookFactorAssociation:'Associated with growth',playbookFactorContext:{},playbookWarningIntroWithEvents:'With events',playbookWarningIntroNoEvents:'No events',playbookWarningTakeaway:'Takeaway',playbookOutlookInsufficientRisk:'Missing risk',playbookOutlookInsufficientFeatures:'Missing features'};
+const playbookScorecard = () => 'Scorecard';
 const playbookFeatureProfile = () => ({subgroupName:'Strong Overperformers'});
+const playbookHasSufficientHistory=()=>true;
+const playbookFactorArrows = () => ({factorUp:true,growthUp:false});
 const mostImportantFeatureMetrics = () => [{feature:'Income',rho:0.4},{feature:'Insurance',rho:-0.4}];
 const featureLabel = value => value;
 const playbookFeatureCategoryIcon = () => '<svg aria-label="Economic feature"></svg>';
@@ -140,7 +331,7 @@ result.push(nodes['#playbook-warning-intro'].hidden, nodes['#playbook-warning-ta
 console.log(JSON.stringify(result));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), ["No events", "Takeaway", True, False, False, "With events", True, True, ""])
+        self.assertEqual(json.loads(result.stdout), ["Top factors", "Scorecard", True, False, False, "Top factors", True, True, ""])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for browser calculation tests")
     def test_playbook_statistics_omit_null_months_and_unknown_risk(self):
@@ -195,19 +386,21 @@ return [profile.subgroupName, profile.assignmentSource];
             "Strong Underperformers", None,
         ])
 
-    def test_subgroup_target_pools_months_and_uses_median_not_mean(self):
+    def test_shared_performance_target_uses_monthly_medians_not_pooled_median(self):
         rows = pd.DataFrame({
             "fips": ["01001"] * 6 + ["01003"] * 3,
             "event_key": ["a"] * 3 + ["b"] * 3 + ["c"] * 3,
-            "median_ppsf_yoy": [0., 0., 100., 2., 3., 4., 2.8, 2.8, 2.8],
+            "event_window_month": [-12, 0, 36] * 3,
+            "median_ppsf_yoy": [0., 20., 20., 2., 2., 2., 5., 5., 5.],
         })
-        column = page_builder.FEATURE_SUBGROUP_TARGET_COLUMN
-        median = page_builder._county_median_event_window_target(rows).set_index("fips")
-        mean = _county_average_event_window_target(rows).set_index("fips")
-        self.assertEqual(median.loc["01001", column], 2.5)
-        self.assertEqual(median[column].idxmax(), "01003")
-        self.assertEqual(mean[page_builder.FEATURE_TARGET_COLUMN].idxmax(), "01001")
-        empty = page_builder._county_median_event_window_target(rows.iloc[:0])
+        column = page_builder.FEATURE_PERFORMANCE_TARGET_COLUMN
+        median = page_builder._county_median_trajectory_target(rows).set_index("fips")
+        pooled = rows.groupby("fips")["median_ppsf_yoy"].median()
+        self.assertEqual(median.loc["01001", column], 11.)
+        self.assertEqual(median.loc["01003", column], 5.)
+        self.assertEqual(median[column].idxmax(), "01001")
+        self.assertEqual(pooled.idxmax(), "01003")
+        empty = page_builder._county_median_trajectory_target(rows.iloc[:0])
         self.assertEqual(list(empty.columns), ["fips", column])
         self.assertTrue(empty.empty)
 
@@ -464,8 +657,8 @@ return [profile.subgroupName, profile.assignmentSource];
             "function subgroupFeatureRelations(risk, subgroup)", HTML_TEMPLATE
         )
         self.assertIn("function drawFeatureSubgroupSummary()", HTML_TEMPLATE)
-        self.assertIn('higher: "above average"', HTML_TEMPLATE)
-        self.assertIn('lower: "below average"', HTML_TEMPLATE)
+        self.assertIn('higher: "higher"', HTML_TEMPLATE)
+        self.assertIn('lower: "lower"', HTML_TEMPLATE)
         self.assertIn('close: "average"', HTML_TEMPLATE)
         self.assertIn(
             'state === "feature-frame-2" || state === "feature-frame-3"', HTML_TEMPLATE
@@ -819,8 +1012,8 @@ return [profile.subgroupName, profile.assignmentSource];
             "Extreme climate events have affected counties across the board, even the low risk ones.",
             HTML_TEMPLATE,
         )
-        first = '{state: "takeaway-overview-0", takeaway: "#event-overview-takeaway", segment: 0'
-        second = '{state: "takeaway-overview-1", takeaway: "#event-overview-takeaway", segment: 1'
+        first = '{state: "takeaway-overview-0", takeaway: "#event-overview-takeaway",'
+        second = '{state: "takeaway-overview-1", takeaway: "#event-overview-question",'
         self.assertIn(first, HTML_TEMPLATE)
         self.assertIn(second, HTML_TEMPLATE)
         self.assertLess(HTML_TEMPLATE.index(first), HTML_TEMPLATE.index(second))
