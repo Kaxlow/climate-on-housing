@@ -28,6 +28,21 @@ from housing_climate_risk.page_data.climate_risk_housing import (
 
 
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for heading layout tests")
+    def test_playbook_conclusion_fits_one_line_and_has_two_plus_icons(self):
+        function = "function fitPlaybookConclusionTitle" + HTML_TEMPLATE.split("function fitPlaybookConclusionTitle", 1)[1].split("function renderPlaybookOutlook", 1)[0]
+        script = '''
+const title={clientWidth:700,scrollWidth:600,style:{}};
+const document={querySelector:()=>title};
+''' + function + '''
+fitPlaybookConclusionTitle();const wide=title.style.fontSize;
+title.clientWidth=300;fitPlaybookConclusionTitle();
+console.log(JSON.stringify([wide,title.style.fontSize]));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), ["20px", "10px"])
+        self.assertEqual(HTML_TEMPLATE.count('class="playbook-scorecard-plus"'), 2)
+
     def test_feature_payload_reuses_correlation_target_for_subgroups(self):
         from types import SimpleNamespace
 
@@ -312,6 +327,8 @@ const playbookScorecard = () => 'Scorecard';
 const playbookFeatureProfile = () => ({subgroupName:'Strong Overperformers'});
 const playbookHasSufficientHistory=()=>true;
 const playbookFactorArrows = () => ({factorUp:true,growthUp:false});
+const requestAnimationFrame=()=>{};
+const fitPlaybookConclusionTitle=()=>{};
 const mostImportantFeatureMetrics = () => [{feature:'Income',rho:0.4},{feature:'Insurance',rho:-0.4}];
 const featureLabel = value => value;
 const playbookFeatureCategoryIcon = () => '<svg aria-label="Economic feature"></svg>';

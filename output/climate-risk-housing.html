@@ -559,6 +559,11 @@
     #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary { overflow: visible; }
     .playbook-score-result { font-size: 16px; text-align: left; white-space: nowrap; overflow-x: auto; }
     .playbook-score-result > strong { display: inline; margin: 0 8px 0 0; }
+    .playbook-scorecard { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); }
+    .playbook-scorecard-title, .playbook-score-result { grid-column: 1 / -1; min-width: 0; }
+    .playbook-scorecard-title { font-size: 20px; line-height: 1.25; white-space: nowrap; }
+    .playbook-scorecard-part { min-width: 0; }
+    .playbook-scorecard-plus { align-self: center; font-size: 26px; font-weight: 800; color: var(--forest); }
   </style>
 </head>
 <body>
@@ -2838,7 +2843,9 @@ function playbookScorecard(county, profile, metrics, risk) {
     : "Take steps to reduce climate damage";
   return `<div class="playbook-scorecard"><strong class="playbook-scorecard-title">Conclusion: ${countyDisplayName(county)}'s performance ${condition} an extreme climate event happens</strong>`
     + `<div class="playbook-scorecard-part"><strong>NRI risk rating</strong><div class="playbook-scorecard-value"><span>${risk}</span>${arrow(riskUp)}</div></div>`
+    + `<span class="playbook-scorecard-plus" aria-hidden="true">+</span>`
     + `<div class="playbook-scorecard-part"><strong>Performance subgroup</strong><div class="playbook-scorecard-value"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span>${arrow(performerUp)}</div></div>`
+    + `<span class="playbook-scorecard-plus" aria-hidden="true">+</span>`
     + `<div class="playbook-scorecard-part"><strong>Significant county data</strong><div class="playbook-scorecard-value"><span>${featureUp == null ? "Data unavailable" : featureUp ? "Above Average" : "Below Average"}</span>${arrow(featureUp)}</div></div>`
     + `<div class="playbook-score-result"><strong>Overall score:</strong><b>${label}</b> — ${takeaway}${complete ? ' — <a href="https://www.ready.gov/plan" target="_blank" rel="noopener">Here\u2019s how</a>' : ""}</div></div>`;
 }
@@ -2873,6 +2880,15 @@ function playbookFactorArrows(county, metric) {
   if (position === "Data unavailable" || !Number.isFinite(metric.rho)) return {factorUp: null, growthUp: null};
   const factorUp = position === "Higher";
   return {factorUp, growthUp: metric.rho !== 0 && (factorUp === (metric.rho > 0))};
+}
+
+function fitPlaybookConclusionTitle() {
+  const title = document.querySelector('#playbook-warning-takeaway .playbook-scorecard-title');
+  if (!title || !title.clientWidth) return;
+  title.style.fontSize = '20px';
+  if (title.scrollWidth > title.clientWidth) {
+    title.style.fontSize = `${Math.floor(20 * title.clientWidth / title.scrollWidth * 10) / 10}px`;
+  }
 }
 
 function renderPlaybookOutlook(county) {
@@ -2911,6 +2927,7 @@ function renderPlaybookOutlook(county) {
   container.selectAll(".playbook-warning-row").each(function(_, index) {
     this.append(makeInfoButton(warningRows[index].description, {label: TEXT.informationTooltipLabel}));
   });
+  requestAnimationFrame(fitPlaybookConclusionTitle);
 }
 
 function selectPlaybookCounty(county) {
