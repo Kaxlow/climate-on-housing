@@ -33,14 +33,15 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         function = "function fitPlaybookConclusionTitle" + HTML_TEMPLATE.split("function fitPlaybookConclusionTitle", 1)[1].split("function renderPlaybookOutlook", 1)[0]
         script = '''
 const title={clientWidth:700,scrollWidth:600,style:{}};
-const document={querySelector:()=>title};
+const value={clientWidth:100,scrollWidth:200,style:{}};
+const document={querySelector:()=>title,querySelectorAll:()=>[value]};
 ''' + function + '''
 fitPlaybookConclusionTitle();const wide=title.style.fontSize;
 title.clientWidth=300;fitPlaybookConclusionTitle();
-console.log(JSON.stringify([wide,title.style.fontSize]));
+console.log(JSON.stringify([wide,title.style.fontSize,value.style.fontSize]));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), ["20px", "10px"])
+        self.assertEqual(json.loads(result.stdout), ["20px", "10px", "8px"])
         self.assertEqual(HTML_TEMPLATE.count('class="playbook-scorecard-plus"'), 2)
 
     def test_feature_payload_reuses_correlation_target_for_subgroups(self):
@@ -150,9 +151,11 @@ console.log(JSON.stringify([height,draws]));
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for score tests")
     def test_scorecard_range_matching_and_arrow_scores(self):
-        functions = "function playbookScorecard" + HTML_TEMPLATE.split("function playbookScorecard", 1)[1].split("function renderPlaybookOutlook", 1)[0]
+        functions = "function playbookFactorAssessment" + HTML_TEMPLATE.split("function playbookFactorAssessment", 1)[1].split("function renderPlaybookOutlook", 1)[0]
         script = '''
 const rows=[{fips:'o1',values:{x:2}},{fips:'o2',values:{x:8}},{fips:'u1',values:{x:6}},{fips:'u2',values:{x:12}}];
+const RISK_COLORS={Low:'#11794f',High:'#be302e'};
+const playbookCountyFeaturePosition=(county,feature)=>feature==='missing'?'Data unavailable':DATA.features.allCountyRowsByRisk.Low.at(-1).values.x<7?'Lower':'Higher';
 const DATA={features:{countyRowsByRisk:{Low:rows},allCountyRowsByRisk:{Low:[...rows,{fips:'test',values:{x:7}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}},subgroupByFips:{o1:0,o2:0,u1:3,u2:3}}};
 const d3={ascending:(a,b)=>a-b,median:a=>{const v=[...a].sort((a,b)=>a-b);return (v[Math.floor((v.length-1)/2)]+v[Math.floor(v.length/2)])/2}};
 const subgroupName=g=>g.index===0?'Strong Overperformers':'Strong Underperformers';
@@ -167,18 +170,92 @@ const matches=[3,6,7,8,14,-2,null].map(x=>{testRow.values.x=x;return playbookFea
 testRow.values.x=3;
 const labels=[];
 for(const risk of ['Low','High']) for(const subgroup of ['Strong Overperformers','Strong Underperformers']) {
-const html=playbookScorecard(county,{subgroupName:subgroup,assignmentSource:'event-window'},[{feature:'x'}],risk);
-labels.push(html.match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
+const html=playbookScorecard(county,{subgroupName:subgroup,assignmentSource:'event-window'},[{feature:'x',rho:-.5}],risk);
+labels.push(html.match(/score-risk-[^"]+">([^<]+)/)[1]);
 }
 testRow.values.x=7;
-labels.push(playbookScorecard(county,{subgroupName:'Strong Underperformers'},[{feature:'x'}],'High').match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
-labels.push(playbookScorecard(county,{subgroupName:'Strong Overperformers'},[{feature:'missing'}],'Low').match(/playbook-score-result"><strong>Overall score:<[/]strong><b>([^<]+)/)[1]);
+labels.push(playbookScorecard(county,{subgroupName:'Strong Underperformers'},[{feature:'x',rho:-.5}],'High').match(/score-risk-[^"]+">([^<]+)/)[1]);
+labels.push(playbookScorecard(county,{subgroupName:'Strong Overperformers'},[{feature:'missing',rho:.5}],'Low').match(/score-risk-[^"]+">([^<]+)/)[1]);
 console.log(JSON.stringify({matches,labels}));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         result = json.loads(result.stdout)
         self.assertEqual(result["matches"], [True, True, False, False, False, True, None])
         self.assertEqual(result["labels"], ["Low Risk", "Moderate Risk", "Moderate Risk", "High Risk", "High Risk", "Insufficient data"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for story tests")
+    def test_rapid_scroll_keeps_only_one_takeaway_visible(self):
+        function = "function activateStoryTakeaway" + HTML_TEMPLATE.split("function activateStoryTakeaway", 1)[1].split("function applyStoryStep", 1)[0]
+        script = '''
+const element=(classes=[])=>({classList:{values:new Set(classes),add(...v){v.forEach(x=>this.values.add(x))},remove(...v){v.forEach(x=>this.values.delete(x))},contains(x){return this.values.has(x)}},offsetWidth:100});
+const a=element(),b=element(['segmented']),segments=[element(),element()];
+b.querySelectorAll=()=>segments;
+const section={querySelectorAll:()=>[a,b,...segments],querySelector:s=>s==='#a'?a:b};
+const takeawayTransitionTimers=new WeakMap();
+const syncTakeawaySpace=()=>{};
+''' + function + '''
+for(let i=0;i<1000;i++) {
+ const step=[{takeaway:'#a'},{takeaway:'#b',segment:0},{takeaway:'#b',segment:1},{}][i%4];
+ activateStoryTakeaway(section,step,i%2?1:-1);
+ if([a,b].filter(e=>e.classList.contains('story-active-takeaway')).length!==(step.takeaway?1:0)) throw Error('overlap');
+ if(segments.filter(e=>e.classList.contains('story-active-segment')).length!==(step.takeaway==='#b'?1:0)) throw Error('segment overlap');
+ if([a,b,...segments].some(e=>e.classList.contains('story-outgoing-takeaway'))) throw Error('stale outgoing card');
+}
+'''
+        subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for score tests")
+    def test_factor_directions_and_balanced_score(self):
+        functions = "function playbookFactorAssessment" + HTML_TEMPLATE.split("function playbookFactorAssessment", 1)[1].split("function playbookFeatureSubgroupMatch", 1)[0]
+        script = '''
+const playbookCountyFeaturePosition=(c,f)=>f==='tie'?'At peer median':f==='missing'?'Data unavailable':'Higher';
+const featureLabel=f=>f,countyDisplayName=()=> 'Test County',playbookEvents=()=>[];
+const playbookPerformanceDisplayName=n=>n,RISK_COLORS={Low:'green'};
+''' + functions + '''
+const county={riskRating:'Low'};
+const factors=[{feature:'positive',rho:.5},{feature:'negative',rho:-.5},{feature:'tie',rho:.5},{feature:'missing',rho:.5}];
+const result=factors.map(f=>playbookFactorAssessment(county,f));
+const html=playbookScorecard(county,{subgroupName:'Mild Overperformer'},factors.slice(0,2),'Low');
+console.log(JSON.stringify([result.map(x=>x.growth),result[1].description.includes('associated with lower Median PPSF YoY'),html.includes('aria-label="Balanced"'),html.includes('Moderate Risk'),html.includes('https://getquoll.com/')]));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [[1, -1, 0, None], True, True, True, True])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for feature tests")
+    def test_factor_context_matches_county_direction(self):
+        context = HTML_TEMPLATE.split("  playbookFactorContext:", 1)[1].split("  // ---- Events section ----", 1)[0]
+        function = "function playbookFactorAssessment" + HTML_TEMPLATE.split("function playbookFactorAssessment", 1)[1].split("function playbookScorecard", 1)[0]
+        script = "const TEXT={playbookFactorContext:" + context + "};" + '''
+const playbookCountyFeaturePosition=c=>c.position;
+const countyDisplayName=()=> 'Example County';
+const featureLabel=f=>f;
+''' + function + '''
+const metric={feature:'net_earnings_per_capita_usd',rho:-.5};
+const high=playbookFactorAssessment({position:'Higher',riskRating:'Low'},metric).description;
+const low=playbookFactorAssessment({position:'Lower',riskRating:'Low'},metric).description;
+const reverse=playbookFactorAssessment({position:'Higher',riskRating:'Low'},{...metric,rho:.5}).description;
+console.log(JSON.stringify([high.includes('less affordable'),low.includes('more affordable'),reverse.includes('opposite to the usual explanation')]));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [True, True, True])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed for feature tests")
+    def test_factor_percentages_use_selected_subgroup_and_complete_cohort(self):
+        function = "function subgroupFeatureRelations" + HTML_TEMPLATE.split("function subgroupFeatureRelations", 1)[1].split("function drawFeatureSubgroupSummary", 1)[0]
+        script = '''
+const DATA={features:{countyRowsByRisk:{Low:[{fips:'a',values:{x:1}},{fips:'b',values:{x:3}},{fips:'c',values:{x:5}},{fips:'d',values:{x:7}},{fips:'e',values:{x:null}}]},allCountyRowsByRisk:{Low:[{values:{x:1000}}]},subgroupByFips:{a:3,b:3,c:0,d:0,e:0}}};
+DATA.features.subgroupsByRisk={Low:{groups:[{index:0},{index:3}]}};
+const d3={ascending:(a,b)=>a-b,median:a=>(a[1]+a[2])/2};
+const subgroupName=g=>g.index===0?'Strong Overperformers':'Strong Underperformers';
+let rho=.5;
+const mostImportantFeatureMetrics=()=>[{feature:'x',rho}];
+''' + function + '''
+const result=[0,3].map(index=>subgroupFeatureRelations('Low',{index,traits:[{feature:'x',median:4}]})[0]);
+rho=-.5;result.push(subgroupFeatureRelations('Low',{index:0,traits:[{feature:'x',median:4}]})[0]);
+console.log(JSON.stringify(result.map(r=>[r.peerMedian,r.matching,r.denominator,r.percentage])));
+'''
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [[4, 2, 2, 100], [4, 2, 2, 100], [4, 0, 2, 0]])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for story tests")
     def test_question_cards_and_event_context_precede_their_charts(self):
@@ -205,6 +282,7 @@ console.log(JSON.stringify({matches,labels}));
 const DATA={features:{allCountyRowsByRisk:{Low:[{fips:'a',values:{x:1}},{fips:'b',values:{x:3}},{fips:'c',values:{x:5}}]},countyRowsByRisk:{Low:[]},subgroupsByRisk:{Low:{groups:[]}}}};
 const d3={median:a=>a.slice().sort((a,b)=>a-b)[Math.floor(a.length/2)]};
 const TEXT={playbookScorecardNote:'Not a forecast'};
+const RISK_COLORS={Low:'#11794f'};
 const playbookEvents=c=>c.events;
 const featureLabel=f=>f;
 const countyDisplayName=()=> 'Example County';
@@ -222,8 +300,8 @@ console.log(JSON.stringify([playbookCountyFeaturePosition(a,'x'),playbookCountyF
     def test_feature_summary_uses_only_two_peer_categories(self):
         function = "function subgroupFeatureRelations" + HTML_TEMPLATE.split("function subgroupFeatureRelations", 1)[1].split("function drawFeatureSubgroupSummary", 1)[0]
         script = '''
-const DATA={features:{countyRowsByRisk:{Low:[{values:{x:1}},{values:{x:3}},{values:{x:5}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}}}};
-const d3={ascending:(a,b)=>a-b,quantileSorted:values=>values[1]};
+const DATA={features:{subgroupByFips:{},countyRowsByRisk:{Low:[{values:{x:1}},{values:{x:3}},{values:{x:5}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}}}};
+const d3={ascending:(a,b)=>a-b,quantileSorted:values=>values[1],median:values=>values[1]};
 const subgroupName=g=>g.index===0?'Strong Overperformers':'Strong Underperformers';
 let rho = 0;
 const mostImportantFeatureMetrics=()=>[{feature:'x',rho}];
@@ -284,7 +362,7 @@ tooltip='';renderPlaybookPerformanceTakeaway({riskRating:'Low',profile:{assignme
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         observed, fallback, unavailable = json.loads(result.stdout)
-        self.assertIn("complete event-window", observed[1])
+        self.assertIn("event window", observed[1])
         self.assertIn("past ten years", fallback[1])
         self.assertNotIn("Based on", observed[0])
         self.assertIn("<strong>Mild Overperformers</strong>", observed[0])
@@ -327,9 +405,10 @@ const playbookScorecard = () => 'Scorecard';
 const playbookFeatureProfile = () => ({subgroupName:'Strong Overperformers'});
 const playbookHasSufficientHistory=()=>true;
 const playbookFactorArrows = () => ({factorUp:true,growthUp:false});
+const playbookFactorAssessment = (county,metric) => ({...metric,factorUp:metric.feature==='AtMedian'?null:true,growth:metric.feature==='AtMedian'?0:metric.rho>0?1:-1,positionLabel:metric.feature==='AtMedian'?'At median':'Above median'});
 const requestAnimationFrame=()=>{};
 const fitPlaybookConclusionTitle=()=>{};
-const mostImportantFeatureMetrics = () => [{feature:'Income',rho:0.4},{feature:'Insurance',rho:-0.4}];
+const mostImportantFeatureMetrics = () => [{feature:'Income',rho:0.4},{feature:'Insurance',rho:-0.4},{feature:'AtMedian',rho:0.4}];
 const featureLabel = value => value;
 const playbookFeatureCategoryIcon = () => '<svg aria-label="Economic feature"></svg>';
 const playbookEvents = county => county.events;
@@ -340,7 +419,8 @@ const playbookPerformanceName = value => value;
 renderPlaybookOutlook({riskRating:'Low',events:[]});
 const result = [nodes['#playbook-warning-intro'].content, nodes['#playbook-warning-takeaway'].content,
  nodes['#playbook-event-commentary'].content.includes('Income'),
- nodes['#playbook-event-commentary'].content.includes('Takeaway'), nodes['#playbook-warning-intro'].hidden];
+ nodes['#playbook-event-commentary'].content.includes('Takeaway'), nodes['#playbook-warning-intro'].hidden,
+ nodes['#playbook-event-commentary'].content.includes('AtMedian')];
 renderPlaybookOutlook({riskRating:'Low',events:[{}]});
 result.push(nodes['#playbook-warning-intro'].content);
 renderPlaybookOutlook({riskRating:null,events:[]});
@@ -348,7 +428,27 @@ result.push(nodes['#playbook-warning-intro'].hidden, nodes['#playbook-warning-ta
 console.log(JSON.stringify(result));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), ["Top factors", "Scorecard", True, False, False, "Top factors", True, True, ""])
+        self.assertEqual(json.loads(result.stdout), ["Top factors", "Scorecard", True, False, False, False, "Top factors", True, True, ""])
+
+    def test_playbook_frame_heading_and_fixed_conclusion_layout(self):
+        self.assertIn('min-height: 0; gap: 8px; overflow-y: auto; overscroll-behavior: contain;', HTML_TEMPLATE)
+        self.assertIn('.playbook-factor-column h4 { flex-shrink: 0;', HTML_TEMPLATE)
+        self.assertIn('font-size: 16px; flex: 1; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center;', HTML_TEMPLATE)
+        self.assertEqual(HTML_TEMPLATE.count('id="playbook-warning-intro"'), 1)
+        self.assertLess(HTML_TEMPLATE.index('id="playbook-warning-intro"'), HTML_TEMPLATE.index('<div class="playbook-selected-layout">'))
+        self.assertIn('.playbook-score-result a { font-weight: 800; }', HTML_TEMPLATE)
+        self.assertIn('grid-template-rows: minmax(0, 1fr) auto; padding: 0;', HTML_TEMPLATE)
+        self.assertNotIn('id="playbook-frame-title"', HTML_TEMPLATE)
+        self.assertIn('playbookH2: "Climate Playbook: {frameTitle}"', HTML_TEMPLATE)
+        self.assertIn("d3.select('#t-playbook-h2').text(fillTextTemplate", HTML_TEMPLATE)
+        self.assertIn('grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(8px, 1.3vh, 16px); overflow: hidden;', HTML_TEMPLATE)
+        self.assertIn('background: #f9e8e7; border-color: #dfb1ae;', HTML_TEMPLATE)
+        self.assertIn('grid-template-columns: minmax(0, 1fr) auto auto;', HTML_TEMPLATE)
+        self.assertIn('class="feature-percentage-value"', HTML_TEMPLATE)
+        self.assertIn('have values <strong>${d.relation', HTML_TEMPLATE)
+        self.assertIn('.html(d => playbookFeatureCategoryIcon(d.feature))', HTML_TEMPLATE)
+        self.assertIn('grid-auto-rows: minmax(min-content, 1fr)', HTML_TEMPLATE)
+        self.assertIn('position: static; flex: 0 0 auto; margin-top: 5px;', HTML_TEMPLATE)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for browser calculation tests")
     def test_playbook_statistics_omit_null_months_and_unknown_risk(self):
@@ -785,7 +885,7 @@ return [profile.subgroupName, profile.assignmentSource];
         self.assertIn(".story-stage > h2 { transition: top 520ms ease", HTML_TEMPLATE)
         self.assertNotIn(".story-stage.story-step-forward > h2", HTML_TEMPLATE)
         self.assertIn(
-            "const previousContent = previousSegment || previousTakeaway", HTML_TEMPLATE
+            "takeawayTransitionTimers.delete(section)", HTML_TEMPLATE
         )
         self.assertIn("translate: 0 70px", HTML_TEMPLATE)
 
@@ -949,7 +1049,7 @@ return [profile.subgroupName, profile.assignmentSource];
         self.assertNotIn("renderPlaybookPerformanceStatus(county, false);", HTML_TEMPLATE)
         self.assertIn('id="playbook-history-comparison"', HTML_TEMPLATE)
         self.assertIn("renderPlaybookPerformanceTakeaway(county);", HTML_TEMPLATE)
-        self.assertIn('class="playbook-warning-grid"', HTML_TEMPLATE)
+        self.assertIn('class="playbook-factor-columns"', HTML_TEMPLATE)
         self.assertIn(
             "const metrics = mostImportantFeatureMetrics(risk);", HTML_TEMPLATE
         )
@@ -1169,7 +1269,7 @@ return [profile.subgroupName, profile.assignmentSource];
         )
         self.assertIn("function syncTakeawaySpace(section, takeaway)", HTML_TEMPLATE)
         self.assertIn(
-            "if (previousTakeaway === nextTakeaway && previousContent !== nextContent)",
+            "if (takeaway !== section.querySelector('.takeaway.story-active-takeaway')) return;",
             HTML_TEMPLATE,
         )
         self.assertIn("max-height: none;", HTML_TEMPLATE)

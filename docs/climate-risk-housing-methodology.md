@@ -306,13 +306,17 @@ for Very High, where they remain visible. The takeaway is feature-wide: negative
 correlation means higher feature values are associated with poorer growth;
 positive correlation means lower values are associated with poorer growth.
 
-The list of defining factors for a performer subgroup within a risk group assigns a "higher" or "lower" label
-to each significant factor. The label is determined by the feature's correlation sign and subgroup:
+Each defining-factor card reports the percentage of the selected performer
+subgroup whose value is strictly above or below the risk-group median. Both the
+peer median and subgroup counts use only counties in the complete-event-window
+line-plot cohort. The denominator is subgroup members with a finite value for
+that feature; exact median ties remain in the denominator but not the numerator.
+Whether the above- or below-median group is the focus depends on the factor's correlation direction with Median PPSF YoY:
 
 | Correlation sign | Overperformer subgroup | Underperformer subgroup |
 | --- | --- | --- |
-| Positive | Higher | Lower |
-| Negative | Lower | Higher |
+| Positive | Above median | Below median |
+| Negative | Below median | Above median |
 
 ## County Climate Playbook
 
@@ -374,20 +378,17 @@ The fallback rules are:
 
 ### Top factor cards in Frame 5
 
-For each significant factor, the county's value is compared against the median of all counties within the same risk group. 
-The first arrow is up for a value strictly above the
-peer median and down otherwise. A second arrow next to "Median PPSF YoY" combines
-that position with the sign of the complete-event-cohort correlation:
+For each significant factor, the county's value is compared against the median
+of available county feature values in the same risk group to determine if it is above or below the risk-group median. Then, that factor associated with higher or lower Median PPSF YoY depending on whether the county's value is above or below median, and the direction of the factor's correlation with Median PPSF YoY Factors:
 
 | County feature position | Positive correlation | Negative correlation |
 | --- | --- | --- |
-| Above peer median | Growth arrow up | Growth arrow down |
-| At or below peer median | Growth arrow down | Growth arrow up |
+| Above median | Higher growth column | Lower growth column |
+| Below median | Lower growth column | Higher growth column |
 
-An exact median tie takes the below-median display branch. A zero correlation
-produces a down growth arrow. Missing
-feature values or non-finite correlations display "Data unavailable" instead
-of arrows. Tooltips provide qualitative context and the correlation direction.
+Exact median ties and zero correlations are neutral, with no directional
+association, and are excluded. Missing values or non-finite correlations are unavailable. Tooltips explain the association in the direction implied by the county's actual feature position,
+not a causal prediction.
 
 ### County performance scorecard
 
@@ -397,17 +398,11 @@ Three component cards each contribute one up/down signal:
 | --- | --- | --- |
 | NRI risk rating | Very Low or Low | Medium, High, or Very High |
 | Performance subgroup | Mild or Strong Overperformer | Mild or Strong Underperformer |
-| Significant county data | Strict majority of selected features match overperformer subgroups | Half or fewer match overperformer subgroups |
+| County Makeup | More factors associated with higher growth | More factors associated with lower growth |
 
-For the third signal, the implementation compares each county feature with the
-observed feature ranges of the event-cohort performer subgroups within its NRI
-risk group:
-
-1. Prefer subgroups whose inclusive minimum–maximum range contains the value.
-2. If ranges overlap, choose the subgroup whose median is closest to the value.
-3. If no range contains it, choose the nearest range boundary, then the nearest
-   subgroup median to break a distance tie.
-4. An exact overperformer/underperformer tie favors underperformers.
+County Makeup uses the same factor assessments as the Top Factors columns.
+An equal number on each side produces a balanced dash. Neutral factors are excluded; a dash contributes zero up signals. Any unavailable factor
+comparison makes County Makeup and the overall score unavailable.
 
 The three equally weighted signals produce the displayed overall score:
 
@@ -480,8 +475,8 @@ resources.
   restricted to pre-event information. Top-up selection can include weak
   correlations; the stored bootstrap interval does not control the selection.
 - **Playbook arrows and overall score:** group-level associations need not match
-  an individual county's historical performance. Median-based factor arrows and
-  performer-range matching use different reference rules. The equal-weight score
+  an individual county's historical performance. County Makeup summarizes the
+  balance of the same median-based factor associations. The equal-weight score
   is not a validated classifier or a calibrated risk probability, and cannot
   establish the damage claims implied by its short display takeaways.
 - **Mutable Redfin source:** Redfin's public county files can be revised. The

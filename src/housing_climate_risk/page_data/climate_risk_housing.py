@@ -2860,7 +2860,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     .panel > .sources { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
     .sources a { color: #205f90; }
     .info-tooltip-trigger { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; min-width: 17px; border: 1px solid currentColor; border-radius: 50%; padding: 0; background: white; color: var(--teal); font-size: 10px; font-weight: 900; line-height: 1; cursor: pointer; }
-    .tooltip { position: fixed; display: none; max-width: min(300px, calc(100vw - 16px)); max-height: calc(100svh - 16px); overflow: auto; background: #172026; color: white; padding: 9px 10px; border-radius: 0; box-shadow: 0 8px 22px rgba(23,32,38,.28); font-size: 12px; line-height: 1.35; pointer-events: none; z-index: 1000; }
+    .tooltip { position: fixed; display: none; max-width: min(300px, calc(100vw - 16px)); max-height: calc(100svh - 16px); overflow: auto; white-space: pre-line; background: #172026; color: white; padding: 9px 10px; border-radius: 0; box-shadow: 0 8px 22px rgba(23,32,38,.28); font-size: 12px; line-height: 1.35; pointer-events: none; z-index: 1000; }
     .tooltip.persistent { pointer-events: auto; }
     .tooltip a, .tooltip a:visited { color: #a8e6ff; text-decoration: underline; }
     .tooltip a:hover, .tooltip a:focus-visible { color: #ffffff; }
@@ -3242,6 +3242,69 @@ HTML_TEMPLATE = r"""<!doctype html>
     .playbook-scorecard-title { font-size: 20px; line-height: 1.25; white-space: nowrap; }
     .playbook-scorecard-part { min-width: 0; }
     .playbook-scorecard-plus { align-self: center; font-size: 26px; font-weight: 800; color: var(--forest); }
+    #t-hero-h1, #t-hero-dek { text-align: center; margin-left: auto; margin-right: auto; }
+    .hero > * { width: 100%; }
+    .story-stage .takeaway:not(.story-active-takeaway) { visibility: hidden; opacity: 0 !important; pointer-events: none; }
+    .story-stage .takeaway.story-active-takeaway { visibility: visible; }
+    .feature-subgroup-summary-row { display: flex; flex-direction: column; align-items: stretch; gap: 7px; }
+    .feature-peer-percentage { font-size: 12px; line-height: 1.45; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary-pane { grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(8px, 1.3vh, 16px); overflow: hidden; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary { padding: 10px; border: 1px solid #bacdc3; border-radius: 8px; background: #edf3ef; overflow-y: auto; }
+    .playbook-warning-intro { font-size: clamp(17px, 1.6vw, 21px); font-weight: 800; }
+    .playbook-factor-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
+    .playbook-factor-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 10px; border: 1px solid #a4cdb4; border-radius: 8px; background: #e4f2e8; }
+    .playbook-factor-column.negative { background: #f9e8e7; border-color: #dfb1ae; }
+    .playbook-factor-column h4 { margin: 0 0 8px; font-size: 14px; padding-bottom: 6px; border-bottom: 3px solid #11794f; }
+    .playbook-factor-column.negative h4 { border-bottom-color: #be302e; }
+    .playbook-factor-list { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+    .playbook-factor-list .playbook-warning-row { flex: 1 0 auto; align-self: stretch; padding: clamp(8px, 1vh, 14px); }
+    .playbook-factor-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .playbook-factor-list .playbook-warning-row, .playbook-factor-other .playbook-warning-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+    .playbook-factor-position { color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
+    .playbook-factor-other { margin-top: 10px; max-height: 25%; overflow-y: auto; flex-shrink: 0; }
+    .playbook-factor-empty { color: var(--muted); font-size: 16px; flex: 1; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .playbook-scorecard-part, .playbook-score-result { background: #f4f5f1; color: var(--ink); border-color: #cbd5cc; }
+    .playbook-scorecard-value > span:first-child { font-size: clamp(19px, 2.1vw, 30px); font-weight: 800; line-height: 1.15; }
+    .playbook-scorecard .playbook-arrow-up { color: #11794f; }
+    .playbook-scorecard .playbook-arrow-down { color: #be302e; }
+    .playbook-score-result { white-space: normal; overflow: visible; display: flex; flex-direction: column; min-height: 105px; }
+    .playbook-score-result b { font-size: clamp(21px, 2vw, 28px); }
+    .score-risk-low { color: #11794f; } .score-risk-moderate { color: #976200; } .score-risk-high { color: #be302e; }
+    .playbook-score-takeaway { text-align: center; margin: auto 0 0; padding-top: 14px; font-size: 15px; }
+    .playbook-score-result a { color: #126354; }
+    @media (max-width: 700px) { .playbook-scorecard-value > span:first-child { font-size: 17px; } .playbook-factor-columns { gap: 8px; } }
+    #playbook-warning-takeaway { background: var(--forest); color: white; border-color: var(--forest); }
+    .playbook-scorecard { text-align: center; }
+    .playbook-scorecard-plus { color: white; }
+    .playbook-scorecard-value { justify-content: center; gap: 8px; }
+    .playbook-scorecard-value > span:first-child { font-size: 16px; white-space: nowrap; min-width: 0; }
+    .playbook-scorecard-value .playbook-score-arrow { flex: 0 0 auto; margin: 0; }
+    .playbook-score-result { text-align: center; }
+    .feature-subgroup-summary-row { gap: 3px; padding: 6px 8px; line-height: 1.25; }
+    .feature-subgroup-summary-row strong, .feature-peer-percentage { margin: 0; line-height: 1.25; }
+    .feature-subgroup-summary-rows { gap: 5px; }
+    .feature-subgroup-summary-rows { flex: 1; grid-auto-rows: minmax(min-content, 1fr); align-content: stretch; }
+    .feature-subgroup-summary-row { justify-content: space-evenly; padding: 8px 12px; }
+    .feature-subgroup-factor-name { display: flex; align-items: center; gap: 6px; }
+    .feature-peer-percentage { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .feature-peer-percentage .feature-percentage-value { font-size: clamp(22px, 2vw, 30px); font-weight: 800; color: var(--forest); flex-shrink: 0; }
+    #playbook .story-stage[data-story-state="history-outlook"] > .panel { padding-bottom: 14px; }
+    #playbook .story-stage[data-story-state="history-outlook"] > .panel > .sources { position: static; flex: 0 0 auto; margin-top: 5px; padding-top: 5px; }
+    #playbook .story-stage:not([data-story-state="history-outlook"]) #playbook-warning-intro { display: none; }
+    #playbook .story-stage[data-story-state="history-outlook"] #playbook-warning-intro { position: absolute; top: 0; left: 190px; right: 190px; text-align: center; line-height: 1.2; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary-pane { grid-template-rows: minmax(0, 1fr) auto; padding: 0; }
+    #playbook .story-stage[data-story-state="history-outlook"] .playbook-commentary { grid-row: 1; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; overflow: hidden; }
+    #playbook .story-stage[data-story-state="history-outlook"] #playbook-warning-takeaway { grid-row: 2; padding: 9px 12px; }
+    .playbook-factor-column h4 { flex-shrink: 0; text-align: center; font-size: clamp(15px, 1.2vw, 18px); }
+    .playbook-factor-list .playbook-warning-row { font-size: clamp(12px, 1vw, 15px); }
+    .playbook-scorecard { width: 92%; margin: 0 auto; }
+    .playbook-score-result { min-height: 0; padding: 7px 10px; }
+    .playbook-score-takeaway { padding-top: 5px; }
+    .playbook-score-result a { font-weight: 800; }
+    .playbook-scorecard-value.favorable > span:first-child { color: #11794f; }
+    .playbook-scorecard-value.unfavorable > span:first-child { color: #be302e; }
+    #playbook .panel > .sources { margin-top: 5px; padding-top: 5px; }
+    @media (max-width: 700px) { #playbook .story-stage[data-story-state="history-outlook"] #playbook-warning-intro { left: 160px; right: 0; font-size: 15px; } .playbook-scorecard { width: 100%; } }
   </style>
 </head>
 <body>
@@ -3408,6 +3471,7 @@ HTML_TEMPLATE = r"""<!doctype html>
 
         <div class="playbook-frame playbook-selected-frame">
           <button id="playbook-back-to-search" class="playbook-back-button" type="button"><span class="playbook-back-arrow" aria-hidden="true">&#8592;</span> Back to county search</button>
+          <p id="playbook-warning-intro" class="playbook-warning-intro" hidden></p>
           <div class="playbook-selected-layout">
             <aside class="playbook-profile-panel" id="playbook-profile-details">
               <div class="playbook-selected-county" id="playbook-selected-county-name"></div>
@@ -3433,7 +3497,6 @@ HTML_TEMPLATE = r"""<!doctype html>
               <div id="playbook-subgroup-summary" class="playbook-subgroup-badge"></div>
             </aside>
             <aside class="playbook-commentary-pane">
-              <p id="playbook-warning-intro" class="playbook-warning-intro" hidden></p>
               <div class="playbook-commentary" id="playbook-event-commentary"></div>
               <div id="playbook-warning-takeaway" class="playbook-warning-takeaway" hidden></div>
             </aside>
@@ -3478,18 +3541,55 @@ const TEXT = {
   pricingQuestion: "There is clearly a relationship between climate risk and housing market growth. How do markets respond when an extreme climate event occurs?",
   pricingSources: 'Sources: <a href="https://www.redfin.com/news/data-center/downloads/" target="_blank" rel="noopener">Redfin monthly county Housing Market Tracker</a>; <a href="https://hazards.fema.gov/nri/data-resources" target="_blank" rel="noopener">FEMA National Risk Index county data</a>.',
 
-  playbookTopFactorsTitle: "Top factors: <b>{county}'s</b> attributes most strongly associated with housing market growth within <b>{risk} risk group</b>",
+  playbookTopFactorsTitle: "Top Factors for {county}",
+  playbookFrameTitles: {search: "Select a County", "history-map": "County's Past Housing Market Performance", "history-events": "County Performance in the Context of Past Events", "history-compare": "County Performance Relative to Risk Group", "history-outlook": "County Market Resilience Assessment"},
   playbookInsufficientHistory: "Insufficient housing data available for selected county to comment on local housing market performance.",
   playbookFactorContext: {
-    net_earnings_per_capita_usd: "Areas with lower earnings income tend to have more affordable housing markets which may draw an influx of buyers, thus driving up prices significantly.",
-    age_65_plus_pct: "Older people are less likely to move from their area of residence, which leads to lower levels of housing market activity.",
-    dividends_interest_rent_per_capita_usd: "Investment income is a sign of local wealth and higher starting price levels; expensive markets tend to have smaller percentage growth.",
-    transfer_receipts_per_capita_usd: "Larger benefits indicate more socioeconomic vulnerability and a weaker housing market.",
-    property_taxes_pct_income: "A higher share of income spent on property taxes is a sign of greater economic vulnerability and a weaker housing market.",
-    utilities_pct_income: "A higher share of income spent on utilities indicates lower income levels and housing prices, which may draw in buyers and lead to significant housing price growth.",
-    owner_cost_burden_30pct_plus_pct: "More cost-burdened households indicate a more economically vulnerable area that has a weaker housing market.",
-    net_migration_rate_pct: "More people moving into an area can drive up housing demand and prices.",
-    disability_pct: "A greater share of people with disabilities can indicate lower income levels and housing prices, which may draw in buyers and lead to significant housing price growth.",
+    net_earnings_per_capita_usd: {
+      higher: "Areas with higher earnings income may have less affordable housing markets that deter buyers, slowing price growth.",
+      lower: "Areas with lower earnings income may have more affordable housing markets that attract buyers, supporting faster price growth.",
+      expectedRhoSign: -1,
+    },
+    age_65_plus_pct: {
+      higher: "A larger older population may move less frequently, reducing housing market activity and slowing price growth.",
+      lower: "A smaller older population may mean more residential mobility and housing demand, supporting faster price growth.",
+      expectedRhoSign: -1,
+    },
+    dividends_interest_rent_per_capita_usd: {
+      higher: "Higher investment income may signal wealthier markets with higher starting prices and slower percentage price growth.",
+      lower: "Lower investment income may signal lower starting prices and more room for percentage price growth.",
+      expectedRhoSign: -1,
+    },
+    transfer_receipts_per_capita_usd: {
+      higher: "Greater reliance on benefits may signal economic vulnerability that weakens housing demand and price growth.",
+      lower: "Less reliance on benefits may signal less economic vulnerability, supporting housing demand and price growth.",
+      expectedRhoSign: -1,
+    },
+    property_taxes_pct_income: {
+      higher: "A higher property-tax burden may constrain buyers' budgets and slow housing price growth.",
+      lower: "A lower property-tax burden may improve affordability and support housing demand and price growth.",
+      expectedRhoSign: -1,
+    },
+    utilities_pct_income: {
+      higher: "A higher utility-cost share may reflect lower incomes and home prices; affordable starting prices can attract buyers and support faster growth.",
+      lower: "A lower utility-cost share may reflect higher incomes and home prices, leaving less room for percentage price growth.",
+      expectedRhoSign: 1,
+    },
+    owner_cost_burden_30pct_plus_pct: {
+      higher: "More cost-burdened households may indicate financial vulnerability that constrains housing demand and price growth.",
+      lower: "Fewer cost-burdened households may indicate greater financial capacity, supporting housing demand and price growth.",
+      expectedRhoSign: -1,
+    },
+    net_migration_rate_pct: {
+      higher: "More net arrivals can increase housing demand and support faster price growth.",
+      lower: "Fewer net arrivals or more departures can weaken housing demand and slow price growth.",
+      expectedRhoSign: 1,
+    },
+    disability_pct: {
+      higher: "A larger population share with disabilities may coincide with lower incomes and home prices; affordable starting prices can attract buyers and support faster growth.",
+      lower: "A smaller population share with disabilities may coincide with higher incomes and home prices, leaving less room for percentage price growth.",
+      expectedRhoSign: 1,
+    },
   },
   // ---- Events section ----
   eventsH2: "What Happened to Housing Markets in Counties where Extreme Climate Events Occurred?",
@@ -3523,7 +3623,7 @@ const TEXT = {
   featureLineTitle: "Median PPSF YoY around events",
   featureScatterTitle: "Median PPSF YoY around events vs. {feature}",
   featureOutcomeTerm: "Median PPSF YoY around events",
-  featureOutcomeTooltip: "For each county, take the median across complete event trajectories at each relative month, then the median across months -12 through event start and months 1–36 after event end. Spearman correlation compares this county-level median with the county feature value.",
+  featureOutcomeTooltip: "For each county, take the median across months -12 through event start and months 1–36 after event end. Spearman correlation compares this county-level median with the county feature value.\n\nIf a county had multiple complete event trajectories, it is represented by a single trajectory built from the medians across the individual trajectories at each relative month.",
   featureFrame1Title: "Which data types matter most to {risk} Risk counties?",
   featureFrame2Title: "What types of counties exist within the {risk} Risk group?",
   featureFrame3Title: "What factors define {subgroup} in the {risk} Risk group?",
@@ -3586,7 +3686,7 @@ const TEXT = {
   featureScatterYAxis: "Median PPSF YoY",
 
   // ---- Playbook section ----
-  playbookH2: "Climate Playbook: What to Watch for in Your County's Future",
+  playbookH2: "Climate Playbook: {frameTitle}",
   playbookSearchPlaceholder: "Search for a county by name, state, or FIPS…",
   playbookInsufficientFeatureData: "Insufficient feature data available for {county}.",
   playbookInsufficientEventWindowData: "The most important data types for {county} could not be determined because no housing observations were available in the event-window analysis period.",
@@ -4665,7 +4765,12 @@ function subgroupFeatureRelations(risk, subgroup) {
     const groups = DATA.features.subgroupsByRisk[risk]?.groups || [];
     const overperformer = /overperformer/i.test(subgroupName(subgroup, groups.length, risk));
     const relation = (metric.rho > 0) === overperformer ? "higher" : "lower";
-    return {...trait, relation};
+    const peerMedian = d3.median(peerValues);
+    const members = peerRows.filter(row => DATA.features.subgroupByFips[row.fips] === subgroup.index)
+      .map(row => row.values?.[trait.feature]).filter(Number.isFinite);
+    const matching = members.filter(value => relation === "higher" ? value > peerMedian : value < peerMedian).length;
+    return {...trait, relation, peerMedian, matching, denominator: members.length,
+      percentage: members.length ? 100 * matching / members.length : null};
   }).filter(Boolean);
 }
 
@@ -4690,8 +4795,11 @@ function drawFeatureSubgroupSummary() {
   const rowScroller = summary.append("div").attr("class", "feature-subgroup-summary-rows");
   const rows = rowScroller.selectAll("div.feature-subgroup-summary-row").data(relations, d => d.feature).join("div")
     .attr("class", "feature-subgroup-summary-row");
-  rows.append("strong").text(d => featureLabel(d.feature));
-  rows.append("span").attr("class", d => `feature-peer-relation ${d.relation}`).text(d => TEXT.featurePeerRelation[d.relation]);
+  rows.append("div").attr("class", "feature-subgroup-factor-name")
+    .html(d => playbookFeatureCategoryIcon(d.feature)).append("strong").text(d => featureLabel(d.feature));
+  rows.append("span").attr("class", "feature-peer-percentage").html(d => d.percentage == null
+    ? "No county feature values available in this subgroup."
+    : `<span class="feature-percentage-value">${d3.format('.1f')(d.percentage)}%</span><span>have values <strong>${d.relation === 'higher' ? 'above' : 'below'}</strong> its risk-group median.</span>`);
 }
 
 function featureDistributionOptions(payload) {
@@ -5068,7 +5176,7 @@ function renderPlaybookPerformanceTakeaway(county) {
     return;
   }
   const basis = profile.assignmentSource === "event-window"
-    ? "For each county, take the median across complete event-window trajectories at each relative month, then the median of the 49 monthly medians. Counties are ranked by this same target used for feature correlations and divided into four performer subgroups within their NRI risk group."
+    ? "Within each risk group, counties are ranked by the median of their Median PPSf YoY values across the event window, which is defined as the period of one year up till the event start and three years after the event end.\n\n If a county had multiple events, it is first represented by a single event trajectory built from the medians across the individual events at each relative month."
     : "The county's median value of Median PPSF YoY over the past ten years is compared with the median values of its risk group's monthly median and quartile values of Median PPSF YoY over the same period. A gap at least halfway from the group median toward the relevant quartile is Strong; a smaller gap is Mild.";
   target.html(`<span>${countyDisplayName(county)} is a <strong>${playbookPerformanceDisplayName(profile.subgroupName)}</strong> within the <strong>${county.riskRating} risk group</strong>.</span>`);
   target.node().querySelector("span").append(makeInfoButton(basis, {label: TEXT.informationTooltipLabel}));
@@ -5505,27 +5613,51 @@ function playbookCountyFeaturePosition(county, feature) {
   return value > median ? "Higher" : value < median ? "Lower" : "At peer median";
 }
 
+function playbookFactorAssessment(county, metric) {
+  const position = playbookCountyFeaturePosition(county, metric.feature);
+  const factorUp = position === "Higher" ? true : position === "Lower" ? false : null;
+  const growth = position === "Data unavailable" || !Number.isFinite(metric.rho) ? null
+    : position === "At peer median" || metric.rho === 0 ? 0
+    : factorUp === (metric.rho > 0) ? 1 : -1;
+  const positionLabel = position === "Higher" ? "Above median" : position === "Lower" ? "Below median"
+    : position === "At peer median" ? "At median" : "Data unavailable";
+  const contextOptions = typeof TEXT !== "undefined" ? TEXT.playbookFactorContext?.[metric.feature] : null;
+  const context = typeof contextOptions === "string" ? contextOptions
+    : contextOptions && Math.sign(metric.rho) === contextOptions.expectedRhoSign
+      ? contextOptions[factorUp ? "higher" : "lower"]
+      : contextOptions ? "This risk group's observed association runs opposite to the usual explanation for this factor; the correlation alone does not establish why." : null;
+  const description = growth == null ? "The county feature value or its correlation is unavailable."
+    : growth === 0 ? `${featureLabel(metric.feature)} is at the peer median or has zero correlation, so no directional growth association is assigned.`
+    : `${countyDisplayName(county)} has ${factorUp ? "higher" : "lower"} ${featureLabel(metric.feature)} values than its peers within the ${county.riskRating} risk group. ${factorUp ? "Higher" : "Lower"} values are associated with ${growth > 0 ? "higher" : "lower"} Median PPSF YoY ${context ? " - " + context : ""}`;
+  return {...metric, factorUp, growth, positionLabel, description};
+}
+
 function playbookScorecard(county, profile, metrics, risk) {
   const condition = playbookEvents(county).length ? "when" : "if";
-  const matches = metrics.map(metric => ({feature: metric.feature, match: playbookFeatureSubgroupMatch(county, metric.feature)}));
-  const complete = matches.length > 0 && matches.every(item => item.match != null);
-  const featureUp = complete ? matches.filter(item => item.match).length > matches.length / 2 : null;
+  const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
+  const complete = factors.length > 0 && factors.every(item => item.growth != null);
+  const positive = factors.filter(item => item.growth === 1).length;
+  const negative = factors.filter(item => item.growth === -1).length;
+  const balance = complete ? Math.sign(positive - negative) : null;
   const riskUp = ["Very Low", "Low"].includes(risk);
   const performerUp = /overperformer/i.test(profile.subgroupName || "");
-  const arrow = up => up == null ? '<span class="playbook-score-arrow" aria-label="Unscored">?</span>' : `<span class="playbook-score-arrow playbook-arrow-${up ? "up" : "down"}" aria-label="${up ? "Favorable" : "Unfavorable"}">${up ? "\u2191" : "\u2193"}</span>`;
-  const score = Number(riskUp) + Number(performerUp) + Number(featureUp);
+  const arrow = signal => signal == null ? '<span class="playbook-score-arrow" aria-label="Unscored">?</span>'
+    : signal === 0 ? '<span class="playbook-score-arrow" aria-label="Balanced">—</span>'
+    : `<span class="playbook-score-arrow playbook-arrow-${signal > 0 ? "up" : "down"}" aria-label="${signal > 0 ? "Favorable" : "Unfavorable"}">${signal > 0 ? "↑" : "↓"}</span>`;
+  const score = Number(riskUp) + Number(performerUp) + Number(balance === 1);
   const label = !complete ? "Insufficient data" : score === 3 ? "Low Risk" : score === 2 ? "Moderate Risk" : "High Risk";
+  const level = !complete ? "unknown" : score === 3 ? "low" : score === 2 ? "moderate" : "high";
   const takeaway = !complete ? "Some significant features could not be scored; no overall risk label is assigned."
     : score === 3 ? "Safer environment that can benefit from steps to reduce potential climate damage"
     : score === 2 ? "Climate damage is a real possibility, know the steps to reduce it"
     : "Take steps to reduce climate damage";
   return `<div class="playbook-scorecard"><strong class="playbook-scorecard-title">Conclusion: ${countyDisplayName(county)}'s performance ${condition} an extreme climate event happens</strong>`
-    + `<div class="playbook-scorecard-part"><strong>NRI risk rating</strong><div class="playbook-scorecard-value"><span>${risk}</span>${arrow(riskUp)}</div></div>`
-    + `<span class="playbook-scorecard-plus" aria-hidden="true">+</span>`
-    + `<div class="playbook-scorecard-part"><strong>Performance subgroup</strong><div class="playbook-scorecard-value"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span>${arrow(performerUp)}</div></div>`
-    + `<span class="playbook-scorecard-plus" aria-hidden="true">+</span>`
-    + `<div class="playbook-scorecard-part"><strong>Significant county data</strong><div class="playbook-scorecard-value"><span>${featureUp == null ? "Data unavailable" : featureUp ? "Above Average" : "Below Average"}</span>${arrow(featureUp)}</div></div>`
-    + `<div class="playbook-score-result"><strong>Overall score:</strong><b>${label}</b> — ${takeaway}${complete ? ' — <a href="https://www.ready.gov/plan" target="_blank" rel="noopener">Here\u2019s how</a>' : ""}</div></div>`;
+    + `<div class="playbook-scorecard-part"><strong>NRI Risk Rating</strong><div class="playbook-scorecard-value"><span style="color:${RISK_COLORS[risk] || "var(--ink)"}">${risk}</span>${arrow(riskUp ? 1 : -1)}</div></div>`
+    + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
+    + `<div class="playbook-scorecard-part"><strong>Performance vs. Peers</strong><div class="playbook-scorecard-value ${performerUp ? "favorable" : "unfavorable"}"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span>${arrow(performerUp ? 1 : -1)}</div></div>`
+    + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
+    + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${balance == null ? "Data unavailable" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span>${arrow(balance)}</div></div>`
+    + `<div class="playbook-score-result"><div><strong>Overall score:</strong> <b class="score-risk-${level}">${label}</b></div><p class="playbook-score-takeaway">${takeaway}${complete ? ' — <a href="https://getquoll.com/" target="_blank" rel="noopener">Here’s how</a>' : ""}</p></div></div>`;
 }
 
 function playbookFeatureSubgroupMatch(county, feature) {
@@ -5561,6 +5693,12 @@ function playbookFactorArrows(county, metric) {
 }
 
 function fitPlaybookConclusionTitle() {
+  document.querySelectorAll('#playbook-warning-takeaway .playbook-scorecard-value > span:first-child').forEach(value => {
+    value.style.fontSize = '16px';
+    if (value.clientWidth > 0 && value.scrollWidth > value.clientWidth) {
+      value.style.fontSize = `${Math.floor(16 * value.clientWidth / value.scrollWidth * 10) / 10}px`;
+    }
+  });
   const title = document.querySelector('#playbook-warning-takeaway .playbook-scorecard-title');
   if (!title || !title.clientWidth) return;
   title.style.fontSize = '20px';
@@ -5588,22 +5726,22 @@ function renderPlaybookOutlook(county) {
     container.attr("class", "playbook-commentary neutral").text(TEXT.playbookOutlookInsufficientFeatures);
     return;
   }
-  const warningRows = metrics.map(metric => ({
-    label: featureLabel(metric.feature),
-    categoryIcon: playbookFeatureCategoryIcon(metric.feature),
-    ...playbookFactorArrows(county, metric),
-    description: TEXT.playbookFactorContext[metric.feature] || `${featureLabel(metric.feature)} has a ${metric.rho > 0 ? "positive" : metric.rho < 0 ? "negative" : "zero"} Spearman correlation with Median PPSF YoY within this risk group. This is an association, not a causal effect.`,
-  }));
-  introElement.property("hidden", false).html(fillTextTemplate(TEXT.playbookTopFactorsTitle, {county: countyDisplayName(county), risk, performance: playbookPerformanceName(profile.subgroupName).replace(/performer$/, "-performance")}));
+  const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
+  introElement.property("hidden", false).html(fillTextTemplate(TEXT.playbookTopFactorsTitle, {county: countyDisplayName(county), risk}));
   takeawayElement.property("hidden", false).html(playbookScorecard(county, profile, metrics, risk));
-  const arrow = (up, label) => up == null ? '<span>Data unavailable</span>' : `<span class="playbook-warning-direction playbook-arrow-${up ? "up" : "down"}" aria-label="${label}">${up ? "\u2191" : "\u2193"}</span>`;
-  container.html(
-    `<div class="playbook-warning-grid">${warningRows.map(row =>
-      `<div class="playbook-warning-row"><div class="playbook-factor-lines"><div class="playbook-factor-line">${row.categoryIcon}<strong>${row.label}</strong>${arrow(row.factorUp, row.factorUp ? "Above risk-group median" : "At or below risk-group median")}</div><div class="playbook-factor-line">Median PPSF YoY ${arrow(row.growthUp, row.growthUp ? "Associated with higher growth" : "Not associated with higher growth")}</div></div></div>`
-    ).join("")}</div>`
-  );
-  container.selectAll(".playbook-warning-row").each(function(_, index) {
-    this.append(makeInfoButton(warningRows[index].description, {label: TEXT.informationTooltipLabel}));
+  const card = factor => `<div class="playbook-warning-row" data-factor="${factor.feature}"><span class="playbook-factor-name">${playbookFeatureCategoryIcon(factor.feature)}<strong>${featureLabel(factor.feature)}</strong></span><span class="playbook-factor-position" aria-label="${factor.positionLabel}">${factor.factorUp === true ? "▲" : factor.factorUp === false ? "▼" : "—"} ${factor.positionLabel}</span></div>`;
+  const column = (direction, title) => {
+    const rows = factors.filter(factor => factor.growth === direction);
+    return `<section class="playbook-factor-column ${direction > 0 ? "positive" : "negative"}"><h4>${title}</h4><div class="playbook-factor-list">${rows.length ? rows.map(card).join("") : '<p class="playbook-factor-empty">None.</p>'}</div></section>`;
+  };
+  const other = factors.filter(factor => factor.positionLabel !== "At median" && (factor.growth === 0 || factor.growth == null));
+  container.html('<div class="playbook-factor-columns">'
+    + column(1, "Associated with higher Median PPSF YoY")
+    + column(-1, "Associated with lower Median PPSF YoY") + '</div>'
+    + (other.length ? '<div class="playbook-factor-other"><h4>Neutral or unavailable</h4>' + other.map(card).join("") + '</div>' : ""));
+  container.selectAll(".playbook-warning-row").each(function() {
+    const factor = factors.find(item => item.feature === this.dataset.factor);
+    this.append(makeInfoButton(factor.description, {label: TEXT.informationTooltipLabel}));
   });
   requestAnimationFrame(fitPlaybookConclusionTitle);
 }
@@ -5646,6 +5784,7 @@ function playbookHistoryRows(county) {
 function renderPlaybookFrame() {
   const state = document.querySelector("#playbook .story-stage")?.dataset.storyState || "search";
   const county = playbookCountyByFips.get(selectedCountyFips);
+  d3.select('#t-playbook-h2').text(fillTextTemplate(TEXT.playbookH2, {frameTitle: TEXT.playbookFrameTitles[county ? state : 'search'] || TEXT.playbookFrameTitles.search}));
   if (state === "search" || !county) {
     drawPlaybookMap("#county-selection-map", county || null, false, true);
     return;
@@ -5806,6 +5945,7 @@ function syncTakeawaySpace(section, takeaway) {
   }
   requestAnimationFrame(() => {
     const height = Math.ceil(takeaway.getBoundingClientRect().height);
+    if (takeaway !== section.querySelector('.takeaway.story-active-takeaway')) return;
     if (height > 0) panel.style.setProperty("--takeaway-space", `${height}px`);
     if (section.id === "features") fitFeatureScatterToTakeaway();
   });
@@ -5813,89 +5953,25 @@ function syncTakeawaySpace(section, takeaway) {
 
 function activateStoryTakeaway(section, step, direction) {
   clearTimeout(takeawayTransitionTimers.get(section));
+  takeawayTransitionTimers.delete(section);
+  // Commit one visible card synchronously. Interrupted exits must not leave
+  // active classes behind or let an obsolete timeout hide the new selection.
   section.querySelectorAll(".takeaway, .takeaway-section").forEach(element => {
     element.classList.remove(
-      "story-outgoing-takeaway",
-      "story-slide-out-up",
-      "story-slide-in-up",
-      "story-slide-out-down",
-      "story-slide-in-down",
+      "story-active-takeaway", "story-active-segment", "story-outgoing-takeaway",
+      "story-slide-out-up", "story-slide-out-down", "story-slide-in-up", "story-slide-in-down",
     );
   });
-  const previousTakeaway = section.querySelector(".takeaway.story-active-takeaway");
-  const previousSegment = previousTakeaway?.querySelector(".takeaway-section.story-active-segment");
-  const nextTakeaway = step.takeaway ? section.querySelector(step.takeaway) : null;
-  const nextSegments = nextTakeaway?.querySelectorAll(".takeaway-section") || [];
-  const nextSegment = nextSegments.length
-    ? nextSegments[Math.min(step.segment || 0, nextSegments.length - 1)]
-    : null;
-  const previousContent = previousSegment || previousTakeaway;
-  const nextContent = nextSegment || nextTakeaway;
-
-  if (!nextTakeaway) {
-    if (!previousContent) return;
-    previousTakeaway.classList.add("story-outgoing-takeaway");
-    previousContent.classList.add(direction >= 0 ? "story-slide-out-up" : "story-slide-out-down");
-    const transitionTimer = setTimeout(() => {
-      previousContent.classList.remove("story-active-segment", "story-slide-out-up", "story-slide-out-down");
-      previousTakeaway.classList.remove("story-active-takeaway", "story-outgoing-takeaway");
-      syncTakeawaySpace(section, null);
-    }, 430);
-    takeawayTransitionTimers.set(section, transitionTimer);
-    return;
-  }
-
-  if (!previousContent) {
-    section.querySelectorAll(".takeaway").forEach(takeaway => takeaway.classList.remove("story-active-takeaway"));
-    section.querySelectorAll(".takeaway-section").forEach(segment => segment.classList.remove("story-active-segment"));
-    nextTakeaway.classList.add("story-active-takeaway");
-    if (nextSegment) nextSegment.classList.add("story-active-segment");
-    syncTakeawaySpace(section, nextTakeaway);
-    nextContent.classList.add(direction >= 0 ? "story-slide-in-up" : "story-slide-in-down");
-    const transitionTimer = setTimeout(() => {
-      nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
-    }, 430);
-    takeawayTransitionTimers.set(section, transitionTimer);
-    return;
-  }
-
-  if (previousTakeaway === nextTakeaway && previousContent !== nextContent) {
-    nextTakeaway.querySelectorAll(".takeaway-section").forEach(segment => {
-      segment.classList.toggle("story-active-segment", segment === nextSegment);
-    });
-    nextTakeaway.classList.add("story-active-takeaway");
-    syncTakeawaySpace(section, nextTakeaway);
-    nextContent.classList.add(direction >= 0 ? "story-slide-in-up" : "story-slide-in-down");
-    const transitionTimer = setTimeout(() => {
-      nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
-      syncTakeawaySpace(section, nextTakeaway);
-    }, 430);
-    takeawayTransitionTimers.set(section, transitionTimer);
-    return;
-  }
-
-  nextTakeaway.classList.add("story-active-takeaway");
-  if (nextSegment) nextSegment.classList.add("story-active-segment");
-  syncTakeawaySpace(section, nextTakeaway);
-  if (previousContent === nextContent) return;
-  previousTakeaway.classList.add("story-outgoing-takeaway");
-  const movingDownPage = direction >= 0;
-  previousContent.classList.add(movingDownPage ? "story-slide-out-up" : "story-slide-out-down");
-  nextContent.classList.add(movingDownPage ? "story-slide-in-up" : "story-slide-in-down");
-  const transitionTimer = setTimeout(() => {
-    previousContent.classList.remove(
-      "story-active-segment",
-      "story-slide-out-up",
-      "story-slide-out-down",
-    );
-    if (previousTakeaway !== nextTakeaway) {
-      previousTakeaway.classList.remove("story-active-takeaway");
-    }
-    previousTakeaway.classList.remove("story-outgoing-takeaway");
-    nextContent.classList.remove("story-slide-in-up", "story-slide-in-down");
-    syncTakeawaySpace(section, nextTakeaway);
-  }, 430);
-  takeawayTransitionTimers.set(section, transitionTimer);
+  const next = step.takeaway ? section.querySelector(step.takeaway) : null;
+  if (!next) { syncTakeawaySpace(section, null); return; }
+  next.classList.add("story-active-takeaway");
+  const segment = next.classList.contains("segmented")
+    ? next.querySelectorAll(".takeaway-section")[step.segment ?? 0] : null;
+  if (segment) segment.classList.add("story-active-segment");
+  const content = segment || next;
+  void content.offsetWidth;
+  content.classList.add(direction >= 0 ? "story-slide-in-up" : "story-slide-in-down");
+  syncTakeawaySpace(section, next);
 }
 
 function applyStoryStep(section, step, index) {
