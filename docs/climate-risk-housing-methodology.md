@@ -4,7 +4,7 @@
 
 This document describes the data and analytical methods used to build **Which
 Way the Wind Blows: Climate Risk and U.S. Housing Markets**
-(`output/climate-risk-housing.html`). The production implementation is in:
+(`output/index.html`; the former URL redirects). The production implementation is in:
 
 - `src/housing_climate_risk/cli/download_data.py`
 - `src/housing_climate_risk/cli/build_database.py`
@@ -430,15 +430,28 @@ rings, and only then simplified. This preserves the exterior state perimeter
 without turning county-level simplification gaps into internal state lines.
 
 `build-climate-risk-housing` queries the marts, constructs the analytical
-payloads, and embeds filtered GeoJSON. It writes a three-file publication
-bundle:
+payloads, and writes a static publication bundle:
 
-- `output/climate-risk-housing.html`
+- `output/index.html` (initial price/risk data only)
+- `output/climate-risk-housing.css` and `output/climate-risk-housing.js`
+- `output/climate-risk-housing-geography.js` (county/state GeoJSON)
+- `output/climate-risk-housing-events.js`
+- `output/climate-risk-housing-features.js`
 - `output/climate-risk-housing-county-history.js`
 - `output/climate-risk-housing-playbook.js`
 
-The JavaScript files hold deferred county-history and Climate Playbook payloads
-and must remain beside the HTML file when it is opened or published. The output
+The five data scripts are deferred. Geography loads before the first map;
+event results before Events; feature analysis before Factors. Playbook awaits
+its shared dependencies even on direct navigation. A single cached request per
+data bundle serves all consumers, with retry controls for failed loads. Feature
+scatterplots and subgroup calculations share `countyRowsByRisk`, rather than
+serializing a duplicate `scatterRowsByRisk` collection. These changes do not
+change cohorts, statistics, precision, or geometry.
+
+Presentation sources are separate HTML/CSS/JavaScript files in
+`src/housing_climate_risk/page_data/web/`. All publication assets must remain
+together. GitHub Actions publishes only `output/`, with `index.html` as the entry
+point and redirects preserving the former page URL. The output
 does not query DuckDB at runtime. D3 and Google Fonts are its external browser
 resources.
 
@@ -517,7 +530,7 @@ build-climate-risk-housing
 existing raw tables.
 
 Viewing or publishing the committed page does not require DuckDB or any source
-data. It requires the HTML file and both deferred JavaScript payloads listed
+data. It requires the HTML, CSS, application JavaScript, and five data bundles listed
 above. Full reproduction selects the latest available public data,
 so provider revisions can change future results. Version-specific URLs and
 retrieval metadata are recorded where available; exact historical reproduction
@@ -529,4 +542,4 @@ This document describes the current implementation. Changes to date ranges,
 event filters, feature definitions, completeness rules, database-layer
 contracts, model inputs, source-manifest metadata, or aggregations should update
 this document in the same change. Publication changes must also keep the HTML
-and its two deferred JavaScript artifacts synchronized.
+and all its static assets and deferred data artifacts synchronized.

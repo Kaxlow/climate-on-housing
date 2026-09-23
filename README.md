@@ -1,6 +1,7 @@
 # Climate Risk to Housing
 
-This repository builds the infographic: [Are Climate Risks Priced Into Housing Markets?](https://kaxlow.github.io/climate-on-housing/output/climate-risk-housing.html)
+This repository builds the infographic: [Are Climate Risks Priced Into Housing Markets?](https://kaxlow.github.io/climate-on-housing/).
+The former `/output/climate-risk-housing.html` URL redirects to the new entry point.
 
 The page is developed from climate and county data across the United States. Data is loaded into and read from a database in the form of `data/quoll.duckdb`. County boundaries come from `data/fipsgeo/us_counties_boundaries_shapefile.json`. After cleaning, preparing, and transforming the data, the analysis results are published in the form of a story describing how climate risk is relevant to homeowners across the country.
 
@@ -108,12 +109,39 @@ build-climate-risk-housing
    in the page data, and adds their GeoJSON boundaries to the page payload.
 
 6. **Generate the deliverable.** The builder writes the infographic to
-   `output/climate-risk-housing.html` and writes its deferred county-history and
-   Climate Playbook payloads beside it as
-   `output/climate-risk-housing-county-history.js` and
-   `output/climate-risk-housing-playbook.js`. Keep all three files together when
-   publishing or opening the page. The page queries no database at runtime; D3 and
-   Google Fonts remain external browser resources.
+   `output/index.html`, external CSS and application JavaScript, and five deferred
+   data bundles (county history, Playbook, geography, events, and features).
+   Keep the entire `output/` directory together. The page queries no database at
+   runtime; D3 and Google Fonts remain external browser resources.
+
+## Website assets and GitHub Pages
+
+Editable presentation sources live in `src/housing_climate_risk/page_data/web/`:
+`page.html`, `climate-risk-housing.css`, and `climate-risk-housing.js`. The JavaScript
+file contains the editable `TEXT` object. Python builds the data and copies these
+assets into `output/`; do not edit generated files directly.
+
+Only the small initial price/risk payload is embedded in `index.html`. Geography
+loads before the first map, event results before Events, and feature records
+before Factors. Playbook waits for all its shared dependencies, even when reached
+directly. Repeated consumers share requests; failed loads expose a Retry button.
+Scatterplots and subgroup analysis use a single county-record collection.
+
+`.github/workflows/pages.yml` publishes **only `output/`** on pushes to `main`
+that change the output or deployment workflow, and supports manual dispatch.
+It publishes committed artifacts without downloading data or rebuilding DuckDB.
+In repository **Settings → Pages → Build and deployment → Source**, select
+**GitHub Actions** (a one-time repository setting). Commit regenerated output with
+source changes. The existing Tests workflow remains independent.
+
+`index.html` is the entry point. Both `climate-risk-housing.html` and
+`output/climate-risk-housing.html` inside the publication bundle redirect to it,
+preserving query strings and fragments with JavaScript. The nested redirect
+preserves the previously published `/climate-on-housing/output/climate-risk-housing.html`
+URL when the artifact root becomes the public site root.
+
+For local testing, run `python -m http.server 8000 --directory output` and open
+`http://localhost:8000/`.
 
 ## Notebooks
 

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Which Way the Wind Blows: Climate Risk and U.S. Housing Markets</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" href="climate-risk-housing.css">
+</head>
+<body>
+<main>
+  <section class="hero" id="top">
+    <div>
+      <h1 id="t-hero-h1"></h1>
+      <p class="dek" id="t-hero-dek"></p>
+    </div>
+  </section>
+
+  <section class="slide" id="pricing">
+    <h2 id="t-pricing-h2"></h2>
+
+    <!-- County PPSF YoY histories — full width, footnotes below chart -->
+    <div class="panel" style="margin-top:12px;">
+      <h3 id="t-scatter-title"></h3>
+      <p class="sub" id="t-scatter-sub"></p>
+      <div id="score-scatter" class="chart canvas-chart" style="height:340px;">
+        <canvas id="score-scatter-canvas" aria-label="Monthly Median PPSF YoY lines for U.S. counties"></canvas>
+        <svg id="score-scatter-axes" aria-hidden="true"></svg>
+      </div>
+      <div class="takeaway" id="score-scatter-takeaway"></div>
+    </div>
+  </section>
+
+  <section class="slide" id="pricing-grouping">
+    <h2 id="t-pricing-grouping-subtitle"></h2>
+    <p class="section-copy" id="t-pricing-nri-placeholder" style="margin-top:6px;"></p>
+
+    <!-- PPSF YoY grouped by risk rating + map — side by side, hazard toggle on right -->
+    <div class="panel" style="margin-top:16px;">
+      <h3 id="t-pricing-card-title"></h3>
+      <p class="sub" id="t-pricing-card-text"></p>
+      <div class="viz-grid pricing-viz-grid">
+        <div class="rating-line-pane">
+          <svg id="rating-scatter" class="chart map-companion-line rating-risk-line"></svg>
+          <div class="risk-sequence-row">
+            <div id="rating-risk-legend" class="risk-sequence-legend" aria-label="NRI risk rating animation frames"></div>
+            <button id="rating-play-button" class="sequence-play-button" type="button"></button>
+          </div>
+        </div>
+        <div class="map-with-legend">
+          <svg id="rating-map" class="chart map-companion-map"></svg>
+        </div>
+      </div>
+      <div class="takeaway" id="pricing-takeaway"></div>
+      <div class="takeaway question-card" id="pricing-question"></div>
+      <div class="sources" id="t-pricing-sources"></div>
+    </div>
+  </section>
+
+  <section class="slide" id="events">
+    <h2 id="t-events-h2"></h2>
+    <p class="section-copy" id="t-events-copy"></p>
+
+    <!-- Event window + affected map in one card, risk toggle on right, arrow nav for windows -->
+    <div class="panel" style="margin-top:12px;">
+      <p id="event-time-context" class="event-time-context"></p>
+      <h3 id="t-events-card-title"></h3>
+      <div id="event-overview-stat" class="event-overview-stat"></div>
+      <p class="sub" id="events-window-subtitle"></p>
+      <div id="event-overview" class="event-overview">
+        <svg id="event-risk-pie" class="event-overview-chart"></svg>
+      </div>
+      <div id="event-detail-grid" class="viz-grid timeseries-grid">
+        <div class="event-chart-wrap" style="position:relative;">
+          <div id="event-window-frame" class="window-frame">
+            <svg id="event-window" class="chart map-companion-line"></svg>
+          </div>
+        </div>
+        <div>
+          <svg id="affected-map" class="chart map-companion-map"></svg>
+        </div>
+      </div>
+      <div id="event-sequence-row" class="event-count-row">
+        <div class="risk-sequence-row">
+          <div id="event-risk-legend" class="risk-sequence-legend" aria-label="Event risk rating animation frames"></div>
+          <button id="event-play-button" class="sequence-play-button" type="button"></button>
+        </div>
+        <div class="county-count" id="affected-county-count"></div>
+      </div>
+      <div class="takeaway" id="event-overview-takeaway"></div>
+      <div class="takeaway question-card" id="event-overview-question"></div>
+      <div class="takeaway" id="event-before-takeaway"></div>
+      <div class="takeaway question-card" id="event-after-question"></div>
+      <div class="takeaway" id="event-window-takeaway"></div>
+      <div class="takeaway question-card" id="event-future-prompt"></div>
+      <div class="takeaway" id="event-takeaway"></div>
+      <div class="takeaway question-card" id="event-variation-question"></div>
+      <div class="sources" id="t-events-sources"></div>
+    </div>
+  </section>
+
+  <section class="slide" id="features">
+    <h2 id="t-features-h2"></h2>
+    <p class="section-copy" id="t-features-copy"></p>
+
+    <!-- Fixed analysis chart on the left; scroll-driven feature frames on the right. -->
+    <div class="panel" style="margin-top:12px;">
+          <div class="risk-sequence-row feature-risk-row">
+            <div id="feature-risk-legend" class="risk-sequence-legend" aria-label="Feature risk rating frames"></div>
+          </div>
+      <div class="viz-grid timeseries-grid feature-story-grid">
+        <div class="feature-line-pane">
+          <h3 id="feature-chart-title"></h3>
+          <div class="feature-plot-shell">
+            <svg id="feature-event-window" class="chart map-companion-line"></svg>
+          </div>
+          <div id="feature-relationship" class="feature-relationship" hidden></div>
+        </div>
+        <div class="feature-detail-stack">
+          <h3 id="feature-detail-title" class="feature-detail-heading"></h3>
+          <div class="feature-frame" data-frame="1">
+            <div id="feature-order-controls" class="feature-order-controls" aria-label="Feature ordering">
+              <button type="button" data-order="category"></button>
+              <button type="button" data-order="significance"></button>
+            </div>
+            <p id="feature-click-hint" class="feature-click-hint"></p>
+            <div id="feature-importance-chart" class="feature-importance-chart"></div>
+          </div>
+          <div class="feature-frame" data-frame="2">
+            <div id="feature-distribution-title" class="feature-distribution-title"></div>
+            <div id="feature-distribution-controls" class="feature-distribution-controls"></div>
+            <div class="feature-distribution-plot">
+              <svg id="feature-distribution-chart" class="feature-distribution-chart"></svg>
+            </div>
+            <div id="feature-subgroup-takeaway" class="feature-subgroup-takeaway"></div>
+          </div>
+          <div class="feature-frame" data-frame="3">
+            <div id="feature-subgroup-summary" class="feature-subgroup-summary"></div>
+          </div>
+        </div>
+      </div>
+          <div class="feature-subgroup-control-stack">
+            <div id="feature-subgroup-toggles" class="feature-subgroup-controls" aria-label="Performance groups"></div>
+            <button id="feature-sequence-resume" class="feature-sequence-resume" type="button"></button>
+          </div>
+      <div id="feature-footnote-tabs" class="feature-footnote-tabs"></div>
+      <div class="takeaway" id="feature-takeaway"></div>
+    </div>
+  </section>
+
+  <section class="slide" id="playbook">
+    <h2 id="t-playbook-h2"></h2>
+
+    <!-- Four-frame county search, risk profile, history, and comparison playbook. -->
+    <div class="panel" style="margin-top:12px;">
+      <div class="playbook-frame-stack">
+        <div class="playbook-frame playbook-search-frame">
+          <div class="playbook-search-shell">
+            <input type="text" id="county-search">
+            <div id="county-results" style="display:none;"></div>
+          </div>
+          <div class="playbook-search-map">
+            <svg id="county-selection-map" class="chart"></svg>
+            <div class="playbook-map-controls">
+              <button id="playbook-map-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+              <button id="playbook-map-zoom-minus" type="button" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+              <button id="playbook-map-zoom-toggle" type="button" style="display:none;"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="playbook-frame playbook-selected-frame">
+          <button id="playbook-back-to-search" class="playbook-back-button" type="button"><span class="playbook-back-arrow" aria-hidden="true">&#8592;</span> Back to county search</button>
+          <p id="playbook-warning-intro" class="playbook-warning-intro" hidden></p>
+          <div class="playbook-selected-layout">
+            <aside class="playbook-profile-panel" id="playbook-profile-details">
+              <div class="playbook-selected-county" id="playbook-selected-county-name"></div>
+              <div class="hazard-rating-grid" id="playbook-hazard-ratings"></div>
+              <div id="playbook-performance-status" class="playbook-performance-status"></div>
+              <div id="playbook-history-comparison" class="playbook-history-comparison"></div>
+            </aside>
+            <div class="playbook-profile-map-pane">
+              <svg id="playbook-profile-map" class="chart"></svg>
+            </div>
+            <div class="playbook-history-pane">
+              <h3 id="t-playbook-history-title"></h3>
+              <svg id="playbook-ppsf-history" class="chart"></svg>
+              <div class="playbook-history-legend" id="playbook-history-legend"></div>
+            </div>
+            <aside class="playbook-events-pane">
+              <h3 id="playbook-events-title"></h3>
+              <div id="playbook-event-column" class="playbook-event-column"></div>
+            </aside>
+            <aside class="playbook-performance-pane">
+              <h3 id="playbook-feature-title"></h3>
+              <div id="playbook-feature-summary" class="playbook-feature-summary"></div>
+              <div id="playbook-subgroup-summary" class="playbook-subgroup-badge"></div>
+            </aside>
+            <aside class="playbook-commentary-pane">
+              <div class="playbook-commentary" id="playbook-event-commentary"></div>
+              <div id="playbook-warning-takeaway" class="playbook-warning-takeaway" hidden></div>
+            </aside>
+          </div>
+        </div>
+      </div>
+      <div class="sources playbook-footer"><div id="t-playbook-sources"></div><div class="page-feedback" id="t-page-feedback"></div></div>
+    </div>
+  </section>
+</main>
+<nav class="story-nav" aria-label="Section navigation">
+  <button id="story-prev" type="button">&#8593;</button>
+  <button id="story-next" type="button">&#8595;</button>
+</nav>
+<div class="tooltip" id="tooltip"></div>
+<script id="page-data" type="application/json">__PAYLOAD__</script>
+<script src="climate-risk-housing.js"></script>
+</body>
+</html>

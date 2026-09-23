@@ -27,7 +27,26 @@ from housing_climate_risk.page_data.climate_risk_housing import (
 )
 
 
+# Assemble the source assets for existing markup/behavior unit tests. Production
+# serves them separately, and bundle tests below verify that separation.
+HTML_TEMPLATE = HTML_TEMPLATE.replace(
+    '<link rel="stylesheet" href="climate-risk-housing.css">',
+    '<style>' + (page_builder.WEB_ASSET_DIR / 'climate-risk-housing.css').read_text(encoding='utf-8') + '</style>',
+).replace(
+    '<script src="climate-risk-housing.js"></script>',
+    '<script>' + (page_builder.WEB_ASSET_DIR / 'climate-risk-housing.js').read_text(encoding='utf-8') + '</script>',
+)
+
+
 class ClimateRiskHousingHtmlTests(unittest.TestCase):
+    def test_feedback_link_is_public_and_at_end_of_page(self):
+        self.assertIn('https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform', HTML_TEMPLATE)
+        self.assertIn('pageFeedback: "t-page-feedback"', HTML_TEMPLATE)
+        self.assertIn('<div class="sources playbook-footer"><div id="t-playbook-sources"></div><div class="page-feedback" id="t-page-feedback"></div></div>', HTML_TEMPLATE)
+        self.assertIn('.sources:not(.playbook-footer), #t-playbook-sources', HTML_TEMPLATE)
+        self.assertIn('background: #e5e5e5; color: #000;', HTML_TEMPLATE)
+        self.assertNotIn('Takes about 2 minutes.', HTML_TEMPLATE)
+
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for heading layout tests")
     def test_playbook_conclusion_fits_one_line_and_has_two_plus_icons(self):
         function = "function fitPlaybookConclusionTitle" + HTML_TEMPLATE.split("function fitPlaybookConclusionTitle", 1)[1].split("function renderPlaybookOutlook", 1)[0]
@@ -73,7 +92,7 @@ console.log(JSON.stringify([wide,title.style.fontSize,value.style.fontSize]));
         context = SimpleNamespace(analysis_start=pd.Timestamp("2016-01-01"), analysis_end=pd.Timestamp("2026-01-01"), affected=pd.DataFrame(rows))
         with patch.object(page_builder, "current_county_fips", return_value=frozenset(fips)), patch.object(page_builder, "_bootstrap_spearman_ci", return_value=(float("nan"), float("nan"))):
             payload = page_builder.build_feature_payload(Connection(), event_context=context)
-        correlation_targets = {row["fips"]: row["target"] for row in payload["scatterRowsByRisk"]["Low"]}
+        correlation_targets = {row["fips"]: row["target"] for row in payload["countyRowsByRisk"]["Low"]}
         subgroup_targets = {row["fips"]: row["target"] for row in payload["countyRowsByRisk"]["Low"]}
         self.assertEqual(correlation_targets, subgroup_targets)
         self.assertEqual(subgroup_targets[fips[0]], 11.)
@@ -1137,7 +1156,7 @@ return [profile.subgroupName, profile.assignmentSource];
 
     def test_feature_scatter_uses_named_rows_and_short_performer_controls(self) -> None:
         self.assertIn(
-            "DATA.features.scatterRowsByRisk[selectedFeatureRisk]", HTML_TEMPLATE
+            "DATA.features.countyRowsByRisk[selectedFeatureRisk]", HTML_TEMPLATE
         )
         self.assertIn("countyDisplayName(d)", HTML_TEMPLATE)
         self.assertIn(

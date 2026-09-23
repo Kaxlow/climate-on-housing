@@ -23,5 +23,14 @@ output/**
 !output/climate-risk-housing.html
 !output/climate-risk-housing-county-history.js
 !output/climate-risk-housing-playbook.js
+!output/index.html
+!output/climate-risk-housing.css
+!output/climate-risk-housing.js
+!output/climate-risk-housing-features.js
+!output/climate-risk-housing-events.js
+!output/climate-risk-housing-geography.js
+!output/.nojekyll
+!output/output/
+!output/output/climate-risk-housing.html
 !output/models/
 !output/models/**
