@@ -42,7 +42,8 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
     def test_feedback_link_is_public_and_at_end_of_page(self):
         self.assertIn('https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform', HTML_TEMPLATE)
         self.assertIn('pageFeedback: "t-page-feedback"', HTML_TEMPLATE)
-        self.assertIn('<div class="sources playbook-footer"><div id="t-playbook-sources"></div><div class="page-feedback" id="t-page-feedback"></div></div>', HTML_TEMPLATE)
+        self.assertIn('<p class="analytics-privacy" hidden>', HTML_TEMPLATE)
+        self.assertIn('<div class="page-feedback" id="t-page-feedback" hidden></div></div>', HTML_TEMPLATE)
         self.assertIn('.sources:not(.playbook-footer), #t-playbook-sources', HTML_TEMPLATE)
         self.assertIn('background: #e5e5e5; color: #000;', HTML_TEMPLATE)
         self.assertNotIn('Takes about 2 minutes.', HTML_TEMPLATE)
@@ -52,6 +53,7 @@ class ClimateRiskHousingHtmlTests(unittest.TestCase):
         function = "function fitPlaybookConclusionTitle" + HTML_TEMPLATE.split("function fitPlaybookConclusionTitle", 1)[1].split("function renderPlaybookOutlook", 1)[0]
         script = '''
 const title={clientWidth:700,scrollWidth:600,style:{}};
+const isMobileView=()=>false;
 const value={clientWidth:100,scrollWidth:200,style:{}};
 const document={querySelector:()=>title,querySelectorAll:()=>[value]};
 ''' + function + '''
@@ -154,19 +156,16 @@ return [playbookHasSufficientHistory({fips:'test'}),storyConfigForSection('playb
     def test_scatter_height_fills_available_space_without_repeat_redraw(self):
         function = "function fitFeatureScatterToTakeaway" + HTML_TEMPLATE.split("function fitFeatureScatterToTakeaway", 1)[1].split("function drawFeatureScatter", 1)[0]
         script = '''
-let height=220,draws=0,active=true;
-const selectedFeatureKey='income';
-const svg={getBoundingClientRect:()=>({top:150,height})};
-const relationship={getBoundingClientRect:()=>({top:570})};
-const stage={querySelector:s=>s.includes('scatter-active')?svg:relationship,style:{setProperty:(key,value)=>{height=parseInt(value)}}};
-const document={querySelector:()=>active?stage:null};
+let draws=0,syncs=0,mobile=false;
+const isMobileView=()=>mobile;
+const syncFeaturePanelHeights=()=>{syncs++};
 const drawFeatureScatter=()=>{draws++};
 ''' + function + '''
-fitFeatureScatterToTakeaway();fitFeatureScatterToTakeaway();active=false;fitFeatureScatterToTakeaway();
-console.log(JSON.stringify([height,draws]));
+fitFeatureScatterToTakeaway();fitFeatureScatterToTakeaway();mobile=true;fitFeatureScatterToTakeaway();
+console.log(JSON.stringify([syncs,draws]));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), [414, 1])
+        self.assertEqual(json.loads(result.stdout), [2, 0])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for score tests")
     def test_scorecard_range_matching_and_arrow_scores(self):
@@ -249,11 +248,11 @@ const playbookCountyFeaturePosition=c=>c.position;
 const countyDisplayName=()=> 'Example County';
 const featureLabel=f=>f;
 ''' + function + '''
-const metric={feature:'net_earnings_per_capita_usd',rho:-.5};
+const metric={feature:'property_taxes_pct_income',rho:-.5};
 const high=playbookFactorAssessment({position:'Higher',riskRating:'Low'},metric).description;
 const low=playbookFactorAssessment({position:'Lower',riskRating:'Low'},metric).description;
 const reverse=playbookFactorAssessment({position:'Higher',riskRating:'Low'},{...metric,rho:.5}).description;
-console.log(JSON.stringify([high.includes('less affordable'),low.includes('more affordable'),reverse.includes('opposite to the usual explanation')]));
+console.log(JSON.stringify([high.includes('above the Low risk-group median') && high.includes('less room'),low.includes('below the Low risk-group median') && low.includes('more room'),reverse.includes('worth investigating further')]));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout), [True, True, True])
@@ -901,7 +900,8 @@ return [profile.subgroupName, profile.assignmentSource];
             'stage.dataset.storyDirection = direction < 0 ? "backward" : "forward"',
             HTML_TEMPLATE,
         )
-        self.assertIn(".story-stage > h2 { transition: top 520ms ease", HTML_TEMPLATE)
+        self.assertIn('title.animate([', HTML_TEMPLATE)
+        self.assertNotIn("font-size 520ms", HTML_TEMPLATE)
         self.assertNotIn(".story-stage.story-step-forward > h2", HTML_TEMPLATE)
         self.assertIn(
             "takeawayTransitionTimers.delete(section)", HTML_TEMPLATE

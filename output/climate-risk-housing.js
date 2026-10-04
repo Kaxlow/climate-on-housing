@@ -32,48 +32,48 @@ const TEXT = {
   playbookInsufficientHistory: "Insufficient housing data available for selected county to comment on local housing market performance.",
   playbookFactorContext: {
     net_earnings_per_capita_usd: {
-      higher: "Areas with higher earnings income may have less affordable housing markets that deter buyers, slowing price growth.",
-      lower: "Areas with lower earnings income may have more affordable housing markets that attract buyers, supporting faster price growth.",
+      higher: "This is an interesting relationship worth investigating further.",
+      lower: "This is an interesting relationship worth investigating further.",
       expectedRhoSign: -1,
     },
     age_65_plus_pct: {
-      higher: "A larger older population may move less frequently, reducing housing market activity and slowing price growth.",
-      lower: "A smaller older population may mean more residential mobility and housing demand, supporting faster price growth.",
+      higher: "This is an interesting relationship worth investigating further.",
+      lower: "This is an interesting relationship worth investigating further.",
       expectedRhoSign: -1,
     },
     dividends_interest_rent_per_capita_usd: {
-      higher: "Higher investment income may signal wealthier markets with higher starting prices and slower percentage price growth.",
-      lower: "Lower investment income may signal lower starting prices and more room for percentage price growth.",
+      higher: "This is an interesting relationship worth investigating further.",
+      lower: "This is an interesting relationship worth investigating further.",
       expectedRhoSign: -1,
     },
     transfer_receipts_per_capita_usd: {
-      higher: "Greater reliance on benefits may signal economic vulnerability that weakens housing demand and price growth.",
-      lower: "Less reliance on benefits may signal less economic vulnerability, supporting housing demand and price growth.",
+      higher: "This is an interesting relationship worth investigating further.",
+      lower: "This is an interesting relationship worth investigating further.",
       expectedRhoSign: -1,
     },
     property_taxes_pct_income: {
-      higher: "A higher property-tax burden may constrain buyers' budgets and slow housing price growth.",
-      lower: "A lower property-tax burden may improve affordability and support housing demand and price growth.",
+      higher: "Higher ownership costs may leave buyers less room in their budgets.",
+      lower: "Lower ownership costs may leave buyers more room in their budgets.",
       expectedRhoSign: -1,
     },
     utilities_pct_income: {
-      higher: "A higher utility-cost share may reflect lower incomes and home prices; affordable starting prices can attract buyers and support faster growth.",
-      lower: "A lower utility-cost share may reflect higher incomes and home prices, leaving less room for percentage price growth.",
-      expectedRhoSign: 1,
+      higher: "Higher household bills may leave less money available for housing.",
+      lower: "Lower household bills may leave more money available for housing.",
+      expectedRhoSign: -1,
     },
     owner_cost_burden_30pct_plus_pct: {
-      higher: "More cost-burdened households may indicate financial vulnerability that constrains housing demand and price growth.",
-      lower: "Fewer cost-burdened households may indicate greater financial capacity, supporting housing demand and price growth.",
+      higher: "Stretched household budgets may limit demand for more expensive homes.",
+      lower: "Less stretched household budgets may support demand for homes.",
       expectedRhoSign: -1,
     },
     net_migration_rate_pct: {
-      higher: "More net arrivals can increase housing demand and support faster price growth.",
-      lower: "Fewer net arrivals or more departures can weaken housing demand and slow price growth.",
+      higher: "More net arrivals may increase demand for homes.",
+      lower: "Fewer net arrivals may mean less additional demand for homes.",
       expectedRhoSign: 1,
     },
     disability_pct: {
-      higher: "A larger population share with disabilities may coincide with lower incomes and home prices; affordable starting prices can attract buyers and support faster growth.",
-      lower: "A smaller population share with disabilities may coincide with higher incomes and home prices, leaving less room for percentage price growth.",
+      higher: "This is an interesting relationship worth investigating further.",
+      lower: "This is an interesting relationship worth investigating further.",
       expectedRhoSign: 1,
     },
   },
@@ -235,6 +235,41 @@ const TEXT = {
   },
 };
 
+// Honor the system preference by default, with an explicit per-page override.
+const storyMotionPreference = matchMedia("(prefers-reduced-motion: reduce)");
+let storyMotionOverride = null;
+try { storyMotionOverride = localStorage.getItem("climate-housing-motion"); } catch {}
+const requestedMotion = new URLSearchParams(location.search).get("motion");
+if (["full", "reduce"].includes(requestedMotion)) storyMotionOverride = requestedMotion;
+function storyMotionReduced() {
+  return storyMotionOverride === "reduce" || (storyMotionOverride !== "full" && storyMotionPreference.matches);
+}
+function updateStoryMotionPreference() {
+  const reduced = storyMotionReduced();
+  document.documentElement.classList.toggle("story-reduced-motion", reduced);
+  const button = document.getElementById("story-motion-toggle");
+  if (button) {
+    button.textContent = reduced ? "Enable animations" : "Disable animations";
+    button.setAttribute("aria-label", reduced ? "Enable sliding animations on this page" : "Disable sliding animations on this page");
+    button.title = reduced && storyMotionOverride !== "reduce"
+      ? "Your system requests reduced motion. Enable animations for this page only."
+      : "This choice applies only to this page and is saved in this browser.";
+  }
+  try {
+    if (storyMotionOverride) localStorage.setItem("climate-housing-motion", storyMotionOverride);
+  } catch {}
+}
+storyMotionPreference.addEventListener("change", updateStoryMotionPreference);
+document.getElementById("story-motion-toggle").addEventListener("click", () => {
+  storyMotionOverride = storyMotionReduced() ? "full" : "reduce";
+  cancelStoryNavigation();
+  document.querySelectorAll(".story-stage").forEach(stage => {
+    stage.getAnimations({subtree: true}).forEach(animation => animation.cancel());
+  });
+  updateStoryMotionPreference();
+});
+updateStoryMotionPreference();
+
 /* Populate all text elements from the TEXT object above.
    Each entry maps a TEXT key to an element id. Uses innerHTML
    so sources with <a>/<code> tags render correctly. */
@@ -363,7 +398,10 @@ function attachInfoTooltip(element, content, {html = false} = {}) {
 }
 
 document.addEventListener("pointerdown", event => {
-  if (!activeInfoTooltipTrigger) return;
+  if (!activeInfoTooltipTrigger) {
+    if (!event.target.closest(".series-tooltip-hit, path.band")) hideTooltip();
+    return;
+  }
   if (event.target === activeInfoTooltipTrigger || tooltip.node().contains(event.target)) return;
   closeInfoTooltip();
 });
@@ -542,7 +580,7 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
     .attr("class","county")
     .attr("d", path)
     .attr("fill", d => fillFn(countyByFips.get(d.properties.fips), d.properties.fips))
-    .style("cursor", clickFn ? "pointer" : null)
+    .style("cursor", clickFn ? "pointer" : "default")
     .on("mousemove", (event, d) => {
       const html = tooltipFn(countyByFips.get(d.properties.fips), d.properties.fips);
       if (!html) {
@@ -590,7 +628,6 @@ function drawScoreScatter() {
   svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).ticks(d3.utcYear.every(2)).tickFormat(d3.utcFormat("%Y")));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxisPct));
   svg.append("text").attr("x",width/2).attr("y",height-8).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Month");
-  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Monthly Median PPSF YoY");
   scoreScatterState = {container, series, months, x, y, clipDomain, margin, width, height, renderedCount: 0};
   scoreScatterRendered = true;
   const batchSize = 120;
@@ -727,7 +764,6 @@ function drawRatingScatter() {
   svg.append("g").attr("class","grid").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickSize(-(width-margin.left-margin.right)).tickFormat(""));
   svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(d3.axisBottom(x).ticks(d3.utcYear.every(2)).tickFormat(d3.utcFormat("%Y")));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxisPct));
-  svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",20).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Monthly Median PPSF YoY");
   const area = d3.area().x(d => x(d.monthDate)).y0(d => y(capValue(d.q1, yDomain))).y1(d => y(capValue(d.q3, yDomain)));
   const line = d3.line().x(d => x(d.monthDate)).y(d => y(capValue(d.median, yDomain)));
   const activeSequenceRisk = currentRatingSequenceFrame().risk;
@@ -742,6 +778,11 @@ function drawRatingScatter() {
     const background = activeSequenceRisk && riskIndex < activeRiskIndex;
     svg.append("path").datum(rows).attr("class",`band ${background ? "background" : ""}`).attr("fill",RISK_COLORS[risk]).attr("d",area);
     svg.append("path").datum(rows).attr("class",`line ${background ? "background" : ""}`).attr("stroke",RISK_COLORS[risk]).attr("d",line);
+  }
+  const activeRows = data.filter(d => d.riskRating === activeSequenceRisk);
+  if (activeRows.length) {
+    attachSeriesTooltip(svg.selectAll("path.band").filter(d => d[0]?.riskRating === activeSequenceRisk), svg, activeRows, x, {label: `${activeSequenceRisk} Risk`, month: d => d.monthDate, quartiles: true, band: true});
+    attachSeriesTooltip(svg.selectAll("path.line").filter(d => d[0]?.riskRating === activeSequenceRisk), svg, activeRows, x, {label: `${activeSequenceRisk} Risk`, month: d => d.monthDate, quartiles: true});
   }
 }
 
@@ -786,17 +827,67 @@ function startRatingSequence(reset = true) {
   ratingSequencePaused = false;
   if (reset) ratingSequenceIndex = 0;
   renderRatingSequence();
+  if (isMobileView() && reset) { pauseRatingSequence(true); return; }
   ratingSequenceTimer = setInterval(() => {
+    if (!sectionInView("pricing-grouping") || document.hidden) return;
     ratingSequenceIndex = (ratingSequenceIndex + 1) % RATING_SEQUENCE_FRAMES.length;
     renderRatingSequence();
   }, RISK_SEQUENCE_INTERVAL);
+}
+
+function nearestSeriesMonth(rows, target, month) {
+  return rows.reduce((best, row) => !best || Math.abs(+month(row) - +target) < Math.abs(+month(best) - +target) ? row : best, null);
+}
+
+function seriesTooltipText(row, {label, month, value = d => d.median, quartiles = false}) {
+  if (!row || !Number.isFinite(value(row))) return null;
+  const at = month(row);
+  const period = at instanceof Date ? d3.utcFormat("%b %Y")(at)
+    : at === 0 ? "Event start" : at < 0 ? `${Math.abs(at)} month${at === -1 ? "" : "s"} before event start` : `${at} month${at === 1 ? "" : "s"} after event end`;
+  let text = `${label}\n${period}\nMedian: ${fmtPct(value(row))}`;
+  if (quartiles) text += `\nUpper quartile: ${Number.isFinite(row.q3) ? fmtPct(row.q3) : "Not available"}\nLower quartile: ${Number.isFinite(row.q1) ? fmtPct(row.q1) : "Not available"}`;
+  return text;
+}
+
+function attachSeriesTooltip(path, svg, rows, x, options) {
+  // Only the displayed series gets a hit target. Retain null months so a gap
+  // never reports a neighboring month's observation as if it were present.
+  const target = options.band ? path : path.clone(true).raise()
+    .attr("class", "series-tooltip-hit").attr("stroke", "transparent")
+    .attr("stroke-width", 18).attr("fill", "none").attr("opacity", 1);
+  target.style("pointer-events", options.band ? "all" : "stroke")
+    .style("cursor", options.onClick ? "pointer" : "default")
+    .on("pointermove.series", event => {
+      const [px] = d3.pointer(event, svg.node());
+      const row = nearestSeriesMonth(rows, x.invert(px), options.month);
+      const text = seriesTooltipText(row, options);
+      if (text) showTooltip(event, text, {html: false}); else hideTooltip();
+    })
+    .on("click.series", event => {
+      if (options.onClick) options.onClick(event);
+      const [px] = d3.pointer(event, svg.node());
+      const text = seriesTooltipText(nearestSeriesMonth(rows, x.invert(px), options.month), options);
+      if (text) showTooltip(event, text, {html: false});
+    })
+    .on("pointerleave.series", () => hideTooltip());
+  return target;
 }
 
 function drawLineChart(svgId, source, groupKey, horizonLimit, activeRisk = null, minMonth = -12, opts = {}) {
   const data = source.filter(d => d.month >= minMonth && d.month <= horizonLimit);
   const svg = d3.select(svgId);
   const width = svg.node().clientWidth || 700, height = svg.node().clientHeight || 430;
-  const margin = {top: 22, right: opts.marginRight ? Math.min(opts.marginRight, width * 0.3) : 96, bottom: 42, left: 58};
+  const margin = {top: svgId === "#feature-event-window" ? 8 : 22, right: opts.marginRight ? Math.min(opts.marginRight, width * 0.3) : 24, bottom: 42, left: 76};
+  const oldBox = svg.node().viewBox.baseVal;
+  const sameSize = Math.abs(oldBox.width - width) < 1 && Math.abs(oldBox.height - height) < 1;
+  const displayedLines = new Map();
+  const displayedBands = new Map();
+  if (sameSize) {
+    svg.selectAll("path.line").each(function(rows) { if (Array.isArray(rows)) displayedLines.set(groupKey ? rows[0]?.[groupKey] : "All affected counties", this.getAttribute("d")); });
+    svg.selectAll("path.band").each(function(rows) { if (Array.isArray(rows)) displayedBands.set(groupKey ? rows[0]?.[groupKey] : "All affected counties", this.getAttribute("d")); });
+  }
+  svg.interrupt();
+  svg.selectAll("*").interrupt();
   svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
   const x = d3.scaleLinear().domain([minMonth, horizonLimit]).range([margin.left, width - margin.right]);
   const hideOthers = opts.hideOtherGroups;
@@ -815,13 +906,17 @@ function drawLineChart(svgId, source, groupKey, horizonLimit, activeRisk = null,
   const yearTicks = [minMonth, 0, ...d3.range(12, horizonLimit + 1, 12)];
   const axis = useYears
     ? d3.axisBottom(x).tickValues(yearTicks).tickFormat(d => d < 0 ? `${Math.abs(d / 12)}y pre` : d === 0 ? (opts.eventLabel || "event") : `${d / 12}y`)
-    : d3.axisBottom(x).ticks(8).tickFormat(d => d === 0 ? "event" : d);
-  svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`).call(axis);
+    : d3.axisBottom(x).ticks(width < 500 ? 4 : 8).tickFormat(d => d === 0 ? "event" : d);
+  const transition = opts.animate && !storyMotionReduced() ? svg.transition().duration(620).ease(d3.easeCubicInOut) : null;
+  const priorX = d3.scaleLinear().domain(opts.previousDomain || x.domain()).range(x.range());
+  const xAxis = svg.append("g").attr("class","axis").attr("transform",`translate(0,${height-margin.bottom})`);
+  xAxis.call(transition ? axis.scale(priorX) : axis);
+  if (transition) xAxis.transition(transition).call(axis.scale(x));
   svg.append("g").attr("class","axis").attr("transform",`translate(${margin.left},0)`).call(d3.axisLeft(y).ticks(6).tickFormat(fmtPct));
-  if (opts.yAxisLabel) svg.append("text").attr("transform","rotate(-90)").attr("x",-height/2).attr("y",14).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",11).text(opts.yAxisLabel);
   const boltPoints = d3.range(margin.top, height - margin.bottom + 1, 9)
     .map((py, index) => [x(0) + (index % 2 ? 3 : -3), py]);
-  svg.append("path").attr("class", "event-line").attr("d", d3.line()(boltPoints));
+  const marker = svg.append("path").attr("class", "event-line").attr("d", d3.line()(boltPoints));
+  if (transition) marker.attr("transform", `translate(${priorX(0) - x(0)},0)`).transition(transition).attr("transform", "translate(0,0)");
   const grouped = d3.group(data, d => groupKey ? d[groupKey] : "All affected counties");
   for (const [key, rows] of grouped) {
     rows.sort((a,b)=>d3.ascending(a.month,b.month));
@@ -832,7 +927,6 @@ function drawLineChart(svgId, source, groupKey, horizonLimit, activeRisk = null,
     const color = groupKey === "riskRating" ? RISK_COLORS[key] : "#0f766e";
     const areaFn = d3.area().x(d=>x(d.month)).y0(d=>y(d.q1)).y1(d=>y(d.q3));
     const lineFn = d3.line().x(d=>x(d.month)).y(d=>y(d.median));
-    const transition = opts.animate ? svg.transition().duration(620).ease(d3.easeCubicInOut) : null;
     const previousX = opts.previousDomain
       ? d3.scaleLinear().domain(opts.previousDomain).range([margin.left, width - margin.right])
       : x;
@@ -843,11 +937,18 @@ function drawLineChart(svgId, source, groupKey, horizonLimit, activeRisk = null,
       .sort((a, b) => d3.ascending(a.month, b.month));
     const initialRows = previousRows.length ? previousRows : rows;
     if (!opts.hideBands) {
-      const band = svg.append("path").attr("class",`band ${isBackground ? "background" : ""}`).attr("fill",color).attr("d", initialArea(initialRows)).datum(rows);
+      const band = svg.append("path").attr("class",`band ${isBackground ? "background" : ""}`).attr("fill",color).attr("d", transition && displayedBands.get(key) || initialArea(initialRows)).datum(rows);
       if (transition) band.transition(transition).attr("d", areaFn);
+      if (transition && !displayedBands.has(key)) band.style("opacity", 0).transition(transition).style("opacity", isBackground ? .05 : .18);
     }
-    const medianLine = svg.append("path").attr("class",`line ${isBackground ? "background" : ""}`).attr("stroke",color).attr("d", initialLine(initialRows)).datum(rows);
+    const medianLine = svg.append("path").attr("class",`line ${isBackground ? "background" : ""}`).attr("stroke",color).attr("d", transition && displayedLines.get(key) || initialLine(initialRows)).datum(rows);
     if (transition) medianLine.transition(transition).attr("d", lineFn);
+    if (key === activeRisk && !opts.disableTooltip) {
+      const tooltipOptions = {label: `${key} Risk`, month: d => d.month, quartiles: !opts.hideBands};
+      if (!opts.hideBands) attachSeriesTooltip(svg.selectAll("path.band").filter(d => d === rows), svg, rows, x, {...tooltipOptions, band: true});
+      const hit = attachSeriesTooltip(medianLine, svg, rows, x, tooltipOptions);
+      if (transition) hit.transition(transition).attr("d", lineFn);
+    }
     const last = rows.at(-1);
     if (last && !isBackground && !opts.hideEndLabel) svg.append("text").attr("x",x(last.month)+5).attr("y",y(last.median)+4).attr("fill",color).attr("font-size",12).attr("font-weight",800).text(key);
   }
@@ -867,14 +968,14 @@ function initButtons() {
   // Event section: risk rating sidebar (right, color-coded)
   d3.select("#event-play-button").on("click", () => {
     if (!eventSectionRendered) return;
-    if (riskAutoPaused) startRiskTimer(); else pauseRiskTimer(true);
+    if (riskAutoPaused) startRiskTimer(false); else pauseRiskTimer(true);
   });
 
   d3.select("#feature-sequence-resume").on("click", () => {
     if (!featureSectionRendered) return;
     featureSubgroupSequencePaused = !featureSubgroupSequencePaused;
     if (featureSubgroupSequencePaused) clearInterval(featureSubgroupSequenceTimer);
-    else startFeatureSubgroupSequence();
+    else startFeatureSubgroupSequence(false);
     drawFeatureSubgroupDetail();
     drawFeatureSubgroupLines();
   });
@@ -943,7 +1044,7 @@ function activeWindowData() {
   return activeEventWindow === "B" ? DATA.eventWindows.windowB : DATA.eventWindows.windowA;
 }
 
-function renderEventSection() {
+function renderEventSection({animate = true} = {}) {
   const overview = activeEventWindow === "overview";
   d3.select("#event-time-context").style("display", overview ? "none" : null)
     .text(activeEventWindow === "before" ? TEXT.eventsBeforeContext : TEXT.eventsAfterContext);
@@ -989,7 +1090,7 @@ function renderEventSection() {
     nextDomain[1],
     selectedRisk,
     -12,
-    {hideBands: before, hideEndLabel: true, hideXAxisLabel: true, marginRight: 24, animate: true, previousDomain: lastEventDomain || nextDomain, previousSource: lastEventSource}
+    {hideBands: before, hideEndLabel: true, hideXAxisLabel: true, marginRight: 24, animate, previousDomain: animate ? lastEventDomain || nextDomain : nextDomain, previousSource: animate ? lastEventSource : wd.byRating}
   );
   lastEventDomain = nextDomain;
   lastEventSource = wd.byRating;
@@ -1026,6 +1127,12 @@ function drawAffectedMap(wd) {
   const affected = new Map((wd.affectedCounties || []).map(d => [d.fips, d.riskRating]));
   const selectedCount = new Set((wd.affectedCounties || []).filter(d => d.riskRating === selectedRisk).map(d => d.fips)).size;
   d3.select("#affected-county-count").style("--active-risk-color", RISK_COLORS[selectedRisk]).text(`${d3.format(",d")(selectedCount)} counties`);
+  const period = activeEventWindow === "before" ? "one year before the event through event start"
+    : `one year before event start through ${activeEventWindow === "B" ? "five" : "three"} years after event end`;
+  document.querySelector("#affected-county-count").append(makeInfoButton(
+    `Number of ${selectedRisk} risk counties with complete monthly Median PPSF YoY data for ${period}, the period displayed in the line plot.`,
+    {label: "About the county count"},
+  ));
   drawMap("#affected-map",
     (county, fips) => affected.get(fips) === selectedRisk ? RISK_COLORS[selectedRisk] : "#e6dfd5",
     (county, fips) => affected.get(fips) === selectedRisk ? `<strong>${countyDisplayName(county) || fips}</strong><br>NRI rating: ${selectedRisk}` : "",
@@ -1033,11 +1140,13 @@ function drawAffectedMap(wd) {
   );
 }
 
-function startRiskTimer() {
+function startRiskTimer(automatic = true) {
   clearInterval(riskTimer);
   riskAutoPaused = false;
   renderEventSection();
+  if (isMobileView() && automatic) { pauseRiskTimer(true); return; }
   riskTimer = setInterval(() => {
+    if (!sectionInView("events") || document.hidden) return;
     selectedRisk = RISK_ORDER[(RISK_ORDER.indexOf(selectedRisk) + 1) % RISK_ORDER.length];
     renderEventSection();
   }, RISK_SEQUENCE_INTERVAL);
@@ -1078,6 +1187,7 @@ function drawFeatureImportanceV2() {
     });
   d3.select("#feature-click-hint").text(TEXT.featureClickHint);
   const chart = d3.select("#feature-importance-chart");
+  chart.classed("ordered-by-significance", featureOrderMode === "significance");
   chart.selectAll("*").remove();
   let lastCategory = null;
   const features = featureOrderMode === "significance"
@@ -1085,7 +1195,7 @@ function drawFeatureImportanceV2() {
     : DATA.features.featureOrder;
   const significantFeatures = new Set(mostImportantFeatureMetrics(selectedFeatureRisk).map(metric => metric.feature));
   const strongContainer = featureOrderMode === "significance" && significantFeatures.size > 0
-    ? chart.append("div").attr("class", "importance-strong-group")
+    ? chart.append("div").attr("class", "importance-strong-group").style("--strong-count", features.filter(feature => significantFeatures.has(feature)).length)
     : null;
   features.forEach(feature => {
     const meta = DATA.features.featureMeta[feature];
@@ -1128,6 +1238,7 @@ function drawFeatureImportanceV2() {
     );
     tabs.appendChild(topic);
   });
+  syncFeaturePanelHeights();
 }
 
 function drawFeatureMedianLine() {
@@ -1146,15 +1257,10 @@ function featureTickFormatter(feature) {
 }
 
 function fitFeatureScatterToTakeaway() {
-  const stage = document.querySelector('#features .story-stage[data-story-state="takeaway-feature"]');
-  const svg = stage?.querySelector('.scatter-active #feature-event-window');
-  const relationship = stage?.querySelector('#feature-relationship:not([hidden])');
-  if (!svg || !relationship || !selectedFeatureKey) return;
-  const available = Math.max(120, Math.floor(relationship.getBoundingClientRect().top - svg.getBoundingClientRect().top - 6));
-  if (Math.abs(svg.getBoundingClientRect().height - available) > 1) {
-    stage.style.setProperty('--feature-scatter-height', `${available}px`);
-    drawFeatureScatter(selectedFeatureKey);
-  }
+  if (isMobileView()) return;
+  // Flex layout reserves the relationship text before sizing the scatterplot.
+  // ResizeObserver redraws to that final size before the browser paints.
+  syncFeaturePanelHeights();
 }
 
 function drawFeatureScatter(feature) {
@@ -1373,7 +1479,7 @@ function drawFeatureSubgroupPanel() {
     svg.append("g").selectAll("circle").data(points).join("circle")
       .attr("cx", d => x(d.value)).attr("cy", (d, i) => y + ((i % 7) - 3) * 1.6)
       .attr("r", 2.8).attr("fill", color).attr("opacity", opacity)
-      .style("cursor", "pointer")
+      .style("cursor", "default")
       .on("mousemove", (event, d) => {
         const county = countyByFips.get(d.fips);
         showTooltip(event, `<strong>${countyDisplayName(county) || d.fips}</strong><br>${featureLabel(selectedDistributionFeature)}: ${featureTickFormatter(selectedDistributionFeature)(d.value)}`);
@@ -1424,14 +1530,20 @@ function selectFeatureSubgroup(index, userInitiated = true) {
   drawFeatureSubgroupLines();
 }
 
-function startFeatureSubgroupSequence() {
+function startFeatureSubgroupSequence(automatic = true) {
   clearInterval(featureSubgroupSequenceTimer);
+  if (automatic && isMobileView()) {
+    featureSubgroupSequencePaused = true;
+    setSequenceButton("#feature-sequence-resume", true);
+    return;
+  }
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
   const sequence = [...payload.groups].sort((a, b) => b.index - a.index);
   if (!sequence.length) return;
   if (selectedFeatureSubgroup == null) selectedFeatureSubgroup = sequence[0].index;
   if (featureSubgroupSequencePaused) return;
   featureSubgroupSequenceTimer = setInterval(() => {
+    if (!sectionInView("features") || document.hidden) return;
     const current = sequence.findIndex(group => group.index === selectedFeatureSubgroup);
     selectedFeatureSubgroup = sequence[(current + 1) % sequence.length].index;
     drawFeatureSubgroupDetail();
@@ -1443,7 +1555,7 @@ function drawFeatureSubgroupLines() {
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
   const domainValues = payload.groups.flatMap(group => group.values.map(d => d.value).filter(Number.isFinite));
   d3.select(".feature-line-pane").classed("scatter-active", false).classed("scatter-negative", false);
-  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, upperDomainPadding: 0.16, marginRight: 24, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
+  const chart = drawLineChart("#feature-event-window", DATA.eventWindows.windowA.byRating, "riskRating", 36, selectedFeatureRisk, -12, {disableTooltip: true, hideOtherGroups: true, hideEndLabel: true, extraDomainValues: domainValues, upperDomainPadding: 0.16, marginRight: 24, xAxisLabel: TEXT.featureXAxis, yAxisLabel: TEXT.featureYAxis, eventLabel: TEXT.featureEventMarker});
   const svg = d3.select("#feature-event-window");
   const line = d3.line().defined(d => d.value != null).x(d => chart.x(d.month)).y(d => chart.y(d.value));
   svg.selectAll("path.feature-subgroup-line").data(payload.groups).join("path")
@@ -1452,6 +1564,9 @@ function drawFeatureSubgroupLines() {
     .attr("opacity", d => selectedFeatureSubgroup == null || d.index === selectedFeatureSubgroup ? 1 : .16)
     .attr("d", d => line(d.values)).style("cursor", "pointer")
     .on("click", (event, d) => selectFeatureSubgroup(d.index, true));
+  const activeGroup = payload.groups.find(group => group.index === selectedFeatureSubgroup);
+  if (activeGroup) attachSeriesTooltip(svg.selectAll("path.feature-subgroup-line").filter(group => group.index === activeGroup.index), svg, activeGroup.values, chart.x,
+    {label: `${subgroupName(activeGroup, payload.groups.length, selectedFeatureRisk)} · ${selectedFeatureRisk} Risk`, month: d => d.month, value: d => d.value, onClick: () => selectFeatureSubgroup(activeGroup.index, true)});
   const orderedGroups = [...payload.groups].sort((a, b) => b.index - a.index);
   const subgroupButtons = d3.select("#feature-subgroup-toggles")
     .classed("visible", true)
@@ -1484,7 +1599,29 @@ function drawFeatureSubgroupLines() {
   d3.select("#feature-relationship").attr("hidden", true);
 }
 
-function drawFeatureHeatmaps() {
+function syncFeaturePanelHeights() {
+  if (isMobileView()) return;
+  const stage = document.querySelector("#features .story-stage");
+  const detail = stage?.querySelector(".feature-detail-stack");
+  if (!detail) return;
+  detail.style.removeProperty("height");
+  detail.style.removeProperty("max-height");
+  const heights = ["#feature-chart-title", "#feature-detail-title"].map(selector => {
+    const heading = stage.querySelector(selector);
+    if (!heading || getComputedStyle(heading).display === "none") return 0;
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    return range.getBoundingClientRect().height;
+  });
+  stage.style.setProperty("--feature-heading-height", `${Math.ceil(Math.max(24, ...heights))}px`);
+  const grid = stage.querySelector(".feature-story-grid");
+  // Let the shared flex layout size both columns. Measuring a row while its
+  // frame is sliding out captures its transform and progressively caps the
+  // next frame at a smaller height when navigating back and forth.
+  grid.style.removeProperty("max-height");
+}
+
+function drawFeatureHeatmaps({preserveSeries = false} = {}) {
   const state = document.querySelector("#features .story-stage")?.dataset.storyState || "feature-frame-1";
   updateRiskLegend("#feature-risk-legend", selectedFeatureRisk, risk => {
     selectedFeatureRisk = risk;
@@ -1495,7 +1632,7 @@ function drawFeatureHeatmaps() {
     clearInterval(featureSubgroupSequenceTimer);
     drawFeatureHeatmaps();
   });
-  drawFeatureImportanceV2();
+  if (!preserveSeries) drawFeatureImportanceV2();
   d3.select("#feature-detail-title").text(replaceFeatureText(
     state === "feature-frame-2" ? TEXT.featureFrame2Title : state === "feature-frame-3" ? TEXT.featureFrame3Title : TEXT.featureFrame1Title,
     {risk: selectedFeatureRisk, subgroup: ""},
@@ -1509,8 +1646,10 @@ function drawFeatureHeatmaps() {
       selectedFeatureSubgroup = [...groups].sort((a, b) => b.index - a.index)[0]?.index ?? null;
     }
     drawFeatureSubgroupDetail();
-    drawFeatureSubgroupLines();
-    startFeatureSubgroupSequence();
+    if (!preserveSeries) {
+      drawFeatureSubgroupLines();
+      startFeatureSubgroupSequence();
+    }
   }
   else {
     clearInterval(featureSubgroupSequenceTimer);
@@ -1518,6 +1657,7 @@ function drawFeatureHeatmaps() {
     if ((state === "feature-frame-1" || state === "takeaway-feature") && selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
     else drawFeatureMedianLine();
   }
+  syncFeaturePanelHeights();
 }
 
 function formatFeatureVal(v, fmt) {
@@ -1585,6 +1725,8 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
   }
 
   playbookZoomBehavior = d3.zoom()
+    .touchable(() => !isMobileView())
+    .filter(event => event.type === "wheel" ? event.ctrlKey : !event.button)
     .scaleExtent([1, 12])
     .translateExtent([[-width * .35, -height * .35], [width * 1.35, height * 1.35]])
     .on("zoom", event => {
@@ -1863,12 +2005,12 @@ function drawPlaybookHistory(county, compareRisk = false, showEvents = true) {
   const countyLine = plot.append("path").datum(history).attr("class", "line playbook-county-line")
     .attr("stroke", COUNTY_LINE_COLOR).attr("stroke-width", 2.4)
     .attr("d", countyLinePath);
+  const countyHit = attachSeriesTooltip(countyLine, svg, history, x,
+    {label: countyDisplayName(county), month: d => d.date, value: d => d.value});
   svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(x).ticks(d3.utcYear.every(1)).tickFormat(d3.utcFormat("%Y")));
+    .call(d3.axisBottom(x).ticks(d3.utcYear.every(width < 500 ? 3 : 1)).tickFormat(d3.utcFormat("%Y")));
   const yAxis = svg.append("g").attr("class", "axis").attr("transform", `translate(${margin.left},0)`)
     .call(d3.axisLeft(y).ticks(6).tickFormat(fmtPct));
-  svg.append("text").attr("x", margin.left).attr("y", 13).attr("fill", "#66717b").attr("font-size", 11)
-    .text("Median PPSF YoY");
   const legendItems = [
     {label: TEXT.playbookSeriesLegend, color: COUNTY_LINE_COLOR, opacity: 1, line: true},
   ];
@@ -1897,6 +2039,7 @@ function drawPlaybookHistory(county, compareRisk = false, showEvents = true) {
       yAxis.transition(transition).call(d3.axisLeft(zoomY).ticks(6).tickFormat(fmtPct));
       grid.transition(transition).call(d3.axisLeft(zoomY).ticks(6).tickSize(-(width - margin.left - margin.right)).tickFormat(""));
       countyLine.transition(transition).attr("d", d3.line().defined(d => d.value != null).x(d => x(d.date)).y(d => zoomY(d.value)));
+      countyHit.transition(transition).attr("d", d3.line().defined(d => d.value != null).x(d => x(d.date)).y(d => zoomY(d.value)));
       riskBand?.transition(transition).attr("d", d3.area().defined(d => d.q1 != null && d.q3 != null).x(d => x(parseMonth(d.month))).y0(d => zoomY(d.q1)).y1(d => zoomY(d.q3)));
       riskMedian?.transition(transition).attr("d", d3.line().defined(d => d.median != null).x(d => x(parseMonth(d.month))).y(d => zoomY(d.median)));
     }
@@ -2139,10 +2282,10 @@ function playbookFactorAssessment(county, metric) {
   const context = typeof contextOptions === "string" ? contextOptions
     : contextOptions && Math.sign(metric.rho) === contextOptions.expectedRhoSign
       ? contextOptions[factorUp ? "higher" : "lower"]
-      : contextOptions ? "This risk group's observed association runs opposite to the usual explanation for this factor; the correlation alone does not establish why." : null;
+      : "This is an interesting relationship worth investigating further.";
   const description = growth == null ? "The county feature value or its correlation is unavailable."
     : growth === 0 ? `${featureLabel(metric.feature)} is at the peer median or has zero correlation, so no directional growth association is assigned.`
-    : `${countyDisplayName(county)} has ${factorUp ? "higher" : "lower"} ${featureLabel(metric.feature)} values than its peers within the ${county.riskRating} risk group. ${factorUp ? "Higher" : "Lower"} values are associated with ${growth > 0 ? "higher" : "lower"} Median PPSF YoY ${context ? " - " + context : ""}`;
+    : `${featureLabel(metric.feature)} is ${factorUp ? "above" : "below"} the ${county.riskRating} risk-group median, a profile associated with ${growth > 0 ? "higher" : "lower"} Median PPSF YoY. ${context}`;
   return {...metric, factorUp, growth, positionLabel, description};
 }
 
@@ -2207,6 +2350,7 @@ function playbookFactorArrows(county, metric) {
 }
 
 function fitPlaybookConclusionTitle() {
+  if (isMobileView()) return;
   document.querySelectorAll('#playbook-warning-takeaway .playbook-scorecard-value > span:first-child').forEach(value => {
     value.style.fontSize = '16px';
     if (value.clientWidth > 0 && value.scrollWidth > value.clientWidth) {
@@ -2274,6 +2418,7 @@ function selectPlaybookCounty(county) {
 function goToPlaybookProfile() {
   const section = document.querySelector("#playbook");
   if (!section) return;
+  if (isMobileView()) { setMobileFrame(section, 2); section.scrollIntoView({behavior: "smooth", block: "start"}); return; }
   const viewport = window.innerHeight || 1;
   window.scrollTo({
     top: section.offsetTop + viewport * 2,
@@ -2284,6 +2429,7 @@ function goToPlaybookProfile() {
 function goToPlaybookSearch() {
   const section = document.querySelector("#playbook");
   if (!section) return;
+  if (isMobileView()) { setMobileFrame(section, 1); section.scrollIntoView({behavior: "smooth", block: "start"}); return; }
   section.style.setProperty("--story-steps", STORY_CONFIG.playbook.length);
   window.scrollTo({top: section.offsetTop + (window.innerHeight || 1), behavior: "smooth"});
 }
@@ -2298,6 +2444,8 @@ function playbookHistoryRows(county) {
 function renderPlaybookFrame() {
   const state = document.querySelector("#playbook .story-stage")?.dataset.storyState || "search";
   const county = playbookCountyByFips.get(selectedCountyFips);
+  d3.select("#t-page-feedback").property("hidden", !county || state !== storyConfigForSection("playbook").at(-1).state);
+  d3.select(".analytics-privacy").property("hidden", !county || state !== storyConfigForSection("playbook").at(-1).state);
   d3.select('#t-playbook-h2').text(fillTextTemplate(TEXT.playbookH2, {frameTitle: TEXT.playbookFrameTitles[county ? state : 'search'] || TEXT.playbookFrameTitles.search}));
   if (state === "search" || !county) {
     drawPlaybookMap("#county-selection-map", county || null, false, true);
@@ -2450,19 +2598,91 @@ function syncPlaybookStoryLength(county) {
 
 const takeawayTransitionTimers = new WeakMap();
 
+function isMobileView() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
+function sectionInView(id) {
+  const rect = document.getElementById(id)?.getBoundingClientRect();
+  return rect && rect.bottom > 0 && rect.top < window.innerHeight;
+}
+
+function mobileStorySteps(id) {
+  return storyConfigForSection(id).map((step, index) => ({step, index}))
+    .filter(({step}) => step.state !== "title" && step.state !== "copy");
+}
+
+function setMobileFrame(section, index) {
+  const steps = mobileStorySteps(section.id);
+  const entry = steps.find(item => item.index === index) || steps[0];
+  applyStoryStep(section, entry.step, entry.index);
+  const controls = section.querySelector(".mobile-frame-controls");
+  const position = steps.indexOf(entry);
+  controls.querySelector("output").textContent = `Step ${position + 1} of ${steps.length}`;
+  controls.querySelector("[data-direction='-1']").disabled = position === 0;
+  controls.querySelector("[data-direction='1']").disabled = position === steps.length - 1 || (section.id === "playbook" && !selectedCountyFips);
+}
+
+function configureMobileStory() {
+  const mobile = isMobileView();
+  document.body.classList.toggle("mobile-story", mobile);
+  for (const id of Object.keys(STORY_CONFIG)) {
+    const section = document.getElementById(id);
+    let controls = section.querySelector(".mobile-frame-controls");
+    if (!controls) {
+      controls = document.createElement("nav");
+      controls.className = "mobile-frame-controls";
+      controls.setAttribute("aria-label", `${id} story steps`);
+      controls.innerHTML = '<button type="button" data-direction="-1">← Previous</button><output aria-live="polite"></output><button type="button" data-direction="1">Next →</button>';
+      section.querySelector(".story-stage").append(controls);
+      controls.addEventListener("click", event => {
+        const button = event.target.closest("button");
+        if (!button) return;
+        closeInfoTooltip(); hideTooltip(true);
+        const steps = mobileStorySteps(id);
+        const current = Number(section.querySelector(".story-stage").dataset.storyIndex);
+        const position = steps.findIndex(item => item.index === current);
+        const next = steps[position + Number(button.dataset.direction)];
+        if (next) setMobileFrame(section, next.index);
+        section.scrollIntoView({behavior: "smooth", block: "start"});
+      });
+    }
+    if (mobile) setMobileFrame(section, Number(section.querySelector(".story-stage").dataset.storyIndex));
+  }
+  if (mobile) { pauseRatingSequence(true); pauseRiskTimer(true); }
+  else updateStoryFromScroll();
+}
+
 function syncTakeawaySpace(section, takeaway) {
   const panel = section.querySelector(":scope > .story-stage > .panel");
   if (!panel) return;
+  if (section.id === "events" && !isMobileView()) {
+    // Measure every caption, including both texts used by the shared window
+    // takeaway, so changing steps never changes the charts' available height.
+    const heights = [...panel.querySelectorAll(".takeaway")].map(node => node.offsetHeight);
+    const probe = panel.querySelector("#event-window-takeaway").cloneNode(false);
+    probe.removeAttribute("id");
+    probe.className = "takeaway";
+    probe.setAttribute("aria-hidden", "true");
+    panel.append(probe);
+    for (const text of [TEXT.eventWindowATakeaway, TEXT.eventWindowBTakeaway]) {
+      probe.textContent = text;
+      heights.push(probe.offsetHeight);
+    }
+    probe.remove();
+    panel.style.setProperty("--event-caption-height", `${Math.max(...heights)}px`);
+    return;
+  }
   if (!takeaway) {
     panel.style.removeProperty("--takeaway-space");
     return;
   }
-  requestAnimationFrame(() => {
-    const height = Math.ceil(takeaway.getBoundingClientRect().height);
-    if (takeaway !== section.querySelector('.takeaway.story-active-takeaway')) return;
-    if (height > 0) panel.style.setProperty("--takeaway-space", `${height}px`);
-    if (section.id === "features") fitFeatureScatterToTakeaway();
-  });
+  // Resolve the final reservation in this layout transaction, before painting.
+  // A deferred measurement paints the default reservation first, then rebounds.
+  if (takeaway !== section.querySelector('.takeaway.story-active-takeaway')) return;
+  const height = Math.ceil(takeaway.offsetHeight);
+  if (height > 0) panel.style.setProperty("--takeaway-space", `${height}px`);
+  if (section.id === "features") fitFeatureScatterToTakeaway();
 }
 
 function activateStoryTakeaway(section, step, direction) {
@@ -2488,6 +2708,21 @@ function activateStoryTakeaway(section, step, direction) {
   syncTakeawaySpace(section, next);
 }
 
+function fitStoryTitle(title) {
+  if (!title) return;
+  title.style.removeProperty("font-size");
+  if (isMobileView()) return;
+  // Fit the actual text, rather than clipping or shrinking its usable width.
+  let size = parseFloat(getComputedStyle(title).fontSize);
+  const range = document.createRange();
+  range.selectNodeContents(title);
+  const lines = () => new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
+  while (lines() > 2 && size > 16) {
+    size -= 1;
+    title.style.fontSize = size + "px";
+  }
+}
+
 function applyStoryStep(section, step, index) {
   const stage = section.querySelector(".story-stage");
   if (!stage) return;
@@ -2504,13 +2739,26 @@ function applyStoryStep(section, step, index) {
     && stage.dataset.storyState === effectiveStep.state
   ) return;
   const previousState = stage.dataset.storyState;
+  const playbookEntering = section.id === "playbook"
+    ? [...stage.querySelectorAll(".playbook-profile-map-pane, .playbook-events-pane, .playbook-profile-panel, .playbook-commentary-pane")]
+        .filter(element => getComputedStyle(element).display === "none")
+    : [];
+  // Capture the current visual position, including any interrupted animation.
+  // Animate transforms only: interpolating font-size rewraps the title each frame.
+  const title = stage.querySelector(":scope > h2");
+  const animateTitle = title && !isMobileView() && !storyMotionReduced();
+  const titleBefore = animateTitle ? title.getBoundingClientRect() : null;
+  const titleStyleBefore = animateTitle ? getComputedStyle(title) : null;
+  const titleScaleBefore = animateTitle ? parseFloat(titleStyleBefore.fontSize) * new DOMMatrix(titleStyleBefore.transform).a : 1;
+  if (title) title.getAnimations().forEach(animation => animation.cancel());
+  hideTooltip(true);
   const previousIndex = Number(stage.dataset.storyIndex);
   const direction = Number.isFinite(previousIndex) ? Math.sign(index - previousIndex) : 1;
   stage.dataset.storyIndex = String(index);
   stage.dataset.storyState = effectiveStep.state;
   stage.dataset.storyDirection = direction < 0 ? "backward" : "forward";
   stage.classList.remove("story-step-forward", "story-step-backward");
-  void stage.offsetWidth;
+  // Avoid forcing a full layout on every scroll-driven frame change.
   stage.classList.add(direction < 0 ? "story-step-backward" : "story-step-forward");
   activateStoryTakeaway(section, effectiveStep, direction);
   const panel = stage.querySelector(".panel");
@@ -2536,11 +2784,38 @@ function applyStoryStep(section, step, index) {
     pauseRatingSequence();
   }
   if (section.id === "features" && featureSectionRendered) {
-    drawFeatureHeatmaps();
+    const subgroupFrames = ["feature-frame-2", "feature-frame-3"];
+    drawFeatureHeatmaps({preserveSeries: subgroupFrames.includes(previousState) && subgroupFrames.includes(effectiveStep.state)});
   }
   if (section.id === "playbook" && playbookSectionRendered) {
     renderPlaybookFrame();
+    if (previousState && !storyMotionReduced()) {
+      playbookEntering.filter(element => getComputedStyle(element).display !== "none").forEach(element => {
+        element.getAnimations().forEach(animation => animation.cancel());
+        element.animate([{translate: `0 ${direction < 0 ? -32 : 32}px`, opacity: 0},
+          {translate: "0 0", opacity: 1}], {duration: 420, easing: "cubic-bezier(.22, .61, .36, 1)"});
+      });
+    }
   }
+  fitStoryTitle(title);
+  if (animateTitle && previousState) {
+    const titleAfter = title.getBoundingClientRect();
+    if (titleAfter.width && titleAfter.height && titleBefore.width && titleBefore.height
+        && (Math.abs(titleBefore.top - titleAfter.top) > 1 || Math.abs(titleBefore.height - titleAfter.height) > 1)) {
+      const finalTransform = getComputedStyle(title).transform;
+      const matrix = new DOMMatrix(finalTransform);
+      const scale = titleScaleBefore / parseFloat(getComputedStyle(title).fontSize);
+      const finalWidth = getComputedStyle(title).width;
+      // Use matching translate/scale functions at both ends so position and
+      // apparent font size interpolate together throughout the slide.
+      title.animate([
+        {width: `${titleBefore.width / scale}px`, transform: `translate(${titleBefore.left - titleAfter.left + matrix.e}px, ${titleBefore.top - titleAfter.top + matrix.f}px) scale(${scale})`, transformOrigin: "left top"},
+        {width: finalWidth, transform: `translate(${matrix.e}px, ${matrix.f}px) scale(${matrix.a})`, transformOrigin: "left top"},
+      ], {duration: 900, easing: "cubic-bezier(.45, 0, .2, 1)"});
+    }
+  }
+  // The card is persistent. Its children own their enter/exit and chart morph
+  // transitions; never replay an entrance animation on the whole card.
 }
 
 function storyNavigationStops() {
@@ -2565,16 +2840,71 @@ function updateStoryNavigation() {
   document.getElementById("story-next").disabled = !stops.some(stop => stop > current + tolerance);
 }
 
+let storyNavigationAnimation = null;
+let storyScrollTarget = null;
+function cancelStoryNavigation() {
+  if (storyNavigationAnimation != null) cancelAnimationFrame(storyNavigationAnimation);
+  storyNavigationAnimation = null;
+  storyScrollTarget = null;
+}
+window.addEventListener("touchstart", cancelStoryNavigation, {passive: true});
+window.addEventListener("keydown", event => {
+  if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelStoryNavigation();
+});
+window.addEventListener("resize", () => document.querySelectorAll(".story-stage > h2").forEach(fitStoryTitle));
+document.fonts.ready.then(() => document.querySelectorAll(".story-stage > h2").forEach(fitStoryTitle));
+function animateStoryScroll(target) {
+  const current = window.scrollY;
+  target = Math.max(0, Math.min(target, document.documentElement.scrollHeight - innerHeight));
+  if (storyNavigationAnimation != null) cancelAnimationFrame(storyNavigationAnimation);
+  storyScrollTarget = target;
+  if (storyMotionReduced()) {
+    window.scrollTo({top: target, behavior: "instant"});
+    cancelStoryNavigation();
+    return;
+  }
+  // Both wheel and navigation buttons use this one motion path.
+  const started = performance.now();
+  const tick = now => {
+    const progress = Math.min(1, (now - started) / 650);
+    const eased = 1 - (1 - progress) ** 3;
+    window.scrollTo({top: current + (target - current) * eased, behavior: "instant"});
+    storyNavigationAnimation = progress < 1 ? requestAnimationFrame(tick) : null;
+    if (progress === 1) storyScrollTarget = null;
+  };
+  storyNavigationAnimation = requestAnimationFrame(tick);
+}
+
 function navigateStory(direction) {
   const stops = storyNavigationStops();
-  const current = window.scrollY;
+  const current = storyScrollTarget ?? window.scrollY;
   const tolerance = (window.innerHeight || 1) * 0.2;
   const target = direction > 0
     ? stops.find(stop => stop > current + tolerance)
     : [...stops].reverse().find(stop => stop < current - tolerance);
-  if (target == null) return;
-  window.scrollTo({top: target, behavior: "smooth"});
+  if (target != null) animateStoryScroll(target);
 }
+
+function handleStoryWheel(event) {
+  if (isMobileView() || event.defaultPrevented || event.ctrlKey || event.metaKey
+      || !event.cancelable || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      || storyMotionReduced()) return;
+  // Keep native scrolling inside event lists, factor lists, and other scroll panes.
+  for (let node = event.target instanceof Element ? event.target : null;
+       node && node !== document.body; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (/(auto|scroll)/.test(overflow) && node.scrollHeight > node.clientHeight + 1
+        && (event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight - 1)) {
+      cancelStoryNavigation();
+      return;
+    }
+  }
+  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
+  if (!delta) return;
+  event.preventDefault();
+  animateStoryScroll((storyScrollTarget ?? window.scrollY) + delta);
+}
+window.addEventListener("wheel", handleStoryWheel, {passive: false});
 
 function initStoryEdgeNavigation() {
   const previous = document.getElementById("story-prev");
@@ -2584,6 +2914,7 @@ function initStoryEdgeNavigation() {
     next.classList.remove("edge-visible");
   };
   document.addEventListener("pointermove", event => {
+    if (isMobileView() || event.pointerType !== "mouse") return;
     const edgeSize = 64;
     previous.classList.toggle("edge-visible", event.clientY <= edgeSize);
     next.classList.toggle(
@@ -2596,38 +2927,22 @@ function initStoryEdgeNavigation() {
 }
 
 function initPanelScrollRouting() {
-  const standardPanels = [...document.querySelectorAll(".story-stage > .panel")]
-    .filter(panel => !panel.closest("#playbook"));
-  standardPanels.forEach(scrollContainer => {
-    scrollContainer.addEventListener("wheel", event => {
-      const ownerPanel = scrollContainer.closest(".panel");
-      if (ownerPanel?.classList.contains("inner-scroll-locked")) return;
-      const canScroll = scrollContainer.scrollHeight > scrollContainer.clientHeight + 1;
-      if (!canScroll) return;
-      const atTop = scrollContainer.scrollTop <= 0;
-      const atBottom = (
-        scrollContainer.scrollTop + scrollContainer.clientHeight
-        >= scrollContainer.scrollHeight - 1
-      );
-      const leavingCard = (event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom);
-      if (leavingCard) {
-        event.preventDefault();
-        window.scrollBy({top: event.deltaY, behavior: "auto"});
-      } else {
-        event.stopPropagation();
-      }
-    }, {passive: false});
+  // Native scroll chaining preserves trackpad momentum and touch scrolling.
+  document.querySelectorAll(".story-stage > .panel").forEach(panel => {
+    panel.style.overscrollBehaviorY = "auto";
   });
 }
 
 function updateStoryFromScroll() {
+  if (isMobileView()) return;
   const viewport = window.innerHeight || 1;
-  document.querySelectorAll(".slide[data-story-ready='true']").forEach(section => {
+  const updates = [...document.querySelectorAll(".slide[data-story-ready='true']")].map(section => {
     const config = storyConfigForSection(section.id);
     const relative = (window.scrollY - section.offsetTop + viewport * .42) / viewport;
     const index = Math.max(0, Math.min(config.length - 1, Math.floor(relative)));
-    applyStoryStep(section, config[index], index);
+    return {section, step: config[index], index};
   });
+  updates.forEach(({section, step, index}) => applyStoryStep(section, step, index));
   updateStoryNavigation();
 }
 
@@ -2644,6 +2959,7 @@ function initScrollStory() {
   });
   let scheduled = false;
   const requestUpdate = () => {
+    if (!activeInfoTooltipTrigger) hideTooltip();
     if (scheduled) return;
     scheduled = true;
     requestAnimationFrame(() => {
@@ -2657,6 +2973,8 @@ function initScrollStory() {
   document.getElementById("story-next").addEventListener("click", () => navigateStory(1));
   initStoryEdgeNavigation();
   initPanelScrollRouting();
+  configureMobileStory();
+  window.matchMedia("(max-width: 760px)").addEventListener("change", configureMobileStory);
   updateStoryFromScroll();
 }
 
@@ -2739,7 +3057,50 @@ renderWhenNear("#playbook", async () => {
   renderPlaybookFrame();
 }, "1200px 0px");
 let resizeTimer = null;
+// Flex-sized charts also change when takeaways enter, without a window resize.
+const chartSizes = new WeakMap();
+const featurePanelObserver = new ResizeObserver(() => syncFeaturePanelHeights());
+document.querySelectorAll(".feature-line-pane, #feature-relationship").forEach(element => featurePanelObserver.observe(element));
+const chartLayoutChanges = new Set();
+const chartLayoutObserver = new ResizeObserver(entries => {
+  for (const entry of entries) {
+    const {width, height} = entry.contentRect;
+    if (width < 1 || height < 1) continue;
+    const size = `${Math.round(width)}x${Math.round(height)}`;
+    if (chartSizes.get(entry.target) === size) continue;
+    chartSizes.set(entry.target, size);
+    // A state render may already have fitted this SVG to its new dimensions.
+    // Do not replace that render and cancel its in-flight time-window morph.
+    if (entry.target instanceof SVGSVGElement) {
+      const box = entry.target.viewBox.baseVal;
+      if (Math.abs(box.width - entry.target.clientWidth) < 1 && Math.abs(box.height - entry.target.clientHeight) < 1) continue;
+    }
+    chartLayoutChanges.add(entry.target.closest("section").id);
+  }
+  if (chartLayoutChanges.size) {
+    // ResizeObserver runs before paint. Do not defer to another animation frame:
+    // that paints a stretched old SVG viewBox, then visibly snaps to the new one.
+    const changed = new Set(chartLayoutChanges);
+    chartLayoutChanges.clear();
+    if (changed.has("pricing") && scoreScatterRendered) drawScoreScatter();
+    if (changed.has("pricing-grouping") && ratingSectionRendered) { drawRatingScatter(); drawRatingMap(); }
+    if (changed.has("events") && eventSectionRendered) renderEventSection({animate: false});
+    if (changed.has("features") && featureSectionRendered) {
+      const state = document.querySelector("#features .story-stage").dataset.storyState;
+      if (state === "feature-frame-2" || state === "feature-frame-3") {
+        drawFeatureSubgroupDetail();
+        drawFeatureSubgroupLines();
+      } else if (selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
+      else drawFeatureMedianLine();
+    }
+  }
+});
+document.querySelectorAll("#score-scatter, #rating-scatter, #rating-map, #event-window, #event-risk-pie, #affected-map, #feature-event-window, #feature-distribution-chart")
+  .forEach(chart => chartLayoutObserver.observe(chart));
+let lastChartWidth = window.innerWidth;
 window.addEventListener("resize", () => {
+  if (isMobileView() && window.innerWidth === lastChartWidth) return;
+  lastChartWidth = window.innerWidth;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (scoreScatterRendered) drawScoreScatter();

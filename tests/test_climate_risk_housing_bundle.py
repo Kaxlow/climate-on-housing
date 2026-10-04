@@ -27,6 +27,7 @@ class PageBundleTests(unittest.TestCase):
             self.assertNotIn("function draw", html)
             self.assertNotIn("<style>", html)
             for asset in ("climate-risk-housing.js", "climate-risk-housing.css"):
+                self.assertRegex(html, re.escape(asset) + r'\?v=[0-9a-f]{12}"')
                 self.assertEqual((root / asset).read_text(encoding="utf-8"),
                                  (page.WEB_ASSET_DIR / asset).read_text(encoding="utf-8"))
             features = (root / "climate-risk-housing-features.js").read_text()

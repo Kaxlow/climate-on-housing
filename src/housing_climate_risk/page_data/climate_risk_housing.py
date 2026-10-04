@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from functools import lru_cache
@@ -2669,7 +2670,12 @@ def make_html(data: dict[str, object]) -> str:
     initial = {key: value for key, value in data.items()
                if key not in {"features", "eventWindows", "geojson", "stateGeojson"}}
     payload = json.dumps(initial, separators=(",", ":"), allow_nan=False).replace("<", "\\u003c")
-    return HTML_TEMPLATE.replace("__PAYLOAD__", payload)
+    html = HTML_TEMPLATE.replace("__PAYLOAD__", payload)
+    for name in ("climate-risk-housing.css", "climate-risk-housing.js"):
+        content = (WEB_ASSET_DIR / name).read_text(encoding="utf-8")
+        version = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+        html = html.replace(f'"{name}"', f'"{name}?v={version}"')
+    return html
 
 
 def make_deferred_data_script(global_name: str, data: object) -> str:
