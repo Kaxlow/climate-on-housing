@@ -380,7 +380,8 @@ tooltip='';renderPlaybookPerformanceTakeaway({riskRating:'Low',profile:{assignme
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         observed, fallback, unavailable = json.loads(result.stdout)
-        self.assertIn("event window", observed[1])
+        self.assertIn("qualifying events with complete monthly housing data", observed[1])
+        self.assertIn("median-of-monthly-medians PPSF YoY", observed[1])
         self.assertIn("past ten years", fallback[1])
         self.assertNotIn("Based on", observed[0])
         self.assertIn("<strong>Mild Overperformers</strong>", observed[0])

@@ -566,6 +566,15 @@ function drawStateBoundaries(target, path) {
     .attr("d", path);
 }
 
+function enableMapGestures(svg, group, initial = null) {
+  svg.attr('data-map-gestures', 'true').style('touch-action', 'none').style('overflow', 'hidden');
+  const zoom = d3.zoom().touchable(() => true).scaleExtent([1, 12])
+    .on('start', () => hideTooltip(true))
+    .on('zoom', event => group.attr('transform', event.transform));
+  svg.call(zoom).on('dblclick.zoom', null);
+  svg.call(zoom.transform, initial || d3.zoomTransform(svg.node()));
+}
+
 function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
   const svg = d3.select(svgId);
   const width = svg.node().clientWidth || 520;
@@ -574,7 +583,8 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
   const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
   const path = d3.geoPath(projection);
   svg.on("mouseleave", () => hideTooltip());
-  svg.append("g").selectAll("path")
+  const mapGroup = svg.append("g");
+  mapGroup.selectAll("path")
     .data(DATA.geojson.features)
     .join("path")
     .attr("class","county")
@@ -590,7 +600,8 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
       showTooltip(event, html);
     })
     .on("click", clickFn ? (event, d) => clickFn(d.properties.fips) : null);
-  drawStateBoundaries(svg, path);
+  drawStateBoundaries(mapGroup, path);
+  enableMapGestures(svg, mapGroup);
   if (legendId) d3.select(legendId).html(legendHtml || "");
 }
 
@@ -601,6 +612,7 @@ function drawScoreScatter() {
   const months = (scoreHistoryData?.months || []).map(parsePriceMonth);
   if (!container || !canvas || !series.length || !months.length) return;
   const generation = ++scoreRenderGeneration;
+  const resizing = scoreScatterRendered;
   delete canvas.dataset.rendered;
   const width = container.clientWidth || 960, height = container.clientHeight || 340;
   const margin = {top: 18, right: 18, bottom: 46, left: 68};
@@ -630,7 +642,7 @@ function drawScoreScatter() {
   svg.append("text").attr("x",width/2).attr("y",height-8).attr("text-anchor","middle").attr("fill","#66717b").attr("font-size",12).text("Month");
   scoreScatterState = {container, series, months, x, y, clipDomain, margin, width, height, renderedCount: 0};
   scoreScatterRendered = true;
-  const batchSize = 120;
+  const batchSize = 120; // Preserve the original overlapping stroke compositing.
   let seriesIndex = 0;
   function drawCountyBatch() {
     if (generation !== scoreRenderGeneration) return;
@@ -663,10 +675,11 @@ function drawScoreScatter() {
     context.restore();
     scoreScatterState.renderedCount = batchEnd;
     canvas.dataset.progress = String(batchEnd);
-    if (seriesIndex < series.length) requestAnimationFrame(drawCountyBatch);
+    if (seriesIndex < series.length && !resizing) requestAnimationFrame(drawCountyBatch);
     else canvas.dataset.rendered = "true";
   }
-  requestAnimationFrame(drawCountyBatch);
+  if (resizing) { while (seriesIndex < series.length) drawCountyBatch(); }
+  else requestAnimationFrame(drawCountyBatch);
 }
 
 function initScoreScatter() {
@@ -827,7 +840,6 @@ function startRatingSequence(reset = true) {
   ratingSequencePaused = false;
   if (reset) ratingSequenceIndex = 0;
   renderRatingSequence();
-  if (isMobileView() && reset) { pauseRatingSequence(true); return; }
   ratingSequenceTimer = setInterval(() => {
     if (!sectionInView("pricing-grouping") || document.hidden) return;
     ratingSequenceIndex = (ratingSequenceIndex + 1) % RATING_SEQUENCE_FRAMES.length;
@@ -1144,7 +1156,6 @@ function startRiskTimer(automatic = true) {
   clearInterval(riskTimer);
   riskAutoPaused = false;
   renderEventSection();
-  if (isMobileView() && automatic) { pauseRiskTimer(true); return; }
   riskTimer = setInterval(() => {
     if (!sectionInView("events") || document.hidden) return;
     selectedRisk = RISK_ORDER[(RISK_ORDER.indexOf(selectedRisk) + 1) % RISK_ORDER.length];
@@ -1532,11 +1543,6 @@ function selectFeatureSubgroup(index, userInitiated = true) {
 
 function startFeatureSubgroupSequence(automatic = true) {
   clearInterval(featureSubgroupSequenceTimer);
-  if (automatic && isMobileView()) {
-    featureSubgroupSequencePaused = true;
-    setSequenceButton("#feature-sequence-resume", true);
-    return;
-  }
   const payload = DATA.features.subgroupsByRisk[selectedFeatureRisk] || {groups: []};
   const sequence = [...payload.groups].sort((a, b) => b.index - a.index);
   if (!sequence.length) return;
@@ -1713,19 +1719,21 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
 
   if (!interactive) {
     svg.on(".zoom", null);
+    let initial = d3.zoomIdentity;
     if (county) {
       const selectedFeature = DATA.geojson.features.find(d => d.properties.fips === county.fips);
       if (selectedFeature) {
         const [cx, cy] = path.centroid(selectedFeature);
         const scale = county.state === "AK" ? 3.2 : county.state === "HI" ? 4.2 : 5.2;
-        group.attr("transform", d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy));
+        initial = d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
       }
     }
+    enableMapGestures(svg, group, initial);
     return;
   }
 
   playbookZoomBehavior = d3.zoom()
-    .touchable(() => !isMobileView())
+    .touchable(() => true)
     .filter(event => event.type === "wheel" ? event.ctrlKey : !event.button)
     .scaleExtent([1, 12])
     .translateExtent([[-width * .35, -height * .35], [width * 1.35, height * 1.35]])
@@ -1735,6 +1743,7 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
       group.attr("transform", event.transform);
       updatePlaybookZoomControl();
     });
+  svg.attr('data-map-gestures', 'true').style('touch-action', 'none').style('overflow', 'hidden');
   svg.call(playbookZoomBehavior).on("dblclick.zoom", null);
   svg.call(playbookZoomBehavior.transform, d3.zoomIdentity);
 
@@ -1832,7 +1841,7 @@ function renderPlaybookPerformanceTakeaway(county) {
     return;
   }
   const basis = profile.assignmentSource === "event-window"
-    ? "Within each risk group, counties are ranked by the median of their Median PPSf YoY values across the event window, which is defined as the period of one year up till the event start and three years after the event end.\n\n If a county had multiple events, it is first represented by a single event trajectory built from the medians across the individual events at each relative month."
+    ? "This county’s performance is assessed based on qualifying events with complete monthly housing data from one year before the event through three years afterward. Eligible counties are ranked within their risk group by their median-of-monthly-medians PPSF YoY."
     : "The county's median value of Median PPSF YoY over the past ten years is compared with the median values of its risk group's monthly median and quartile values of Median PPSF YoY over the same period. A gap at least halfway from the group median toward the relevant quartile is Strong; a smaller gap is Mild.";
   target.html(`<span>${countyDisplayName(county)} is a <strong>${playbookPerformanceDisplayName(profile.subgroupName)}</strong> within the <strong>${county.riskRating} risk group</strong>.</span>`);
   target.node().querySelector("span").append(makeInfoButton(basis, {label: TEXT.informationTooltipLabel}));
@@ -2418,7 +2427,7 @@ function selectPlaybookCounty(county) {
 function goToPlaybookProfile() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 2); section.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+  if (isMobileView()) { setMobileFrame(section, 2); return; }
   const viewport = window.innerHeight || 1;
   window.scrollTo({
     top: section.offsetTop + viewport * 2,
@@ -2429,7 +2438,7 @@ function goToPlaybookProfile() {
 function goToPlaybookSearch() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 1); section.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+  if (isMobileView()) { setMobileFrame(section, 1); return; }
   section.style.setProperty("--story-steps", STORY_CONFIG.playbook.length);
   window.scrollTo({top: section.offsetTop + (window.innerHeight || 1), behavior: "smooth"});
 }
@@ -2608,49 +2617,20 @@ function sectionInView(id) {
 }
 
 function mobileStorySteps(id) {
-  return storyConfigForSection(id).map((step, index) => ({step, index}))
-    .filter(({step}) => step.state !== "title" && step.state !== "copy");
+  return storyConfigForSection(id).map((step, index) => ({step, index}));
 }
 
 function setMobileFrame(section, index) {
   const steps = mobileStorySteps(section.id);
   const entry = steps.find(item => item.index === index) || steps[0];
-  applyStoryStep(section, entry.step, entry.index);
-  const controls = section.querySelector(".mobile-frame-controls");
-  const position = steps.indexOf(entry);
-  controls.querySelector("output").textContent = `Step ${position + 1} of ${steps.length}`;
-  controls.querySelector("[data-direction='-1']").disabled = position === 0;
-  controls.querySelector("[data-direction='1']").disabled = position === steps.length - 1 || (section.id === "playbook" && !selectedCountyFips);
+  animateStoryScroll(section.offsetTop + entry.index * innerHeight);
 }
 
 function configureMobileStory() {
   const mobile = isMobileView();
   document.body.classList.toggle("mobile-story", mobile);
-  for (const id of Object.keys(STORY_CONFIG)) {
-    const section = document.getElementById(id);
-    let controls = section.querySelector(".mobile-frame-controls");
-    if (!controls) {
-      controls = document.createElement("nav");
-      controls.className = "mobile-frame-controls";
-      controls.setAttribute("aria-label", `${id} story steps`);
-      controls.innerHTML = '<button type="button" data-direction="-1">← Previous</button><output aria-live="polite"></output><button type="button" data-direction="1">Next →</button>';
-      section.querySelector(".story-stage").append(controls);
-      controls.addEventListener("click", event => {
-        const button = event.target.closest("button");
-        if (!button) return;
-        closeInfoTooltip(); hideTooltip(true);
-        const steps = mobileStorySteps(id);
-        const current = Number(section.querySelector(".story-stage").dataset.storyIndex);
-        const position = steps.findIndex(item => item.index === current);
-        const next = steps[position + Number(button.dataset.direction)];
-        if (next) setMobileFrame(section, next.index);
-        section.scrollIntoView({behavior: "smooth", block: "start"});
-      });
-    }
-    if (mobile) setMobileFrame(section, Number(section.querySelector(".story-stage").dataset.storyIndex));
-  }
-  if (mobile) { pauseRatingSequence(true); pauseRiskTimer(true); }
-  else updateStoryFromScroll();
+  document.querySelectorAll('.mobile-frame-controls').forEach(node => node.remove());
+  updateStoryFromScroll();
 }
 
 function syncTakeawaySpace(section, takeaway) {
@@ -2739,6 +2719,11 @@ function applyStoryStep(section, step, index) {
     && stage.dataset.storyState === effectiveStep.state
   ) return;
   const previousState = stage.dataset.storyState;
+  const existingPanel = stage.querySelector('.panel');
+  const retainMobileBottom = isMobileView() && effectiveStep.state.startsWith('takeaway')
+    && index > Number(stage.dataset.storyIndex) && existingPanel
+    && existingPanel.scrollHeight > existingPanel.clientHeight + 4
+    && existingPanel.scrollTop + existingPanel.clientHeight >= existingPanel.scrollHeight - 4;
   const playbookEntering = section.id === "playbook"
     ? [...stage.querySelectorAll(".playbook-profile-map-pane, .playbook-events-pane, .playbook-profile-panel, .playbook-commentary-pane")]
         .filter(element => getComputedStyle(element).display === "none")
@@ -2746,7 +2731,9 @@ function applyStoryStep(section, step, index) {
   // Capture the current visual position, including any interrupted animation.
   // Animate transforms only: interpolating font-size rewraps the title each frame.
   const title = stage.querySelector(":scope > h2");
-  const animateTitle = title && !isMobileView() && !storyMotionReduced();
+  const animateTitle = title && !storyMotionReduced();
+  const countyPlot = section.id === "pricing" ? document.getElementById("score-scatter") : null;
+  const countyPlotBefore = countyPlot?.getBoundingClientRect();
   const titleBefore = animateTitle ? title.getBoundingClientRect() : null;
   const titleStyleBefore = animateTitle ? getComputedStyle(title) : null;
   const titleScaleBefore = animateTitle ? parseFloat(titleStyleBefore.fontSize) * new DOMMatrix(titleStyleBefore.transform).a : 1;
@@ -2768,7 +2755,7 @@ function applyStoryStep(section, step, index) {
     || section.id === "playbook"
   );
   panel?.classList.toggle("inner-scroll-locked", lockInnerScroll);
-  if (lockInnerScroll && panel) panel.scrollTop = 0;
+  if (lockInnerScroll && panel && !retainMobileBottom) panel.scrollTop = 0;
 
   if (effectiveStep.eventWindow && activeEventWindow !== effectiveStep.eventWindow) {
     activeEventWindow = effectiveStep.eventWindow;
@@ -2816,6 +2803,24 @@ function applyStoryStep(section, step, index) {
   }
   // The card is persistent. Its children own their enter/exit and chart morph
   // transitions; never replay an entrance animation on the whole card.
+  if (retainMobileBottom) {
+    // The takeaway extends the same card. Stay at its new bottom rather than
+    // sending the reader back past content they have already swiped through.
+    panel.scrollTop = panel.scrollHeight;
+    requestAnimationFrame(() => {
+      if (stage.dataset.storyIndex === String(index) && isMobileView()) panel.scrollTop = panel.scrollHeight;
+    });
+  }
+  if (countyPlotBefore?.height && previousState && !storyMotionReduced()) {
+    const after = countyPlot.getBoundingClientRect();
+    if (after.height && Math.abs(after.height - countyPlotBefore.height) > 1) {
+      countyPlot.getAnimations().forEach(animation => animation.cancel());
+      countyPlot.animate([
+        {transform: `translateY(${countyPlotBefore.top - after.top}px) scaleY(${countyPlotBefore.height / after.height})`},
+        {transform: 'translateY(0) scaleY(1)'},
+      ], {duration: 420, easing: 'ease-out'});
+    }
+  }
 }
 
 function storyNavigationStops() {
@@ -2876,6 +2881,21 @@ function animateStoryScroll(target) {
 }
 
 function navigateStory(direction) {
+  if (isMobileView()) {
+    const stage = [...document.querySelectorAll('.story-stage')].find(node => Math.abs(node.getBoundingClientRect().top) < 4);
+    if (direction > 0 && stage?.parentElement.id === 'playbook' && stage.dataset.storyState === 'search' && !selectedCountyFips) return;
+    const panel = stage?.querySelector(':scope > .panel');
+    if (panel && getComputedStyle(panel).opacity !== '0') {
+      const extra = Math.max(0, panel.scrollHeight - panel.clientHeight);
+      const pages = Math.ceil(extra / Math.max(1, panel.clientHeight - 24));
+      const stride = pages ? extra / pages : 0;
+      const currentPage = stride ? Math.round(panel.scrollTop / stride) : 0;
+      if (direction > 0 && currentPage < pages || direction < 0 && currentPage > 0) {
+        panel.scrollTo({top: (currentPage + direction) * stride, behavior: storyMotionReduced() ? 'instant' : 'smooth'});
+        return;
+      }
+    }
+  }
   const stops = storyNavigationStops();
   const current = storyScrollTarget ?? window.scrollY;
   const tolerance = (window.innerHeight || 1) * 0.2;
@@ -2906,6 +2926,30 @@ function handleStoryWheel(event) {
 }
 window.addEventListener("wheel", handleStoryWheel, {passive: false});
 
+let mobileSwipe = null;
+window.addEventListener('touchstart', event => {
+  if (!isMobileView() || event.touches.length !== 1 || event.target.closest('input, textarea, select, .info-tooltip, [data-map-gestures]')) { mobileSwipe = null; return; }
+  mobileSwipe = {x: event.touches[0].clientX, y: event.touches[0].clientY};
+}, {passive: true});
+window.addEventListener('touchmove', event => {
+  if (mobileSwipe && event.touches.length === 1 && event.cancelable) event.preventDefault();
+}, {passive: false});
+window.addEventListener('touchend', event => {
+  if (!mobileSwipe) return;
+  const dx = event.changedTouches[0].clientX - mobileSwipe.x;
+  const dy = event.changedTouches[0].clientY - mobileSwipe.y;
+  mobileSwipe = null;
+  if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx)) navigateStory(dy < 0 ? 1 : -1);
+}, {passive: true});
+window.addEventListener('touchcancel', () => { mobileSwipe = null; }, {passive: true});
+window.addEventListener('keydown', event => {
+  if (!isMobileView() || event.target.closest('input, textarea, select')) return;
+  if (['ArrowUp', 'PageUp', 'ArrowDown', 'PageDown'].includes(event.key)) {
+    event.preventDefault();
+    navigateStory(['ArrowUp', 'PageUp'].includes(event.key) ? -1 : 1);
+  }
+});
+
 function initStoryEdgeNavigation() {
   const previous = document.getElementById("story-prev");
   const next = document.getElementById("story-next");
@@ -2930,11 +2974,16 @@ function initPanelScrollRouting() {
   // Native scroll chaining preserves trackpad momentum and touch scrolling.
   document.querySelectorAll(".story-stage > .panel").forEach(panel => {
     panel.style.overscrollBehaviorY = "auto";
+    const update = () => {
+      panel.parentElement.dataset.moreContent = String(isMobileView() && panel.scrollHeight > panel.clientHeight + panel.scrollTop + 4);
+    };
+    panel.addEventListener('scroll', update, {passive: true});
+    new ResizeObserver(update).observe(panel);
+    new MutationObserver(update).observe(panel, {childList: true, subtree: true});
   });
 }
 
 function updateStoryFromScroll() {
-  if (isMobileView()) return;
   const viewport = window.innerHeight || 1;
   const updates = [...document.querySelectorAll(".slide[data-story-ready='true']")].map(section => {
     const config = storyConfigForSection(section.id);

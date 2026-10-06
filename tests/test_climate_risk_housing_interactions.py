@@ -165,6 +165,30 @@ console.log(JSON.stringify([
         self.assertNotIn('grid.style.maxHeight =', sync)
         self.assertIn('grid.style.removeProperty("max-height")', sync)
 
+    def test_mobile_swipe_story_and_persistent_county_resize(self):
+        self.assertIn("window.addEventListener('touchend'", SCRIPT)
+        self.assertIn("Math.abs(dy) > 45", SCRIPT)
+        self.assertIn('const stride = pages ? extra / pages : 0', SCRIPT)
+        self.assertNotIn('Step ${position + 1}', SCRIPT)
+        self.assertIn('const batchSize = 120;', SCRIPT)
+        self.assertIn('while (seriesIndex < series.length) drawCountyBatch()', SCRIPT)
+        self.assertIn('Swipe up for more', CSS)
+
+    def test_mobile_map_gestures_and_animation_defaults(self):
+        self.assertIn('function enableMapGestures', SCRIPT)
+        self.assertIn(".style('touch-action', 'none')", SCRIPT)
+        self.assertIn('.info-tooltip, [data-map-gestures]', SCRIPT)
+        self.assertNotIn('if (isMobileView() && reset)', SCRIPT)
+        self.assertNotIn('if (isMobileView() && automatic)', SCRIPT)
+        self.assertNotIn('if (automatic && isMobileView())', SCRIPT)
+        self.assertIn("const retainMobileBottom = isMobileView() && effectiveStep.state.startsWith('takeaway')", SCRIPT)
+        self.assertIn('if (lockInnerScroll && panel && !retainMobileBottom)', SCRIPT)
+        self.assertIn('stage.dataset.storyIndex === String(index) && isMobileView()', SCRIPT)
+        self.assertIn('padding: 3px 4px 3px 17px !important', CSS)
+        self.assertIn('.mobile-story .playbook-frame-stack { flex: 0 0 auto !important;', CSS)
+        self.assertIn('.feature-footnote-tabs { position: static !important; order: 99;', CSS)
+        self.assertIn('.mobile-story .risk-legend-button { padding-left: 18px; }', CSS)
+
     def test_cursors_feedback_and_axis_labels(self):
         self.assertNotIn("cursor: crosshair", CSS)
         self.assertIn('options.onClick ? "pointer" : "default"', SCRIPT)
