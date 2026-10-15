@@ -294,7 +294,7 @@ groups: Strong Overperformers, Mild Overperformers, Mild Underperformers, and
 Strong Underperformers. Ties are
 resolved by FIPS for stable assignment. Counties without qualifying events or
 without at least one complete event-window trajectory are not assigned a subgroup in this feature analysis,
-their subgroup assignment comes later in [County Climate Playbook](#county-climate-playbook).
+their subgroup assignment comes later in [Climate Playbook](#climate-playbook).
 
 The performer-group trend chart first takes each county's median across complete
 events at each relative month, then the median across member counties. This gives
@@ -318,30 +318,26 @@ Whether the above- or below-median group is the focus depends on the factor's co
 | Positive | Above median | Below median |
 | Negative | Below median | Above median |
 
-## County Climate Playbook
+## Climate Playbook
 
-### Frame sequence and coverage gate
+This section serves as the main takeaway for a user interested in understanding the climate risk to houses in their county. It frames climate risk as a combination of the county's NRI risk rating, its housing market performance relative to peers with the same NRI risk rating, and its set of economic and demographic features.
 
-1. **County search/map:** select a county from the U.S. map or search results.
-2. **History/local map:** display the county's ten-year Median PPSF YoY history
-   without event overlays, alongside a zoomed local map.
-3. **Past events:** retain the history plot, add canonical event overlays, and
-   show the overall NRI rating and scrollable event list on the right.
-4. **Peer comparison:** overlay the risk group's monthly median and IQR on the
-   county history and zoom in on the plot to compare if needed. The expanded NRI card
-   displays the county's performer subgroup, with a tooltip explaining the
-   assignment method.
-5. **Top factors and scorecard:** a series of cards highlighting the top factors associated
-   with the county's performance and a scorecard that concludes the county's likely performance
-   when an extreme climate event occurs.
+The playbook begins by suggesting the user's county as the default selection. The user's county is determined by first sending a browser request to `https://ipapi.co/json/` and obtaining the coordinates from the response, then sending those coordinates to the Census Bureau's geocoder to obtain their county FIPS code. Alternatively, or if the user is not located in the US, the user can select a specific county through a search bar or a map interface.
 
-A county is not assigned a performer subgroup if it does not have non-null Median PPSF YoY values
-for at least 50% of the months across the past 10 calendar years. In this case, peer comparison in
-terms of performance is not available, and neither can a conclusion be drawn about its top factors
-and likely performance when an extreme climate event occurs, thus for such counties frame 5 is not
-applicable.
+The playbook then presents the following information about the county in sequence:
+- Historic Median PPSF YoY
+- Past extreme climate events
+- NRI risk rating
+- Median PPSF YoY relative to the median and interquartile range of the its NRI risk group
+- How its significant factors are associated with higher or lower Median PPSF YoY
+- A scorecard that assesses its climate risk based on its NRI risk rating, Median PPSF YoY relative to its peers, and its significant factors
 
-### Performer assignment in Frame 4
+### Housing coverage and performer assignment in Frame 5
+
+The peer-performance takeaway and Frame 6 factor cards require finite Median
+PPSF YoY observations for at least 50% of the displayed ten-year history
+(60 of 120 months). Below that threshold, those views display an
+insufficient-history message.
 
 The Playbook first reuses the feature-analysis subgroup for a county with a
 qualifying event and an observed complete-window assignment. Otherwise, it uses
@@ -362,8 +358,6 @@ the Playbook's risk group, including the selected county. Peer counties need not
 have complete histories or pass the selected county's 50% gate. Months without
 observations are omitted from the relevant across-month median. These are
 **medians of monthly summaries**, not pooled quantiles over county-month records.
-They differ from the earlier climate-risk history plot, whose cohort must have
-all 120 observations.
 
 The fallback rules are:
 
@@ -376,49 +370,36 @@ The fallback rules are:
 | `a == b` | Mild Overperformer (implementation tie convention) |
 | Any of `a`, `b`, `c`, `d` unavailable | No fallback assignment |
 
-### Top factor cards in Frame 5
+### County makeup and takeaway in Frame 6
 
-For each significant factor, the county's value is compared against the median
-of available county feature values in the same risk group to determine if it is above or below the risk-group median. Then, that factor associated with higher or lower Median PPSF YoY depending on whether the county's value is above or below median, and the direction of the factor's correlation with Median PPSF YoY Factors:
+For each selected factor, the county's value is compared with the median of
+available county feature values in the same risk group. This comparison uses
+the all-county feature data where available, including the selected county;
+the correlation itself comes from the complete-event-window cohort. The county's
+position and the correlation sign determine its growth association:
 
 | County feature position | Positive correlation | Negative correlation |
 | --- | --- | --- |
-| Above median | Higher growth column | Lower growth column |
-| Below median | Lower growth column | Higher growth column |
+| Above median | Associated with higher Median PPSF YoY | Associated with lower Median PPSF YoY |
+| Below median | Associated with lower Median PPSF YoY | Associated with higher Median PPSF YoY |
 
-Exact median ties and zero correlations are neutral, with no directional
-association, and are excluded. Missing values or non-finite correlations are unavailable. Tooltips explain the association in the direction implied by the county's actual feature position,
-not a causal prediction.
+### Overall scorecard in Frame 7
 
-### County performance scorecard
+Three equally weighted components each contribute either one or zero points.
 
-Three component cards each contribute one up/down signal:
-
-| Card | Up signal | Down signal |
+| Component | One point | Zero points |
 | --- | --- | --- |
-| NRI risk rating | Very Low or Low | Medium, High, or Very High |
-| Performance subgroup | Mild or Strong Overperformer | Mild or Strong Underperformer |
-| County Makeup | More factors associated with higher growth | More factors associated with lower growth |
+| NRI Risk Rating | Very Low or Low | Medium, High, or Very High |
+| Performance vs. Peers | Mild or Strong Overperformer | Mild or Strong Underperformer |
+| County Makeup | More factors associated with higher than lower growth | Equal counts or more factors associated with lower growth |
 
-County Makeup uses the same factor assessments as the Top Factors columns.
-An equal number on each side produces a balanced dash. Neutral factors are excluded; a dash contributes zero up signals. Any unavailable factor
-comparison makes County Makeup and the overall score unavailable.
+The total score determines the level of climate risk:
 
-The three equally weighted signals produce the displayed overall score:
-
-| Up signals | Display label | Display takeaway |
-| ---: | --- | --- |
-| 3 | Low Risk | Safer environment that can benefit from steps to reduce potential climate damage |
-| 2 | Moderate Risk | Climate damage is a real possibility, know the steps to reduce it |
-| 0 or 1 | High Risk | Take steps to reduce climate damage |
-
-If required feature comparisons are unavailable, the overall card instead shows
-"Insufficient data".
-
-This score is a **rule-based presentation heuristic**, rather than a
-trained prediction model, an official FEMA rating, or a calibrated estimate of
-climate damage or housing returns. Its Low/Moderate/High labels are distinct
-from the five-category NRI scale.
+| Total points | Climate risk level |
+| ---: | --- |
+| 3 | Low Risk |
+| 2 | Moderate Risk |
+| 0 or 1 | High Risk |
 
 ## Geography and generated page
 
@@ -487,7 +468,7 @@ resources.
   may cover different calendar years from the housing/event data and are not
   restricted to pre-event information. Top-up selection can include weak
   correlations; the stored bootstrap interval does not control the selection.
-- **Playbook arrows and overall score:** group-level associations need not match
+- **Playbook factor directions and overall score:** group-level associations need not match
   an individual county's historical performance. County Makeup summarizes the
   balance of the same median-based factor associations. The equal-weight score
   is not a validated classifier or a calibrated risk probability, and cannot

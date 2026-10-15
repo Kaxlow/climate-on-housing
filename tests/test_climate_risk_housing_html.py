@@ -124,7 +124,7 @@ const playbookFeatureProfile=()=>{throw Error('Must not display a subgroup with 
         script = '''
 const DATA={playbook:{monthlyHistoryMonths:Array(120).fill('month'),monthlyHistoryValuesByFips:{}}};
 const STORY_CONFIG={playbook:[{state:'history-compare'},{state:'history-outlook'}]};
-let selectedCountyFips='test';
+let selectedCountyFips='test';let playbookQuestionsUnlocked=false;
 const playbookCountyByFips=new Map([['test',{fips:'test'}]]);
 const playbookFeatureProfile=()=>({subgroupName:'Strong Overperformers'});
 ''' + functions + '''
@@ -135,7 +135,7 @@ return [playbookHasSufficientHistory({fips:'test'}),storyConfigForSection('playb
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout), [
-            [False, "history-compare"], [False, "history-compare"],
+            [False, "history-outlook"], [False, "history-outlook"],
             [True, "history-outlook"], [True, "history-outlook"], [True, "history-outlook"],
         ])
 
@@ -172,6 +172,7 @@ console.log(JSON.stringify([syncs,draws]));
         functions = "function playbookFactorAssessment" + HTML_TEMPLATE.split("function playbookFactorAssessment", 1)[1].split("function renderPlaybookOutlook", 1)[0]
         script = '''
 const rows=[{fips:'o1',values:{x:2}},{fips:'o2',values:{x:8}},{fips:'u1',values:{x:6}},{fips:'u2',values:{x:12}}];
+const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const RISK_COLORS={Low:'#11794f',High:'#be302e'};
 const playbookCountyFeaturePosition=(county,feature)=>feature==='missing'?'Data unavailable':DATA.features.allCountyRowsByRisk.Low.at(-1).values.x<7?'Lower':'Higher';
 const DATA={features:{countyRowsByRisk:{Low:rows},allCountyRowsByRisk:{Low:[...rows,{fips:'test',values:{x:7}}]},subgroupsByRisk:{Low:{groups:[{index:0},{index:3}]}},subgroupByFips:{o1:0,o2:0,u1:3,u2:3}}};
@@ -228,13 +229,14 @@ for(let i=0;i<1000;i++) {
         script = '''
 const playbookCountyFeaturePosition=(c,f)=>f==='tie'?'At peer median':f==='missing'?'Data unavailable':'Higher';
 const featureLabel=f=>f,countyDisplayName=()=> 'Test County',playbookEvents=()=>[];
+const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const playbookPerformanceDisplayName=n=>n,RISK_COLORS={Low:'green'};
 ''' + functions + '''
 const county={riskRating:'Low'};
 const factors=[{feature:'positive',rho:.5},{feature:'negative',rho:-.5},{feature:'tie',rho:.5},{feature:'missing',rho:.5}];
 const result=factors.map(f=>playbookFactorAssessment(county,f));
 const html=playbookScorecard(county,{subgroupName:'Mild Overperformer'},factors.slice(0,2),'Low');
-console.log(JSON.stringify([result.map(x=>x.growth),result[1].description.includes('associated with lower Median PPSF YoY'),html.includes('aria-label="Balanced"'),html.includes('Moderate Risk'),html.includes('https://getquoll.com/')]));
+console.log(JSON.stringify([result.map(x=>x.growth),result[1].description.includes('associated with lower Median PPSF YoY'),html.includes('>Balanced</span>'),html.includes('Moderate Risk'),html.includes('https://getquoll.com/')]));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout), [[1, -1, 0, None], True, True, True, True])
@@ -300,6 +302,7 @@ console.log(JSON.stringify(result.map(r=>[r.peerMedian,r.matching,r.denominator,
 const DATA={features:{allCountyRowsByRisk:{Low:[{fips:'a',values:{x:1}},{fips:'b',values:{x:3}},{fips:'c',values:{x:5}}]},countyRowsByRisk:{Low:[]},subgroupsByRisk:{Low:{groups:[]}}}};
 const d3={median:a=>a.slice().sort((a,b)=>a-b)[Math.floor(a.length/2)]};
 const TEXT={playbookScorecardNote:'Not a forecast'};
+const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const RISK_COLORS={Low:'#11794f'};
 const playbookEvents=c=>c.events;
 const featureLabel=f=>f;
@@ -447,7 +450,7 @@ result.push(nodes['#playbook-warning-intro'].hidden, nodes['#playbook-warning-ta
 console.log(JSON.stringify(result));
 '''
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), ["Top factors", "Scorecard", True, False, False, False, "Top factors", True, True, ""])
+        self.assertEqual(json.loads(result.stdout), ["Top factors", "Taken together, the most significant factors in Example County don't show a clear direction in housing price growth.", True, False, False, False, "Top factors", True, True, ""])
 
     def test_playbook_frame_heading_and_fixed_conclusion_layout(self):
         self.assertIn('min-height: 0; gap: 8px; overflow-y: auto; overscroll-behavior: contain;', HTML_TEMPLATE)
@@ -1081,7 +1084,7 @@ return [profile.subgroupName, profile.assignmentSource];
         self.assertIn('#playbook-warning-takeaway { grid-row: 3; margin-top: 0; align-self: end; }', HTML_TEMPLATE)
         self.assertNotIn('.attr("title", strong ? TEXT.featureStrongTooltip', HTML_TEMPLATE)
         self.assertIn('.attr("title", `${featureLabel(feature)} · |ρ| ${d3.format(".2f")(metric.absRho || 0)}`)', HTML_TEMPLATE)
-        self.assertIn('class="playbook-warning-takeaway"', HTML_TEMPLATE)
+        self.assertIn('class="playbook-warning-takeaway takeaway"', HTML_TEMPLATE)
         self.assertNotIn('"\\u2191 rising"', HTML_TEMPLATE)
         self.assertNotIn('"\\u2193 falling"', HTML_TEMPLATE)
 
@@ -1090,7 +1093,7 @@ return [profile.subgroupName, profile.assignmentSource];
     ) -> None:
         self.assertIn("function playbookHasPerformanceGroup(county)", HTML_TEMPLATE)
         self.assertIn(
-            'config.filter(step => step.state !== "history-outlook")', HTML_TEMPLATE
+            'config.filter(step => step.state !== "questions")', HTML_TEMPLATE
         )
         self.assertIn("syncPlaybookStoryLength(county);", HTML_TEMPLATE)
         self.assertIn("playbookInsufficientPerformance:", HTML_TEMPLATE)
@@ -1101,14 +1104,14 @@ return [profile.subgroupName, profile.assignmentSource];
 
     def test_playbook_outlook_is_full_width_without_history_plot(self) -> None:
         self.assertIn(
-            '[data-story-state="history-outlook"] .playbook-history-pane { display: none; }',
+            ':is([data-story-state="history-outlook"], [data-story-state="takeaway-makeup"]) .playbook-history-pane { display: none; }',
             HTML_TEMPLATE,
         )
         self.assertIn(
-            '[data-story-state="history-outlook"] .playbook-selected-layout { grid-template-columns: minmax(0, 1fr);',
+            ':is([data-story-state="history-outlook"], [data-story-state="takeaway-makeup"]) .playbook-selected-layout { grid-template-columns: minmax(0, 1fr);',
             HTML_TEMPLATE,
         )
-        branch_start = HTML_TEMPLATE.index('if (state === "history-outlook")')
+        branch_start = HTML_TEMPLATE.index('if (state === "history-outlook" || state === "takeaway-makeup")')
         branch_end = HTML_TEMPLATE.index("function initPlaybook()", branch_start)
         outlook_branch = HTML_TEMPLATE[branch_start:branch_end]
         self.assertIn("renderPlaybookOutlook(county);", outlook_branch)

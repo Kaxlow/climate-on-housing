@@ -156,10 +156,24 @@
   <section class="slide" id="playbook">
     <h2 id="t-playbook-h2"></h2>
 
-    <!-- Four-frame county search, risk profile, history, and comparison playbook. -->
+    <!-- Eight-frame climate risk playbook, with an optional questions frame. -->
     <div class="panel" style="margin-top:12px;">
       <div class="playbook-frame-stack">
+        <div class="playbook-frame playbook-intro-frame">
+          <div class="playbook-risk-equation" aria-label="Three components of climate risk to housing">
+            <article><b>1</b><h3>NRI Risk Rating</h3><p>Measure of climate-related risk exposure assigned by FEMA</p></article>
+            <span aria-hidden="true">+</span>
+            <article><b>2</b><h3>Housing Market Performance Vs. Peers</h3><p>Comparison of county-level Median PPSF YoY across the climate event window, within each risk group</p></article>
+            <span aria-hidden="true">+</span>
+            <article><b>3</b><h3>County Makeup</h3><p>Set of county-level factors with significant correlation to Median PPSF YoY</p></article>
+          </div>
+          <p class="playbook-risk-equation-result">Climate Risk to Housing</p>
+        </div>
+        <div class="playbook-frame playbook-conclusion-frame" id="playbook-conclusion"></div>
+        <div class="playbook-frame playbook-questions-frame"><h3>The following significant correlations were observed from the data. Further research and analysis can be done to understand them better.</h3><div id="playbook-questions-list"></div></div>
         <div class="playbook-frame playbook-search-frame">
+          <aside class="playbook-location"><p id="playbook-location-message" role="status">Detecting your county…</p><button id="playbook-location-continue" type="button" hidden>Continue</button><p id="playbook-location-alternative" hidden>or select a different county →</p></aside>
+          <div class="playbook-manual-selection">
           <div class="playbook-search-shell">
             <input type="text" id="county-search">
             <div id="county-results" style="display:none;"></div>
@@ -172,6 +186,8 @@
               <button id="playbook-map-zoom-toggle" type="button" style="display:none;"></button>
             </div>
           </div>
+        </div>
+
         </div>
 
         <div class="playbook-frame playbook-selected-frame">
@@ -203,12 +219,12 @@
             </aside>
             <aside class="playbook-commentary-pane">
               <div class="playbook-commentary" id="playbook-event-commentary"></div>
-              <div id="playbook-warning-takeaway" class="playbook-warning-takeaway" hidden></div>
+              <div id="playbook-warning-takeaway" class="playbook-warning-takeaway takeaway" hidden></div>
             </aside>
           </div>
         </div>
       </div>
-      <div class="sources playbook-footer"><div id="t-playbook-sources"></div><p class="analytics-privacy" hidden><a href="https://kennethlow.com/privacy.html">Privacy &amp; analytics preferences</a></p><div class="page-feedback" id="t-page-feedback" hidden></div></div>
+      <div class="sources playbook-footer"><button id="playbook-open-questions" type="button" hidden>Open Questions from the Data</button><div id="t-playbook-sources"></div><p class="analytics-privacy" hidden><a href="https://kennethlow.com/privacy.html">Privacy &amp; analytics preferences</a></p><div class="page-feedback" id="t-page-feedback" hidden></div></div>
     </div>
   </section>
 </main>

@@ -193,7 +193,7 @@ console.log(JSON.stringify([
         self.assertNotIn("cursor: crosshair", CSS)
         self.assertIn('options.onClick ? "pointer" : "default"', SCRIPT)
         self.assertIn("if (options.onClick) options.onClick(event)", SCRIPT)
-        self.assertIn('state !== storyConfigForSection("playbook").at(-1).state', SCRIPT)
+        self.assertIn('!["conclusion", "questions"].includes(state)', SCRIPT)
         self.assertNotIn('.text("Monthly Median PPSF YoY")', SCRIPT)
         self.assertNotIn('if (opts.yAxisLabel)', SCRIPT)
         self.assertIn(".analytics-privacy { font-size: 11px; }", CSS)

@@ -3,7 +3,7 @@
    Edit any value below and rebuild to update the page.
    ============================================================ */
 const TEXT = {
-  pageFeedback: '<a href="https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform" target="_blank" rel="noopener noreferrer">Share feedback on this page</a>',
+  pageFeedback: '<a href="https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform" target="_blank" rel="noopener noreferrer">Share Feedback</a>',
   // ---- Hero ----
   heroH1: "Are Climate Risks Priced Into Housing Markets?",
   heroDek: "Climate change results in more severe weather events and natural disasters that cause substantial damage to properties and in extreme cases, devastate local communities. What does all this mean to you as a homeowner?",
@@ -27,8 +27,8 @@ const TEXT = {
   pricingQuestion: "There is clearly a relationship between climate risk and housing market growth. How do markets respond when an extreme climate event occurs?",
   pricingSources: 'Sources: <a href="https://www.redfin.com/news/data-center/downloads/" target="_blank" rel="noopener">Redfin monthly county Housing Market Tracker</a>; <a href="https://hazards.fema.gov/nri/data-resources" target="_blank" rel="noopener">FEMA National Risk Index county data</a>.',
 
-  playbookTopFactorsTitle: "Top Factors for {county}",
-  playbookFrameTitles: {search: "Select a County", "history-map": "County's Past Housing Market Performance", "history-events": "County Performance in the Context of Past Events", "history-compare": "County Performance Relative to Risk Group", "history-outlook": "County Market Resilience Assessment"},
+  playbookTopFactorsTitle: "Significant factors for {county}",
+  playbookFrameTitles: {title: "Climate Playbook: Understanding Your County's Climate Risk", intro: "What Constitutes Climate Risk to Housing?", search: "Choose a County", "history-map": "{county}'s Housing Market Performance", "history-events": "1. {county}'s NRI Risk Rating", "history-compare": "2. {county}'s Performance Relative to Peers", "history-outlook": "3. {county}'s Makeup", conclusion: "Takeaway: Putting the Parts Together", questions: "Open Questions"},
   playbookInsufficientHistory: "Insufficient housing data available for selected county to comment on local housing market performance.",
   playbookFactorContext: {
     net_earnings_per_capita_usd: {
@@ -457,6 +457,8 @@ let ratingSectionRendered = false;
 let eventSectionRendered = false;
 let featureSectionRendered = false;
 let playbookSectionRendered = false;
+let playbookQuestionsUnlocked = false;
+let countyDetectionStarted = false;
 // Event section state
 let selectedRisk = "Very Low";
 let riskTimer = null;
@@ -2301,15 +2303,12 @@ function playbookFactorAssessment(county, metric) {
 function playbookScorecard(county, profile, metrics, risk) {
   const condition = playbookEvents(county).length ? "when" : "if";
   const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
-  const complete = factors.length > 0 && factors.every(item => item.growth != null);
+  const complete = factors.length > 0 && factors.some(item => item.growth != null) && RISK_ORDER.includes(risk) && !!profile.subgroupName;
   const positive = factors.filter(item => item.growth === 1).length;
   const negative = factors.filter(item => item.growth === -1).length;
-  const balance = complete ? Math.sign(positive - negative) : null;
+  const balance = Math.sign(positive - negative);
   const riskUp = ["Very Low", "Low"].includes(risk);
   const performerUp = /overperformer/i.test(profile.subgroupName || "");
-  const arrow = signal => signal == null ? '<span class="playbook-score-arrow" aria-label="Unscored">?</span>'
-    : signal === 0 ? '<span class="playbook-score-arrow" aria-label="Balanced">—</span>'
-    : `<span class="playbook-score-arrow playbook-arrow-${signal > 0 ? "up" : "down"}" aria-label="${signal > 0 ? "Favorable" : "Unfavorable"}">${signal > 0 ? "↑" : "↓"}</span>`;
   const score = Number(riskUp) + Number(performerUp) + Number(balance === 1);
   const label = !complete ? "Insufficient data" : score === 3 ? "Low Risk" : score === 2 ? "Moderate Risk" : "High Risk";
   const level = !complete ? "unknown" : score === 3 ? "low" : score === 2 ? "moderate" : "high";
@@ -2318,11 +2317,11 @@ function playbookScorecard(county, profile, metrics, risk) {
     : score === 2 ? "Climate damage is a real possibility, know the steps to reduce it"
     : "Take steps to reduce climate damage";
   return `<div class="playbook-scorecard"><strong class="playbook-scorecard-title">Conclusion: ${countyDisplayName(county)}'s performance ${condition} an extreme climate event happens</strong>`
-    + `<div class="playbook-scorecard-part"><strong>NRI Risk Rating</strong><div class="playbook-scorecard-value"><span style="color:${RISK_COLORS[risk] || "var(--ink)"}">${risk}</span>${arrow(riskUp ? 1 : -1)}</div></div>`
+    + `<div class="playbook-scorecard-part"><strong>NRI Risk Rating</strong><div class="playbook-scorecard-value"><span style="color:${RISK_COLORS[risk] || "var(--ink)"}">${risk}</span></div></div>`
     + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
-    + `<div class="playbook-scorecard-part"><strong>Performance vs. Peers</strong><div class="playbook-scorecard-value ${performerUp ? "favorable" : "unfavorable"}"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span>${arrow(performerUp ? 1 : -1)}</div></div>`
+    + `<div class="playbook-scorecard-part"><strong>Performance vs. Peers</strong><div class="playbook-scorecard-value ${performerUp ? "favorable" : "unfavorable"}"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span></div></div>`
     + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
-    + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${balance == null ? "Data unavailable" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span>${arrow(balance)}</div></div>`
+    + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${balance == null ? "Data unavailable" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span></div></div>`
     + `<div class="playbook-score-result"><div><strong>Overall score:</strong> <b class="score-risk-${level}">${label}</b></div><p class="playbook-score-takeaway">${takeaway}${complete ? ' — <a href="https://getquoll.com/" target="_blank" rel="noopener">Here’s how</a>' : ""}</p></div></div>`;
 }
 
@@ -2395,7 +2394,8 @@ function renderPlaybookOutlook(county) {
   }
   const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
   introElement.property("hidden", false).html(fillTextTemplate(TEXT.playbookTopFactorsTitle, {county: countyDisplayName(county), risk}));
-  takeawayElement.property("hidden", false).html(playbookScorecard(county, profile, metrics, risk));
+  const balance = factors.filter(f => f.growth === 1).length - factors.filter(f => f.growth === -1).length;
+  takeawayElement.property("hidden", false).text(`Taken together, the most significant factors in ${countyDisplayName(county)} ${balance === 0 ? "don't show a clear direction in housing price growth." : `are associated with ${balance > 0 ? "higher" : "lower"} housing price growth.`}`);
   const card = factor => `<div class="playbook-warning-row" data-factor="${factor.feature}"><span class="playbook-factor-name">${playbookFeatureCategoryIcon(factor.feature)}<strong>${featureLabel(factor.feature)}</strong></span><span class="playbook-factor-position" aria-label="${factor.positionLabel}">${factor.factorUp === true ? "▲" : factor.factorUp === false ? "▼" : "—"} ${factor.positionLabel}</span></div>`;
   const column = (direction, title) => {
     const rows = factors.filter(factor => factor.growth === direction);
@@ -2427,10 +2427,10 @@ function selectPlaybookCounty(county) {
 function goToPlaybookProfile() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 2); return; }
+  if (isMobileView()) { setMobileFrame(section, 3); return; }
   const viewport = window.innerHeight || 1;
   window.scrollTo({
-    top: section.offsetTop + viewport * 2,
+    top: section.offsetTop + viewport * 3,
     behavior: "smooth",
   });
 }
@@ -2438,9 +2438,9 @@ function goToPlaybookProfile() {
 function goToPlaybookSearch() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 1); return; }
-  section.style.setProperty("--story-steps", STORY_CONFIG.playbook.length);
-  window.scrollTo({top: section.offsetTop + (window.innerHeight || 1), behavior: "smooth"});
+  if (isMobileView()) { setMobileFrame(section, 2); return; }
+  syncPlaybookStoryLength();
+  window.scrollTo({top: section.offsetTop + 2 * (window.innerHeight || 1), behavior: "smooth"});
 }
 
 function playbookHistoryRows(county) {
@@ -2453,9 +2453,19 @@ function playbookHistoryRows(county) {
 function renderPlaybookFrame() {
   const state = document.querySelector("#playbook .story-stage")?.dataset.storyState || "search";
   const county = playbookCountyByFips.get(selectedCountyFips);
-  d3.select("#t-page-feedback").property("hidden", !county || state !== storyConfigForSection("playbook").at(-1).state);
-  d3.select(".analytics-privacy").property("hidden", !county || state !== storyConfigForSection("playbook").at(-1).state);
-  d3.select('#t-playbook-h2').text(fillTextTemplate(TEXT.playbookH2, {frameTitle: TEXT.playbookFrameTitles[county ? state : 'search'] || TEXT.playbookFrameTitles.search}));
+  d3.select("#t-page-feedback").property("hidden", !county || !["conclusion", "questions"].includes(state));
+  d3.select(".analytics-privacy").property("hidden", !county || !["conclusion", "questions"].includes(state));
+  const titleState = state === "takeaway-makeup" ? "history-outlook" : state;
+  d3.select('#t-playbook-h2').text(fillTextTemplate(TEXT.playbookFrameTitles[titleState] || TEXT.playbookFrameTitles.search, {county: county ? countyDisplayName(county) : "County"}));
+  document.getElementById("playbook-open-questions").hidden = state !== "conclusion";
+  if (state === "intro" || state === "title") return;
+  if (state === "search") detectPlaybookCounty();
+  if (state === "conclusion" && county) {
+    const risk = county.hazards?.overall?.rating || county.riskRating;
+    d3.select("#playbook-conclusion").html(playbookScorecard(county, playbookFeatureProfile(county), mostImportantFeatureMetrics(risk), risk));
+    return;
+  }
+  if (state === "questions") { renderPlaybookQuestions(); return; }
   if (state === "search" || !county) {
     drawPlaybookMap("#county-selection-map", county || null, false, true);
     return;
@@ -2478,10 +2488,72 @@ function renderPlaybookFrame() {
     renderPlaybookPerformanceTakeaway(county);
     return;
   }
-  if (state === "history-outlook") {
+  if (state === "history-outlook" || state === "takeaway-makeup") {
     d3.select("#playbook-performance-status").html("");
     renderPlaybookOutlook(county);
   }
+}
+
+
+// Census documents JSONP for browser calls because its geocoder has no CORS support.
+function censusCountyAt(longitude, latitude) {
+  return new Promise((resolve, reject) => {
+    const callback = "__playbookCensus" + Date.now();
+    const script = document.createElement("script");
+    const cleanup = () => { clearTimeout(timer); script.remove(); delete window[callback]; };
+    const timer = setTimeout(() => { cleanup(); reject(new Error("County lookup timed out")); }, 12000);
+    window[callback] = data => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error("County lookup failed")); };
+    const params = new URLSearchParams({x: longitude, y: latitude, benchmark: "Public_AR_Current", vintage: "Current_Current", format: "jsonp", callback});
+    script.src = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates?" + params;
+    document.head.append(script);
+  });
+}
+
+async function detectPlaybookCounty() {
+  if (countyDetectionStarted) return;
+  countyDetectionStarted = true;
+  const message = document.getElementById("playbook-location-message");
+  try {
+    const response = await fetch("https://ipapi.co/json/", {signal: AbortSignal.timeout(10000)});
+    if (!response.ok) throw new Error("Location lookup failed");
+    const location = await response.json();
+    if (location.error || !location.country_code) throw new Error("Location unavailable");
+    if (location.country_code !== "US") {
+      message.textContent = "You don't appear to be in the US. Select a county →";
+      return;
+    }
+    if (!Number.isFinite(location.longitude) || !Number.isFinite(location.latitude)) throw new Error("Coordinates unavailable");
+    const data = await censusCountyAt(location.longitude, location.latitude);
+    const geographies = data.result?.geographies || {};
+    const geoid = geographies["County Subdivisions"]?.[0]?.GEOID || geographies.Counties?.[0]?.GEOID;
+    const county = playbookCountyByFips.get(String(geoid || "").slice(0, 5));
+    if (!county) throw new Error("County unavailable");
+    message.textContent = `You appear to be in ${countyDisplayName(county)}.`;
+    const button = document.getElementById("playbook-location-continue");
+    button.hidden = false;
+    button.onclick = () => { selectPlaybookCounty(county); goToPlaybookProfile(); };
+    document.getElementById("playbook-location-alternative").hidden = false;
+  } catch {
+    message.textContent = "Your county could not be detected. Select a county →";
+  }
+}
+
+function renderPlaybookQuestions() {
+  const target = d3.select("#playbook-questions-list").html("");
+  const groups = RISK_ORDER.map(risk => ({risk, metrics: mostImportantFeatureMetrics(risk)
+    .filter(metric => {
+      const context = TEXT.playbookFactorContext[metric.feature];
+      return Number.isFinite(metric.rho) && (!context || Math.sign(metric.rho) !== context.expectedRhoSign || context.higher?.includes("investigating further"));
+    })})).filter(group => group.metrics.length);
+  target.selectAll("article").data(groups).join("article").attr("class", "playbook-question")
+    .each(function(group) {
+      const item = d3.select(this);
+      item.append("h4").text(`Among counties in ${group.risk} Risk group:`);
+      item.append("ul").selectAll("li").data(group.metrics).join("li")
+        .text(metric => `${featureLabel(metric.feature)} is associated with ${metric.rho > 0 ? "higher" : "lower"} Median PPSF YoY`);
+    });
+  if (!groups.length) target.append("p").text("No unexplained relationships were identified among the selected top factors.");
 }
 
 function initPlaybook() {
@@ -2522,6 +2594,15 @@ function initPlaybook() {
     d3.select("#county-selection-map").transition().duration(420).call(playbookZoomBehavior.transform, target);
   });
   d3.select("#playbook-back-to-search").on("click", goToPlaybookSearch);
+  d3.select("#playbook-open-questions").on("click", () => {
+    playbookQuestionsUnlocked = true;
+    syncPlaybookStoryLength();
+    const section = document.getElementById("playbook");
+    const index = storyConfigForSection("playbook").findIndex(step => step.state === "questions");
+    if (isMobileView()) setMobileFrame(section, index);
+    else window.scrollTo({top: section.offsetTop + index * window.innerHeight, behavior: "smooth"});
+  });
+  syncPlaybookStoryLength();
 }
 
 const STORY_CONFIG = {
@@ -2568,11 +2649,15 @@ const STORY_CONFIG = {
   ],
   playbook: [
     {state: "title"},
+    {state: "intro"},
     {state: "search"},
     {state: "history-map"},
     {state: "history-events"},
     {state: "history-compare"},
     {state: "history-outlook"},
+    {state: "takeaway-makeup", takeaway: "#playbook-warning-takeaway"},
+    {state: "conclusion"},
+    {state: "questions"},
   ],
 };
 
@@ -2589,20 +2674,12 @@ function playbookHasPerformanceGroup(county) {
 
 function storyConfigForSection(id) {
   const config = STORY_CONFIG[id] || [];
-  if (id !== "playbook" || !selectedCountyFips) return config;
-  const county = playbookCountyByFips.get(selectedCountyFips);
-  return playbookHasPerformanceGroup(county)
-    ? config
-    : config.filter(step => step.state !== "history-outlook");
+  if (id !== "playbook") return config;
+  return playbookQuestionsUnlocked ? config : config.filter(step => step.state !== "questions");
 }
 
-function syncPlaybookStoryLength(county) {
-  const section = document.getElementById("playbook");
-  if (!section) return;
-  const stepCount = playbookHasPerformanceGroup(county)
-    ? STORY_CONFIG.playbook.length
-    : STORY_CONFIG.playbook.length - 1;
-  section.style.setProperty("--story-steps", stepCount);
+function syncPlaybookStoryLength() {
+  document.getElementById("playbook")?.style.setProperty("--story-steps", storyConfigForSection("playbook").length);
 }
 
 const takeawayTransitionTimers = new WeakMap();
@@ -2706,10 +2783,12 @@ function fitStoryTitle(title) {
 function applyStoryStep(section, step, index) {
   const stage = section.querySelector(".story-stage");
   if (!stage) return;
+  if (section.id === "playbook" && step.state === "questions" && !playbookQuestionsUnlocked) return;
   const effectiveStep = (
     section.id === "playbook"
     && step.state !== "title"
     && step.state !== "search"
+    && step.state !== "intro"
     && !selectedCountyFips
   )
     ? {...step, state: "search"}
