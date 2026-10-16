@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script defer src="https://kennethlow.com/analytics/behavior.js"></script>
 <script src="https://kennethlow.com/analytics/posthog.js"></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -224,7 +225,7 @@
           </div>
         </div>
       </div>
-      <div class="sources playbook-footer"><button id="playbook-open-questions" type="button" hidden>Open Questions from the Data</button><div id="t-playbook-sources"></div><p class="analytics-privacy" hidden><a href="https://kennethlow.com/privacy.html">Privacy &amp; analytics preferences</a></p><div class="page-feedback" id="t-page-feedback" hidden></div></div>
+      <div class="sources playbook-footer"><button id="playbook-open-questions" data-analytics-action="open_questions" type="button" hidden>Open Questions from the Data</button><div id="t-playbook-sources"></div><p class="analytics-privacy" hidden><a data-analytics-action="privacy_preferences" href="https://kennethlow.com/privacy.html">Privacy &amp; analytics preferences</a></p><div class="page-feedback" id="t-page-feedback" hidden></div></div>
     </div>
   </section>
 </main>

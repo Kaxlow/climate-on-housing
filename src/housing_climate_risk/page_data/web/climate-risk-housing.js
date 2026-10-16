@@ -3,7 +3,7 @@
    Edit any value below and rebuild to update the page.
    ============================================================ */
 const TEXT = {
-  pageFeedback: '<a href="https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform" target="_blank" rel="noopener noreferrer">Share Feedback</a>',
+  pageFeedback: '<a data-analytics-action="share_feedback" href="https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform" target="_blank" rel="noopener noreferrer">Share Feedback</a>',
   // ---- Hero ----
   heroH1: "Are Climate Risks Priced Into Housing Markets?",
   heroDek: "Climate change results in more severe weather events and natural disasters that cause substantial damage to properties and in extreme cases, devastate local communities. What does all this mean to you as a homeowner?",
@@ -320,12 +320,12 @@ function hydrateText() {
   document.getElementById("story-next").setAttribute("aria-label", TEXT.storyNextLabel);
   document.getElementById("story-next").title = TEXT.storyNextLabel;
   const scatterSub = document.getElementById("t-scatter-sub");
-  scatterSub?.append(" ", makeInfoButton(TEXT.scatterFootnotesTooltip, {label: TEXT.informationTooltipLabel}));
+  scatterSub?.append(" ", makeInfoButton(TEXT.scatterFootnotesTooltip, {analyticsId: 'pricing-scatter-methods', label: TEXT.informationTooltipLabel}));
   setCompleteMonthlyPlotTitle("#t-pricing-card-title", TEXT.pricingCardTitle);
   const performanceTerm = document.getElementById("feature-performance-term");
-  performanceTerm?.after(makeInfoButton(TEXT.featurePerformanceTooltip, {label: TEXT.informationTooltipLabel}));
+  performanceTerm?.after(makeInfoButton(TEXT.featurePerformanceTooltip, {analyticsId: 'features-performance-definition', label: TEXT.informationTooltipLabel}));
   const noaaTerm = document.getElementById("events-noaa-term");
-  noaaTerm?.after(" ", makeInfoButton(TEXT.eventsNoaaTooltip, {label: TEXT.informationTooltipLabel}));
+  noaaTerm?.after(" ", makeInfoButton(TEXT.eventsNoaaTooltip, {analyticsId: 'events-noaa-definition', label: TEXT.informationTooltipLabel}));
   condenseSourceDisclosures();
 }
 
@@ -385,6 +385,11 @@ function attachInfoTooltip(element, content, {html = false} = {}) {
   element.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();
+    window.portfolioTelemetry?.track?.('tooltip_clicked', {
+      tooltip_id: element.dataset.analyticsTooltip,
+      tooltip_label: element.getAttribute('aria-label'),
+      opens_tooltip: activeInfoTooltipTrigger !== element,
+    }, element);
     if (activeInfoTooltipTrigger === element) {
       closeInfoTooltip();
       return;
@@ -414,6 +419,7 @@ function makeInfoButton(content, options = {}) {
   button.type = "button";
   button.className = "info-tooltip-trigger";
   button.textContent = "?";
+  button.dataset.analyticsTooltip = options.analyticsId;
   button.setAttribute("aria-label", options.label || TEXT.informationTooltipLabel);
   attachInfoTooltip(button, content, options);
   return button;
@@ -427,6 +433,7 @@ function setCompleteMonthlyPlotTitle(target, content, {html = false} = {}) {
   if (html) label.innerHTML = content;
   else label.textContent = content;
   const info = makeInfoButton(TEXT.completeMonthlyPlotTooltip, {
+    analyticsId: `${element.id}-completeness`,
     label: TEXT.informationTooltipLabel,
   });
   info.classList.add("plot-completeness-info");
@@ -439,7 +446,7 @@ function condenseSourceDisclosures() {
     source.innerHTML = "";
     const label = document.createElement("span");
     label.textContent = TEXT.sourcesLabel;
-    source.append(label, makeInfoButton(content, {html: true, label: `${TEXT.sourcesLabel}: ${TEXT.informationTooltipLabel}`}));
+    source.append(label, makeInfoButton(content, {analyticsId: `${source.id || source.closest("section").id}-sources`, html: true, label: `${TEXT.sourcesLabel}: ${TEXT.informationTooltipLabel}`}));
   });
 }
 const countyByFips = new Map(DATA.priceRisk.counties.map(d => [d.fips, d]));
@@ -745,7 +752,7 @@ function updateRiskLegend(selector, activeRisk, onSelect, {tooltipText = null} =
   if (tooltipText) {
     const veryHighButton = buttons.filter(risk => risk === "Very High").node();
     if (veryHighButton) {
-      const info = makeInfoButton(tooltipText, {label: TEXT.informationTooltipLabel});
+      const info = makeInfoButton(tooltipText, {analyticsId: `${selector.replace(/^#/, "")}-definition`, label: TEXT.informationTooltipLabel});
       info.classList.add("risk-legend-info");
       veryHighButton.after(info);
     }
@@ -1145,7 +1152,7 @@ function drawAffectedMap(wd) {
     : `one year before event start through ${activeEventWindow === "B" ? "five" : "three"} years after event end`;
   document.querySelector("#affected-county-count").append(makeInfoButton(
     `Number of ${selectedRisk} risk counties with complete monthly Median PPSF YoY data for ${period}, the period displayed in the line plot.`,
-    {label: "About the county count"},
+    {analyticsId: "events-affected-county-count", label: "About the county count"},
   ));
   drawMap("#affected-map",
     (county, fips) => affected.get(fips) === selectedRisk ? RISK_COLORS[selectedRisk] : "#e6dfd5",
@@ -1245,6 +1252,7 @@ function drawFeatureImportanceV2() {
     topic.append(
       document.createTextNode(labelText),
       makeInfoButton(content, {
+        analyticsId: labelText === TEXT.featureSourcesTopic ? "features-footnote-sources" : "features-footnote-ranking",
         html: labelText === TEXT.featureSourcesTopic,
         label: `${labelText}: ${TEXT.informationTooltipLabel}`,
       }),
@@ -1326,7 +1334,7 @@ function drawFeatureScatter(feature) {
   outcomeLabel.textContent = TEXT.featureOutcomeTerm;
   const comparisonLabel = document.createElement("span");
   comparisonLabel.textContent = ` vs. ${featureLabel(feature)}`;
-  chartTitle.append(outcomeLabel, makeInfoButton(TEXT.featureOutcomeTooltip), comparisonLabel);
+  chartTitle.append(outcomeLabel, makeInfoButton(TEXT.featureOutcomeTooltip, {analyticsId: "features-outcome-definition"}), comparisonLabel);
   const strengthKey = Math.abs(rho) > 0.5 ? "strong" : Math.abs(rho) >= 0.3 ? "moderate" : "weak";
   const directionKey = rho >= 0 ? "positive" : "negative";
   d3.select("#feature-relationship").attr("hidden", null).text(replaceFeatureText(TEXT.featureRelationship, {
@@ -1512,7 +1520,7 @@ function drawFeatureSubgroupPanel() {
     distributionTitle.dataset.feature = distributionTitleKey;
     distributionTitle.append(
       document.createTextNode(replaceFeatureText(TEXT.featureDistributionTitle, {feature: featureLabel(selectedDistributionFeature)})),
-      makeInfoButton(removeOutliers ? TEXT.featureDistributionOutlierTooltip : TEXT.featureDistributionVeryHighTooltip, {label: TEXT.informationTooltipLabel}),
+      makeInfoButton(removeOutliers ? TEXT.featureDistributionOutlierTooltip : TEXT.featureDistributionVeryHighTooltip, {analyticsId: "features-distribution-explanation", label: TEXT.informationTooltipLabel}),
     );
   }
   const correlation = options.find(metric => metric.feature === selectedDistributionFeature)?.rho;
@@ -1713,7 +1721,7 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
       if (!interactive) return;
       const profile = playbookCountyByFips.get(d.properties.fips);
       if (profile) {
-        selectPlaybookCounty(profile);
+        selectPlaybookCounty(profile, "map");
         goToPlaybookProfile();
       }
     });
@@ -1846,7 +1854,7 @@ function renderPlaybookPerformanceTakeaway(county) {
     ? "This county’s performance is assessed based on qualifying events with complete monthly housing data from one year before the event through three years afterward. Eligible counties are ranked within their risk group by their median-of-monthly-medians PPSF YoY."
     : "The county's median value of Median PPSF YoY over the past ten years is compared with the median values of its risk group's monthly median and quartile values of Median PPSF YoY over the same period. A gap at least halfway from the group median toward the relevant quartile is Strong; a smaller gap is Mild.";
   target.html(`<span>${countyDisplayName(county)} is a <strong>${playbookPerformanceDisplayName(profile.subgroupName)}</strong> within the <strong>${county.riskRating} risk group</strong>.</span>`);
-  target.node().querySelector("span").append(makeInfoButton(basis, {label: TEXT.informationTooltipLabel}));
+  target.node().querySelector("span").append(makeInfoButton(basis, {analyticsId: "playbook-performance-basis", label: TEXT.informationTooltipLabel}));
 }
 
 function renderPlaybookFeatureSummary(county, summarizeSubgroup = false) {
@@ -1929,7 +1937,7 @@ function renderPlaybookEventList(county) {
   if (!events.length) {
     list.html(`<div class="playbook-event-card">${TEXT.playbookNoPastEvents}</div>`);
     const definition = list.select(".playbook-event-definition").node();
-    if (definition) definition.appendChild(makeInfoButton(TEXT.playbookEventDefinition, {label: "Definition of extreme weather events"}));
+    if (definition) definition.appendChild(makeInfoButton(TEXT.playbookEventDefinition, {analyticsId: "playbook-extreme-weather-definition", label: "Definition of extreme weather events"}));
     return;
   }
   list.html(events.map(event => `<div class="playbook-event-card" data-event-key="${event.eventKey}"><strong>${eventIcon(event)} ${normalCase(event.name || event.type)}</strong><br>${d3.utcFormat("%b %Y")(event.startDate)} to ${d3.utcFormat("%b %Y")(event.endDate)}</div>`).join(""));
@@ -2322,7 +2330,7 @@ function playbookScorecard(county, profile, metrics, risk) {
     + `<div class="playbook-scorecard-part"><strong>Performance vs. Peers</strong><div class="playbook-scorecard-value ${performerUp ? "favorable" : "unfavorable"}"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span></div></div>`
     + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
     + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${balance == null ? "Data unavailable" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span></div></div>`
-    + `<div class="playbook-score-result"><div><strong>Overall score:</strong> <b class="score-risk-${level}">${label}</b></div><p class="playbook-score-takeaway">${takeaway}${complete ? ' — <a href="https://getquoll.com/" target="_blank" rel="noopener">Here’s how</a>' : ""}</p></div></div>`;
+    + `<div class="playbook-score-result"><div><strong>Overall score:</strong> <b class="score-risk-${level}">${label}</b></div><p class="playbook-score-takeaway">${takeaway}${complete ? ' — <a data-analytics-action="heres_how" href="https://getquoll.com/" target="_blank" rel="noopener">Here’s how</a>' : ""}</p></div></div>`;
 }
 
 function playbookFeatureSubgroupMatch(county, feature) {
@@ -2408,12 +2416,20 @@ function renderPlaybookOutlook(county) {
     + (other.length ? '<div class="playbook-factor-other"><h4>Neutral or unavailable</h4>' + other.map(card).join("") + '</div>' : ""));
   container.selectAll(".playbook-warning-row").each(function() {
     const factor = factors.find(item => item.feature === this.dataset.factor);
-    this.append(makeInfoButton(factor.description, {label: TEXT.informationTooltipLabel}));
+    this.append(makeInfoButton(factor.description, {analyticsId: `playbook-factor-${factor.feature}`, label: TEXT.informationTooltipLabel}));
   });
   requestAnimationFrame(fitPlaybookConclusionTitle);
 }
 
-function selectPlaybookCounty(county) {
+function selectPlaybookCounty(county, selectionMethod) {
+  const stage = document.querySelector('#playbook .story-stage');
+  if (selectionMethod) window.portfolioTelemetry?.track?.('playbook_county_selected', {
+    selection_method: selectionMethod, county_fips: String(county.fips), county_name: countyDisplayName(county),
+  }, stage);
+  if (stage) {
+    stage.dataset.analyticsCountyFips = String(county.fips);
+    stage.dataset.analyticsCountyName = countyDisplayName(county);
+  }
   selectedCountyFips = county.fips;
   const playbookPanel = document.querySelector("#playbook .panel");
   playbookPanel?.classList.add("has-county-selection");
@@ -2532,7 +2548,7 @@ async function detectPlaybookCounty() {
     message.textContent = `You appear to be in ${countyDisplayName(county)}.`;
     const button = document.getElementById("playbook-location-continue");
     button.hidden = false;
-    button.onclick = () => { selectPlaybookCounty(county); goToPlaybookProfile(); };
+    button.onclick = () => { selectPlaybookCounty(county, "suggested_continue"); goToPlaybookProfile(); };
     document.getElementById("playbook-location-alternative").hidden = false;
   } catch {
     message.textContent = "Your county could not be detected. Select a county →";
@@ -2576,7 +2592,7 @@ function initPlaybook() {
       .style("border-bottom", "1px solid var(--line)").style("font-size", "13px")
       .html(d => `<strong>${countyDisplayName(d)}</strong> <span style="color:var(--muted);">(${d.hazards?.overall?.rating || "Unknown risk"})</span>`)
       .on("click", (event, d) => {
-        selectPlaybookCounty(d);
+        selectPlaybookCounty(d, "search");
         goToPlaybookProfile();
         input.property("value", "");
         results.style("display", "none").html("");
@@ -2593,7 +2609,10 @@ function initPlaybook() {
     const target = playbookMapTransform.k > 1.01 ? d3.zoomIdentity : playbookSelectedTransform;
     d3.select("#county-selection-map").transition().duration(420).call(playbookZoomBehavior.transform, target);
   });
-  d3.select("#playbook-back-to-search").on("click", goToPlaybookSearch);
+  d3.select("#playbook-back-to-search").on("click", function() {
+    window.portfolioTelemetry?.track?.('playbook_back_to_search_clicked', {}, this);
+    goToPlaybookSearch();
+  });
   d3.select("#playbook-open-questions").on("click", () => {
     playbookQuestionsUnlocked = true;
     syncPlaybookStoryLength();
