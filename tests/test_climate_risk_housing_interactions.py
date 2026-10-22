@@ -71,16 +71,16 @@ console.log(JSON.stringify([
         self.assertIn("if (isMobileView()) return;", SCRIPT)
         routing = SCRIPT.split("function initPanelScrollRouting", 1)[1].split("function updateStoryFromScroll", 1)[0]
         self.assertNotIn("preventDefault", routing)
-        self.assertIn('lastChartWidth', SCRIPT)
+        self.assertIn('storyViewportWidth', SCRIPT)
 
     def test_shared_wheel_and_button_motion(self):
         navigation = SCRIPT.split("function navigateStory(direction)", 1)[1].split("function handleStoryWheel", 1)[0]
         wheel = SCRIPT.split("function handleStoryWheel", 1)[1].split("function initStoryEdgeNavigation", 1)[0]
-        self.assertIn("animateStoryScroll(target)", navigation)
-        self.assertIn("animateStoryScroll((storyScrollTarget", wheel)
-        self.assertIn("isMobileView()", wheel)
+        self.assertIn("animateStoryScroll(next.top)", navigation)
+        self.assertIn("navigateStory(direction)", wheel)
+        self.assertIn("wheelGesture.consumed", wheel)
         self.assertIn("event.ctrlKey", wheel)
-        self.assertIn("node.scrollHeight > node.clientHeight", wheel)
+        self.assertIn("canScrollStoryContent(wheelGesture.owner, direction)", wheel)
         self.assertIn('storyMotionReduced()', wheel)
         self.assertIn("background: var(--forest); color: white;", CSS)
 
@@ -101,7 +101,7 @@ console.log(JSON.stringify([
         self.assertNotIn('[data-story-state$="-intro"]', CSS)
         self.assertIn('[data-story-state="card-before-intro"]', CSS)
         self.assertIn('title.getAnimations().forEach', SCRIPT)
-        self.assertIn('duration: 900, easing: "cubic-bezier(.45, 0, .2, 1)"', SCRIPT)
+        self.assertIn('duration: 220, easing: "cubic-bezier(.45, 0, .2, 1)"', SCRIPT)
         self.assertIn('scale(${matrix.a})', SCRIPT)
         self.assertIn('function fitStoryTitle(title)', SCRIPT)
         self.assertIn('while (lines() > 2', SCRIPT)
@@ -129,7 +129,7 @@ console.log(JSON.stringify([
         self.assertNotIn("panel.animate(", SCRIPT)
         self.assertIn("function syncFeaturePanelHeights()", SCRIPT)
         self.assertIn("#features .feature-story-grid { flex: 1;", CSS)
-        observer = SCRIPT.split("const chartLayoutObserver = new ResizeObserver", 1)[1].split("let lastChartWidth", 1)[0]
+        observer = SCRIPT.split("const chartLayoutObserver = new ResizeObserver", 1)[1].split('window.addEventListener("resize"', 1)[0]
         self.assertNotIn("requestAnimationFrame", observer)
 
     def test_event_morph_survives_redundant_resize(self):
@@ -171,7 +171,8 @@ console.log(JSON.stringify([
         self.assertIn('const stride = pages ? extra / pages : 0', SCRIPT)
         self.assertNotIn('Step ${position + 1}', SCRIPT)
         self.assertIn('const batchSize = 120;', SCRIPT)
-        self.assertIn('while (seriesIndex < series.length) drawCountyBatch()', SCRIPT)
+        self.assertNotIn('while (seriesIndex < series.length) drawCountyBatch()', SCRIPT)
+        self.assertIn('const deadline = performance.now() + 8', SCRIPT)
         self.assertIn('Swipe up for more', CSS)
 
     def test_mobile_map_gestures_and_animation_defaults(self):

@@ -22,6 +22,40 @@
     </div>
   </section>
 
+  <section class="slide" id="roadmap" aria-labelledby="roadmap-title">
+    <h2 id="roadmap-title">From Housing Trends to Your County’s Climate Risk</h2>
+    <p class="roadmap-intro">Follow the evidence from a national view to a county-by-county Climate Playbook.</p>
+    <div class="roadmap-path">
+      <ol class="roadmap-stops" aria-label="Five stages of the analysis">
+        <li class="roadmap-stop" style="--roadmap-color: var(--water)">
+          <span class="roadmap-node" aria-hidden="true"></span>
+          <svg class="roadmap-icon" viewBox="0 0 90 58" aria-hidden="true"><path d="M4 44 L20 31 L34 37 L50 17 L65 24 L82 8"/></svg>
+          <div><h3>A decade of housing trends</h3><p>Trace county median price-per-square-foot (PPSF) year-over-year (YoY) growth over the latest 10 complete calendar years.</p></div>
+        </li>
+        <li class="roadmap-stop" style="--roadmap-color: var(--teal)">
+          <span class="roadmap-node" aria-hidden="true"></span>
+          <svg class="roadmap-icon" viewBox="0 0 90 58" aria-hidden="true"><path d="M8 12 H27 V27 H8 Z M36 12 H55 V27 H36 Z M64 12 H83 V27 H64 Z M22 36 H41 V51 H22 Z M50 36 H69 V51 H50 Z"/></svg>
+          <div><h3>Group counties by climate risk</h3><p>Group counties by FEMA National Risk Index (NRI) rating, from Very Low to Very High risk.</p></div>
+        </li>
+        <li class="roadmap-stop" style="--roadmap-color: var(--hazard)">
+          <span class="roadmap-node" aria-hidden="true"></span>
+          <svg class="roadmap-icon" viewBox="0 0 90 58" aria-hidden="true"><path d="M4 25 L21 20 L37 23 M45 5 V53 M53 25 L65 40 L82 30"/></svg>
+          <div><h3>Before and after extreme events</h3><p>Compare the risk groups’ housing price growth before and after extreme climate events.</p></div>
+        </li>
+        <li class="roadmap-stop" style="--roadmap-color: var(--teal)">
+          <span class="roadmap-node" aria-hidden="true"></span>
+          <svg class="roadmap-icon" viewBox="0 0 90 58" aria-hidden="true"><path d="M10 10 H62 M10 27 H42 M10 44 H78 M10 5 V49"/></svg>
+          <div><h3>Explain variation within groups</h3><p>Explore county factors associated with stronger or weaker housing market performance within each risk group.</p></div>
+        </li>
+        <li class="roadmap-stop" style="--roadmap-color: var(--sun)">
+          <span class="roadmap-node" aria-hidden="true"></span>
+          <svg class="roadmap-icon" viewBox="0 0 90 58" aria-hidden="true"><path d="M10 26 L44 3 L78 26 M20 22 V53 H68 V22 M36 53 V34 H52 V53"/></svg>
+          <div><h3>Your county Climate Playbook</h3><p>Bring the findings together to assess a county’s climate risk to housing: exposure, market performance, and county makeup.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
   <section class="slide" id="pricing">
     <h2 id="t-pricing-h2"></h2>
 
@@ -168,9 +202,11 @@
             <span aria-hidden="true">+</span>
             <article><b>3</b><h3>County Makeup</h3><p>Set of county-level factors with significant correlation to Median PPSF YoY</p></article>
           </div>
-          <p class="playbook-risk-equation-result">Climate Risk to Housing</p>
         </div>
-        <div class="playbook-frame playbook-conclusion-frame" id="playbook-conclusion"></div>
+        <div class="playbook-frame playbook-conclusion-frame" id="playbook-conclusion">
+          <button class="playbook-back-button" type="button"><span class="playbook-back-arrow" aria-hidden="true">&#8592;</span> Back to county selection</button>
+          <div id="playbook-conclusion-scorecard"></div>
+        </div>
         <div class="playbook-frame playbook-questions-frame"><h3>The following significant correlations were observed from the data. Further research and analysis can be done to understand them better.</h3><div id="playbook-questions-list"></div></div>
         <div class="playbook-frame playbook-search-frame">
           <aside class="playbook-location"><p id="playbook-location-message" role="status">Detecting your county…</p><button id="playbook-location-continue" type="button" hidden>Continue</button><p id="playbook-location-alternative" hidden>or select a different county →</p></aside>
@@ -185,14 +221,16 @@
               <button id="playbook-map-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
               <button id="playbook-map-zoom-minus" type="button" title="Zoom out" aria-label="Zoom out">&#8722;</button>
               <button id="playbook-map-zoom-toggle" type="button" style="display:none;"></button>
+              <button id="playbook-map-recenter" type="button">Recenter Map</button>
             </div>
           </div>
+          <div class="playbook-selection-confirmation" id="playbook-selection-confirmation" hidden><p id="playbook-map-hint" role="status"></p><button id="playbook-selection-continue" type="button">Continue</button></div>
         </div>
 
         </div>
 
         <div class="playbook-frame playbook-selected-frame">
-          <button id="playbook-back-to-search" class="playbook-back-button" type="button"><span class="playbook-back-arrow" aria-hidden="true">&#8592;</span> Back to county search</button>
+          <button id="playbook-back-to-search" class="playbook-back-button" type="button"><span class="playbook-back-arrow" aria-hidden="true">&#8592;</span> Back to county selection</button>
           <p id="playbook-warning-intro" class="playbook-warning-intro" hidden></p>
           <div class="playbook-selected-layout">
             <aside class="playbook-profile-panel" id="playbook-profile-details">

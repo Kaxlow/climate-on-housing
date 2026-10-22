@@ -6,7 +6,7 @@ const TEXT = {
   pageFeedback: '<a data-analytics-action="share_feedback" href="https://docs.google.com/forms/d/e/1FAIpQLSeLPeN1D-bAfJLxSRhsbeAQwMIf3DBNm-nuqyVe30ZasESyxA/viewform" target="_blank" rel="noopener noreferrer">Share Feedback</a>',
   // ---- Hero ----
   heroH1: "Are Climate Risks Priced Into Housing Markets?",
-  heroDek: "Climate change results in more severe weather events and natural disasters that cause substantial damage to properties and in extreme cases, devastate local communities. What does all this mean to you as a homeowner?",
+  heroDek: "Climate change leads to more severe, damaging weather events. What does this mean to housing in your area?",
   storyPrevLabel: "Prev",
   storyNextLabel: "Next",
   sourcesLabel: "Sources",
@@ -87,7 +87,7 @@ const TEXT = {
   eventsOverviewQuestion: "How do the risk groups differ in response to events?",
   eventsBeforeContext: "First, look at housing price growth before an event:",
   eventsAfterContext: "Now, look at housing price growth after an event:",
-  eventsBeforeTitle: "Median PPSF YoY 1 year before event",
+  eventsBeforeTitle: "Median PPSF YoY in 1 year before event",
   eventsBeforeTakeaway: "Before an event, housing price growth seems stable.",
   eventsAfterQuestion: "What does it look like after an event?",
   eventsShortTitle: "Median PPSF YoY in 3 years after event",
@@ -398,7 +398,7 @@ function attachInfoTooltip(element, content, {html = false} = {}) {
     activeInfoTooltipTrigger = element;
     element.setAttribute("aria-expanded", "true");
     tooltip.classed("persistent", true);
-    showTooltip(event, content, {html, anchor: element});
+    showTooltip(event, typeof content === 'function' ? content() : content, {html, anchor: element});
   });
 }
 
@@ -458,6 +458,10 @@ let ratingSequenceTimer = null;
 let ratingSequencePaused = false;
 let scoreScatterState = null;
 let scoreScatterRendered = false;
+let scoreRenderTask = null;
+let scoreRasterWorker = null;
+let scoreRasterWorkerFailed = false;
+let scoreWorkerHistory = null;
 let scoreTooltipFrame = null;
 let scoreRenderGeneration = 0;
 let ratingSectionRendered = false;
@@ -578,28 +582,50 @@ function drawStateBoundaries(target, path) {
 function enableMapGestures(svg, group, initial = null) {
   svg.attr('data-map-gestures', 'true').style('touch-action', 'none').style('overflow', 'hidden');
   const zoom = d3.zoom().touchable(() => true).scaleExtent([1, 12])
-    .on('start', () => hideTooltip(true))
+    .clickDistance(6)
+    .on('start', event => { if (event.sourceEvent) hideTooltip(); })
     .on('zoom', event => group.attr('transform', event.transform));
   svg.call(zoom).on('dblclick.zoom', null);
   svg.call(zoom.transform, initial || d3.zoomTransform(svg.node()));
+  return zoom;
+}
+
+function countyMapTransform(path, feature, width, height) {
+  const [[x0, y0], [x1, y1]] = path.bounds(feature);
+  const scale = Math.max(1, Math.min(10, .6 / Math.max((x1 - x0) / width, (y1 - y0) / height)));
+  return d3.zoomIdentity.translate(width / 2, height / 2).scale(scale)
+    .translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+}
+
+function moveMap(svg, zoom, transform) {
+  svg.interrupt();
+  if (storyMotionReduced()) svg.call(zoom.transform, transform);
+  else svg.transition().duration(220).call(zoom.transform, transform);
 }
 
 function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
   const svg = d3.select(svgId);
   const width = svg.node().clientWidth || 520;
   const height = svg.node().clientHeight || 430;
-  svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
-  const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
-  const path = d3.geoPath(projection);
+  // Risk animations change fills only. Retain geometry, controls and zoom state.
+  const size = `${width},${height}`;
+  const resized = svg.attr('data-map-size') !== size;
+  if (resized) svg.selectAll('*').remove();
+  svg.attr('data-map-size', size).attr("viewBox", [0,0,width,height]);
+  if (resized) svg.node().mapPath = d3.geoPath(d3.geoAlbersUsa()
+    .fitExtent([[8, 8], [width - 8, height - 8]], DATA.geojson));
+  const path = svg.node().mapPath;
   svg.on("mouseleave", () => hideTooltip());
-  const mapGroup = svg.append("g");
-  mapGroup.selectAll("path")
+  const mapGroup = svg.selectAll('g.map-geography').data([null]).join('g').attr('class', 'map-geography');
+  const counties = mapGroup.selectAll("path.county")
     .data(DATA.geojson.features)
     .join("path")
-    .attr("class","county")
-    .attr("d", path)
+    .attr("class","county");
+  if (resized) counties.attr('d', path);
+  counties
     .attr("fill", d => fillFn(countyByFips.get(d.properties.fips), d.properties.fips))
-    .style("cursor", clickFn ? "pointer" : "default")
+    .classed('map-county-selected', d => d.properties.fips === svg.node().selectedMapCounty?.properties.fips)
+    .style("cursor", "pointer")
     .on("mousemove", (event, d) => {
       const html = tooltipFn(countyByFips.get(d.properties.fips), d.properties.fips);
       if (!html) {
@@ -608,10 +634,99 @@ function drawMap(svgId, fillFn, tooltipFn, legendId, legendHtml, clickFn) {
       }
       showTooltip(event, html);
     })
-    .on("click", clickFn ? (event, d) => clickFn(d.properties.fips) : null);
-  drawStateBoundaries(mapGroup, path);
-  enableMapGestures(svg, mapGroup);
+    .on("click", (event, d) => {
+      svg.node().selectedMapCounty = d;
+      counties.classed('map-county-selected', feature => feature === d);
+      d3.select(svg.node().parentElement).select('.map-zoom-county').property('disabled', false);
+      if (clickFn) clickFn(d.properties.fips);
+    });
+  if (resized) drawStateBoundaries(mapGroup, path);
+  const zoom = enableMapGestures(svg, mapGroup);
+  const parent = d3.select(svg.node().parentElement).classed('interactive-map-space', true);
+  const controls = parent.selectAll('.map-view-controls').data([null]).join('div').attr('class', 'map-view-controls');
+  controls.selectAll('button').data(['Zoom to county', 'Recenter map']).join('button')
+    .attr('type', 'button').attr('class', (_, i) => i ? 'map-recenter' : 'map-zoom-county')
+    .text(d => d).property('disabled', (_, i) => !i && !svg.node().selectedMapCounty)
+    .on('click', (_, label) => moveMap(svg, zoom, label === 'Recenter map' ? d3.zoomIdentity
+      : countyMapTransform(path, svg.node().selectedMapCounty, width, height)));
   if (legendId) d3.select(legendId).html(legendHtml || "");
+}
+
+// Canvas strokes can be expensive even after point generation is time-sliced.
+// Keep the same 120-county compositing groups off the UI thread when supported.
+function scoreRasterWorkerMain() {
+  let series = [], activeGeneration = 0;
+  self.onmessage = ({data}) => {
+    if (data.series) series = data.series;
+    const {generation, width, height, pixelRatio, margin, monthPixels, clipDomain, yBase, yMultiplier} = data;
+    activeGeneration = generation;
+    const canvas = new OffscreenCanvas(Math.round(width * pixelRatio), Math.round(height * pixelRatio));
+    const context = canvas.getContext('2d');
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.beginPath();
+    context.rect(margin.left, margin.top, width - margin.left - margin.right, height - margin.top - margin.bottom);
+    context.clip();
+    context.beginPath();
+    context.strokeStyle = 'rgba(91, 122, 138, 0.12)';
+    context.lineWidth = 1.1;
+    let index = 0, inStroke = 0;
+    const draw = () => {
+      if (generation !== activeGeneration) return;
+      const deadline = performance.now() + 8;
+      do {
+        let started = false;
+        series[index].values.forEach((value, month) => {
+          if (!Number.isFinite(value) || monthPixels[month] == null) { started = false; return; }
+          const x = monthPixels[month];
+          const y = yBase + Math.max(clipDomain[0], Math.min(clipDomain[1], value)) * yMultiplier;
+          if (started) context.lineTo(x, y);
+          else { context.moveTo(x, y); started = true; }
+        });
+        index += 1;
+        inStroke += 1;
+        if (inStroke === 120 || index === series.length) {
+          context.stroke();context.beginPath();inStroke = 0;
+        }
+      } while (index < series.length && performance.now() < deadline);
+      if (index < series.length) {
+        self.postMessage({generation, progress: index});
+        setTimeout(draw, 0);
+      } else {
+        const bitmap = canvas.transferToImageBitmap();
+        self.postMessage({generation, bitmap}, [bitmap]);
+      }
+    };
+    draw();
+  };
+}
+
+function getScoreRasterWorker() {
+  if (scoreRasterWorkerFailed || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
+  if (scoreRasterWorker) return scoreRasterWorker;
+  try {
+    const url = URL.createObjectURL(new Blob([`(${scoreRasterWorkerMain.toString()})()`], {type: 'text/javascript'}));
+    try { scoreRasterWorker = new Worker(url); } finally { URL.revokeObjectURL(url); }
+    scoreRasterWorker.onmessage = ({data}) => {
+      if (data.generation === scoreRenderGeneration) {
+        if (data.bitmap) scoreRenderTask.commit(data.bitmap);
+        else document.getElementById('score-scatter-canvas').dataset.progress = String(data.progress);
+      }
+      data.bitmap?.close();
+    };
+    scoreRasterWorker.onerror = event => {
+      event.preventDefault();
+      scoreRasterWorkerFailed = true;
+      scoreRasterWorker.terminate();
+      scoreRasterWorker = null;
+      scoreRenderTask?.cancel();
+      scoreRenderTask = null;
+      drawScoreScatter();
+    };
+  } catch {
+    scoreRasterWorkerFailed = true;
+    return null;
+  }
+  return scoreRasterWorker;
 }
 
 function drawScoreScatter() {
@@ -620,10 +735,19 @@ function drawScoreScatter() {
   const series = scoreHistoryData?.series || [];
   const months = (scoreHistoryData?.months || []).map(parsePriceMonth);
   if (!container || !canvas || !series.length || !months.length) return;
-  const generation = ++scoreRenderGeneration;
-  const resizing = scoreScatterRendered;
-  delete canvas.dataset.rendered;
   const width = container.clientWidth || 960, height = container.clientHeight || 340;
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const size = `${width}x${height}@${pixelRatio}`;
+  if (scoreRenderTask?.size === size && scoreRenderTask.data === scoreHistoryData) return scoreRenderTask.promise;
+  scoreRenderTask?.cancel();
+  const generation = ++scoreRenderGeneration;
+  let finish;
+  const promise = new Promise(resolve => { finish = resolve; });
+  const task = {size, data: scoreHistoryData, promise, frame: null, cancel() {
+    if (this.frame != null) cancelAnimationFrame(this.frame);
+    finish(false);
+  }};
+  scoreRenderTask = task;
   const margin = {top: 18, right: 18, bottom: 46, left: 68};
   const p10 = DATA.priceRisk.summary.historyPpsfCapLower;
   const p90 = DATA.priceRisk.summary.historyPpsfCapUpper;
@@ -632,15 +756,6 @@ function drawScoreScatter() {
   const yDomain = [p10 - cappedSpan * 0.08, p90 + cappedSpan * 0.08];
   const x = d3.scaleUtc().domain(d3.extent(months)).range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain(yDomain).nice().range([height - margin.bottom, margin.top]);
-
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * pixelRatio);
-  canvas.height = Math.round(height * pixelRatio);
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
-  const context = canvas.getContext("2d");
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  context.clearRect(0, 0, width, height);
 
   const svg = d3.select("#score-scatter-axes");
   svg.attr("viewBox", [0,0,width,height]).selectAll("*").remove();
@@ -652,16 +767,49 @@ function drawScoreScatter() {
   scoreScatterState = {container, series, months, x, y, clipDomain, margin, width, height, renderedCount: 0};
   scoreScatterRendered = true;
   const batchSize = 120; // Preserve the original overlapping stroke compositing.
+  const monthPixels = months.map(month => x(month));
+  const [low, high] = y.domain();
+  const yMultiplier = (margin.top - height + margin.bottom) / (high - low);
+  const yBase = height - margin.bottom - low * yMultiplier;
+  task.commit = image => {
+    if (generation !== scoreRenderGeneration) return;
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    scoreScatterState.renderedCount = series.length;
+    canvas.dataset.progress = String(series.length);
+    canvas.dataset.rendered = 'true';
+    task.frame = null;
+    finish(true);
+  };
+  const worker = getScoreRasterWorker();
+  if (worker) {
+    worker.postMessage({generation, width, height, pixelRatio, margin, monthPixels, clipDomain, yBase, yMultiplier,
+      series: scoreWorkerHistory === scoreHistoryData ? null : series});
+    scoreWorkerHistory = scoreHistoryData;
+    return promise;
+  }
+  // The fallback also builds a replacement while preserving the visible bitmap.
+  const buffer = document.createElement('canvas');
+  buffer.width = Math.round(width * pixelRatio);
+  buffer.height = Math.round(height * pixelRatio);
+  const context = buffer.getContext('2d');
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   let seriesIndex = 0;
+  let inStroke = 0;
+  context.save();
+  context.beginPath();
+  context.rect(margin.left, margin.top, width - margin.left - margin.right, height - margin.top - margin.bottom);
+  context.clip();
+  context.beginPath();
+  context.strokeStyle = "rgba(91, 122, 138, 0.12)";
+  context.lineWidth = 1.1;
   function drawCountyBatch() {
     if (generation !== scoreRenderGeneration) return;
-    const batchEnd = Math.min(series.length, seriesIndex + batchSize);
-    context.save();
-    context.beginPath();
-    context.rect(margin.left, margin.top, width - margin.left - margin.right, height - margin.top - margin.bottom);
-    context.clip();
-    context.beginPath();
-    for (; seriesIndex < batchEnd; seriesIndex += 1) {
+    const deadline = performance.now() + 8;
+    do {
       const county = series[seriesIndex];
       let started = false;
       county.values.forEach((value, index) => {
@@ -669,26 +817,31 @@ function drawScoreScatter() {
           started = false;
           return;
         }
-        const px = x(months[index]);
-        const py = y(capValue(value, clipDomain));
+        const px = monthPixels[index];
+        const py = yBase + capValue(value, clipDomain) * yMultiplier;
         if (started) context.lineTo(px, py);
         else {
           context.moveTo(px, py);
           started = true;
         }
       });
+      seriesIndex += 1;
+      inStroke += 1;
+      if (inStroke === batchSize || seriesIndex === series.length) {
+        context.stroke();
+        context.beginPath();
+        inStroke = 0;
+      }
+    } while (seriesIndex < series.length && performance.now() < deadline);
+    canvas.dataset.progress = String(seriesIndex);
+    if (seriesIndex < series.length) task.frame = requestAnimationFrame(drawCountyBatch);
+    else {
+      context.restore();
+      task.commit(buffer);
     }
-    context.strokeStyle = "rgba(91, 122, 138, 0.12)";
-    context.lineWidth = 1.1;
-    context.stroke();
-    context.restore();
-    scoreScatterState.renderedCount = batchEnd;
-    canvas.dataset.progress = String(batchEnd);
-    if (seriesIndex < series.length && !resizing) requestAnimationFrame(drawCountyBatch);
-    else canvas.dataset.rendered = "true";
   }
-  if (resizing) { while (seriesIndex < series.length) drawCountyBatch(); }
-  else requestAnimationFrame(drawCountyBatch);
+  task.frame = requestAnimationFrame(drawCountyBatch);
+  return promise;
 }
 
 function initScoreScatter() {
@@ -1076,7 +1229,7 @@ function renderEventSection({animate = true} = {}) {
   if (overview) {
     const count = DATA.eventWindows.summary?.affectedCounties || 0;
     const total = DATA.eventWindows.summary?.totalCounties || 0;
-    d3.select("#event-overview-stat").html(`<strong>${d3.format(",d")(count)}</strong> counties / <strong>${total ? d3.format(".1%")(count / total) : "N/A"}</strong> of counties had experienced climate events`);
+    d3.select("#event-overview-stat").html(`<strong>${d3.format(",d")(count)}</strong> counties / <strong>${total ? d3.format(".1%")(count / total) : "N/A"}</strong> of counties had experienced extreme climate events`);
     d3.select("#t-events-card-title").text(replaceFeatureText(TEXT.eventsOverviewTitle, {count: d3.format(",d")(count)}));
     d3.select("#events-window-subtitle").text("");
     document.getElementById("t-events-card-title").dataset.window = "overview";
@@ -1124,7 +1277,9 @@ function drawEventRiskBars() {
   const svg = d3.select("#event-risk-pie");
   const width = svg.node().clientWidth || 1000, height = svg.node().clientHeight || 430;
   svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
-  const margin = {top: 26, right: 70, bottom: 38, left: 120};
+  const margin = {top: 26, right: 70, bottom: 56, left: 120};
+  svg.append('text').attr('class', 'axis-label').attr('x', width / 2).attr('y', height - 5)
+    .attr('text-anchor', 'middle').attr('font-size', 12).text('Number of counties affected by events');
   svg.append("text").attr("transform", "rotate(-90)").attr("x", -height / 2).attr("y", 18)
     .attr("text-anchor", "middle").attr("font-size", 12).attr("fill", "#17332d").text("NRI risk rating");
   const x = d3.scaleLinear().domain([0, d3.max(data, d => d.count) || 1]).nice().range([margin.left, width - margin.right]);
@@ -1147,11 +1302,14 @@ function drawEventRiskBars() {
 function drawAffectedMap(wd) {
   const affected = new Map((wd.affectedCounties || []).map(d => [d.fips, d.riskRating]));
   const selectedCount = new Set((wd.affectedCounties || []).filter(d => d.riskRating === selectedRisk).map(d => d.fips)).size;
-  d3.select("#affected-county-count").style("--active-risk-color", RISK_COLORS[selectedRisk]).text(`${d3.format(",d")(selectedCount)} counties`);
+  const count = d3.select('#affected-county-count').style('--active-risk-color', RISK_COLORS[selectedRisk]);
+  count.selectAll('span.count-label').data([selectedCount]).join('span').attr('class', 'count-label')
+    .text(d => `${d3.format(',d')(d)} counties`);
   const period = activeEventWindow === "before" ? "one year before the event through event start"
     : `one year before event start through ${activeEventWindow === "B" ? "five" : "three"} years after event end`;
-  document.querySelector("#affected-county-count").append(makeInfoButton(
-    `Number of ${selectedRisk} risk counties with complete monthly Median PPSF YoY data for ${period}, the period displayed in the line plot.`,
+  count.node().dataset.tooltipContent = `Number of ${selectedRisk} risk counties with complete monthly Median PPSF YoY data for ${period}, the period displayed in the line plot.`;
+  if (!count.node().querySelector('.info-tooltip-trigger')) count.node().append(makeInfoButton(
+    () => count.node().dataset.tooltipContent,
     {analyticsId: "events-affected-county-count", label: "About the county count"},
   ));
   drawMap("#affected-map",
@@ -1689,10 +1847,9 @@ function formatFeatureVal(v, fmt) {
 // ---- playbook section ----
 function updatePlaybookZoomControl() {
   const county = playbookCountyByFips.get(selectedCountyFips);
-  const zoomed = playbookMapTransform.k > 1.01;
   d3.select("#playbook-map-zoom-toggle")
-    .style("display", county || zoomed ? "inline-flex" : "none")
-    .text(zoomed ? TEXT.playbookZoomOut : TEXT.playbookZoomIn);
+    .style("display", county ? "inline-flex" : "none")
+    .text(TEXT.playbookZoomIn);
 }
 
 function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, autoZoom = false, interactive = true) {
@@ -1700,7 +1857,7 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
   const width = svg.node().clientWidth || 1100;
   const height = svg.node().clientHeight || 380;
   svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
-  const projection = d3.geoAlbersUsa().fitSize([width, height], DATA.geojson);
+  const projection = d3.geoAlbersUsa().fitExtent([[8, 8], [width - 8, height - 8]], DATA.geojson);
   const path = d3.geoPath(projection);
   const group = svg.append("g");
 
@@ -1722,6 +1879,17 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
       const profile = playbookCountyByFips.get(d.properties.fips);
       if (profile) {
         selectPlaybookCounty(profile, "map");
+        group.selectAll('path.county').attr('fill', feature => feature.properties.fips === profile.fips ? '#172026' : '#d8d0c4');
+        playbookSelectedTransform = countyMapTransform(path, d, width, height);
+        updatePlaybookZoomControl();
+      }
+    })
+    .on('dblclick', (event, d) => {
+      if (!interactive) return;
+      event.preventDefault();
+      const profile = playbookCountyByFips.get(d.properties.fips);
+      if (profile) {
+        if (selectedCountyFips !== profile.fips) selectPlaybookCounty(profile, 'map');
         goToPlaybookProfile();
       }
     });
@@ -1733,18 +1901,19 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
     if (county) {
       const selectedFeature = DATA.geojson.features.find(d => d.properties.fips === county.fips);
       if (selectedFeature) {
-        const [cx, cy] = path.centroid(selectedFeature);
-        const scale = county.state === "AK" ? 3.2 : county.state === "HI" ? 4.2 : 5.2;
-        initial = d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
+        initial = countyMapTransform(path, selectedFeature, width, height);
       }
     }
-    enableMapGestures(svg, group, initial);
+    // The performance frame keeps the county's surrounding area fixed.
+    svg.attr('data-map-gestures', null).attr('data-map-locked', 'true').style('touch-action', 'auto');
+    group.attr('transform', initial);
     return;
   }
 
   playbookZoomBehavior = d3.zoom()
     .touchable(() => true)
-    .filter(event => event.type === "wheel" ? event.ctrlKey : !event.button)
+    .filter(event => !event.button)
+    .clickDistance(6)
     .scaleExtent([1, 12])
     .translateExtent([[-width * .35, -height * .35], [width * 1.35, height * 1.35]])
     .on("zoom", event => {
@@ -1755,16 +1924,15 @@ function drawPlaybookMap(svgSelector = "#county-selection-map", county = null, a
     });
   svg.attr('data-map-gestures', 'true').style('touch-action', 'none').style('overflow', 'hidden');
   svg.call(playbookZoomBehavior).on("dblclick.zoom", null);
-  svg.call(playbookZoomBehavior.transform, d3.zoomIdentity);
+  svg.call(playbookZoomBehavior.transform, playbookMapTransform);
 
   if (county) {
     const selectedFeature = DATA.geojson.features.find(d => d.properties.fips === county.fips);
     if (selectedFeature) {
-      const [cx, cy] = path.centroid(selectedFeature);
-      const scale = county.state === "AK" ? 3.2 : county.state === "HI" ? 4.2 : 5.2;
-      playbookSelectedTransform = d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
-      if (autoZoom) svg.transition().duration(520).call(playbookZoomBehavior.transform, playbookSelectedTransform);
+      playbookSelectedTransform = countyMapTransform(path, selectedFeature, width, height);
+      if (autoZoom) moveMap(svg, playbookZoomBehavior, playbookSelectedTransform);
     }
+    updatePlaybookZoomControl();
   } else {
     playbookSelectedTransform = d3.zoomIdentity;
     playbookMapTransform = d3.zoomIdentity;
@@ -1952,7 +2120,8 @@ function renderPlaybookEventList(county) {
 }
 
 function drawPlaybookHistory(county, compareRisk = false, showEvents = true) {
-  d3.select("#t-playbook-history-title").text(countyDisplayName(county));
+  const countyName = county.county.replace(/, [A-Z]{2}$/, '');
+  d3.select("#t-playbook-history-title").text(`${countyName}'s Median PPSF YoY over Time`);
   const parseMonth = d3.utcParse("%Y-%m");
   const historyMonths = DATA.playbook.monthlyHistoryMonths || [];
   const historyValues = (DATA.playbook.monthlyHistoryValuesByFips || {})[county.fips] || [];
@@ -1975,8 +2144,12 @@ function drawPlaybookHistory(county, compareRisk = false, showEvents = true) {
   const svg = d3.select("#playbook-ppsf-history");
   const width = svg.node().clientWidth || 1050;
   const height = svg.node().clientHeight || 430;
-  const margin = {top: 22, right: 24, bottom: 42, left: 62};
+  const margin = {top: 22, right: 24, bottom: 48, left: 76};
   svg.attr("viewBox", [0, 0, width, height]).selectAll("*").remove();
+  svg.append('text').attr('class', 'axis-label').attr('transform', 'rotate(-90)')
+    .attr('x', -height / 2).attr('y', 13).attr('text-anchor', 'middle').attr('font-size', 12).text('Median PPSF YoY');
+  svg.append('text').attr('class', 'axis-label').attr('x', (margin.left + width - margin.right) / 2)
+    .attr('y', height - 5).attr('text-anchor', 'middle').attr('font-size', 12).text('Year');
   const clipId = `playbook-history-clip-${county.fips}`;
   svg.append("defs").append("clipPath").attr("id", clipId).append("rect")
     .attr("x", margin.left).attr("y", margin.top)
@@ -2035,7 +2208,7 @@ function drawPlaybookHistory(county, compareRisk = false, showEvents = true) {
   ];
   if (compareRisk) legendItems.push({label: replaceFeatureText(TEXT.playbookRiskSeriesLegend, {risk: county.riskRating}), color: RISK_COLORS[county.riskRating] || "#66717b", opacity: .85, line: true});
   if (showEvents && events.length) legendItems.push({label: TEXT.playbookEventLegend, color: "#df7d2f", opacity: .22});
-  d3.select("#playbook-history-legend").html(legendItems.map(item =>
+  d3.select("#playbook-history-legend").property('hidden', !compareRisk).html((compareRisk ? legendItems : []).map(item =>
     `<span class="playbook-history-legend-item"><span class="playbook-history-legend-swatch" style="background:${item.color};opacity:${item.opacity};${item.line ? "height:3px;border:none;" : ""}"></span>${item.label}</span>`
   ).join(""));
   if (!observed.length) {
@@ -2311,10 +2484,12 @@ function playbookFactorAssessment(county, metric) {
 function playbookScorecard(county, profile, metrics, risk) {
   const condition = playbookEvents(county).length ? "when" : "if";
   const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
-  const complete = factors.length > 0 && factors.some(item => item.growth != null) && RISK_ORDER.includes(risk) && !!profile.subgroupName;
+  const hasMakeup = playbookHasSufficientHistory(county) && RISK_ORDER.includes(risk) && !!profile.subgroupName
+    && factors.some(item => item.growth != null);
+  const complete = RISK_ORDER.includes(risk) && !!profile.subgroupName;
   const positive = factors.filter(item => item.growth === 1).length;
   const negative = factors.filter(item => item.growth === -1).length;
-  const balance = Math.sign(positive - negative);
+  const balance = hasMakeup ? Math.sign(positive - negative) : 0;
   const riskUp = ["Very Low", "Low"].includes(risk);
   const performerUp = /overperformer/i.test(profile.subgroupName || "");
   const score = Number(riskUp) + Number(performerUp) + Number(balance === 1);
@@ -2329,7 +2504,7 @@ function playbookScorecard(county, profile, metrics, risk) {
     + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
     + `<div class="playbook-scorecard-part"><strong>Performance vs. Peers</strong><div class="playbook-scorecard-value ${performerUp ? "favorable" : "unfavorable"}"><span>${playbookPerformanceDisplayName(profile.subgroupName)}</span></div></div>`
     + '<span class="playbook-scorecard-plus" aria-hidden="true">+</span>'
-    + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${balance == null ? "Data unavailable" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span></div></div>`
+    + `<div class="playbook-scorecard-part"><strong>County Makeup</strong><div class="playbook-scorecard-value ${balance > 0 ? "favorable" : balance < 0 ? "unfavorable" : ""}"><span>${!hasMakeup ? "No information" : balance > 0 ? "More positive" : balance < 0 ? "More negative" : "Balanced"}</span></div></div>`
     + `<div class="playbook-score-result"><div><strong>Overall score:</strong> <b class="score-risk-${level}">${label}</b></div><p class="playbook-score-takeaway">${takeaway}${complete ? ' — <a data-analytics-action="heres_how" href="https://getquoll.com/" target="_blank" rel="noopener">Here’s how</a>' : ""}</p></div></div>`;
 }
 
@@ -2386,18 +2561,18 @@ function renderPlaybookOutlook(county) {
   const introElement = d3.select("#playbook-warning-intro").property("hidden", true).html("");
   const takeawayElement = d3.select("#playbook-warning-takeaway").property("hidden", true).html("");
   if (!playbookHasSufficientHistory(county)) {
-    container.attr("class", "playbook-commentary neutral").text(TEXT.playbookInsufficientHistory);
+    container.attr("class", "playbook-commentary neutral playbook-makeup-empty").text(TEXT.playbookInsufficientHistory);
     return;
   }
   const risk = county.hazards?.overall?.rating || county.riskRating;
   if (!risk || !RISK_ORDER.includes(risk)) {
-    container.attr("class", "playbook-commentary neutral").text(TEXT.playbookOutlookInsufficientRisk);
+    container.attr("class", "playbook-commentary neutral playbook-makeup-empty").text(TEXT.playbookOutlookInsufficientRisk);
     return;
   }
   const profile = playbookFeatureProfile(county);
   const metrics = mostImportantFeatureMetrics(risk);
-  if (!profile.subgroupName || !metrics.length) {
-    container.attr("class", "playbook-commentary neutral").text(TEXT.playbookOutlookInsufficientFeatures);
+  if (!profile.subgroupName || !metrics.some(metric => playbookFactorAssessment(county, metric).growth != null)) {
+    container.attr("class", "playbook-commentary neutral playbook-makeup-empty").text(TEXT.playbookOutlookInsufficientFeatures);
     return;
   }
   const factors = metrics.map(metric => playbookFactorAssessment(county, metric));
@@ -2431,32 +2606,30 @@ function selectPlaybookCounty(county, selectionMethod) {
     stage.dataset.analyticsCountyName = countyDisplayName(county);
   }
   selectedCountyFips = county.fips;
+  d3.select("#playbook-map-hint").text(`${countyDisplayName(county)} selected.`);
+  d3.select("#playbook-selection-confirmation").property("hidden", false);
+  requestAnimationFrame(() => {
+    if (stage?.dataset.storyState === "search") drawPlaybookMap("#county-selection-map", county, false, true);
+  });
   const playbookPanel = document.querySelector("#playbook .panel");
   playbookPanel?.classList.add("has-county-selection");
   syncPlaybookStoryLength(county);
   d3.select("#playbook-selected-county-name").style("display", "block").text(countyDisplayName(county));
   renderPlaybookHazards(county);
   d3.select("#playbook-performance-status").html("");
-  drawPlaybookMap("#playbook-profile-map", county, true, false);
 }
 
 function goToPlaybookProfile() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 3); return; }
-  const viewport = window.innerHeight || 1;
-  window.scrollTo({
-    top: section.offsetTop + viewport * 3,
-    behavior: "smooth",
-  });
+  navigateToStoryFrame(section, 3);
 }
 
 function goToPlaybookSearch() {
   const section = document.querySelector("#playbook");
   if (!section) return;
-  if (isMobileView()) { setMobileFrame(section, 2); return; }
   syncPlaybookStoryLength();
-  window.scrollTo({top: section.offsetTop + 2 * (window.innerHeight || 1), behavior: "smooth"});
+  navigateToStoryFrame(section, 2, {instant: true});
 }
 
 function playbookHistoryRows(county) {
@@ -2478,7 +2651,7 @@ function renderPlaybookFrame() {
   if (state === "search") detectPlaybookCounty();
   if (state === "conclusion" && county) {
     const risk = county.hazards?.overall?.rating || county.riskRating;
-    d3.select("#playbook-conclusion").html(playbookScorecard(county, playbookFeatureProfile(county), mostImportantFeatureMetrics(risk), risk));
+    d3.select("#playbook-conclusion-scorecard").html(playbookScorecard(county, playbookFeatureProfile(county), mostImportantFeatureMetrics(risk), risk));
     return;
   }
   if (state === "questions") { renderPlaybookQuestions(); return; }
@@ -2578,6 +2751,7 @@ function initPlaybook() {
     return;
   }
   drawPlaybookMap("#county-selection-map", null, false, true);
+  d3.select("#playbook-selection-continue").on("click", goToPlaybookProfile);
   const input = d3.select("#county-search");
   const results = d3.select("#county-results");
   input.on("input", function() {
@@ -2593,7 +2767,6 @@ function initPlaybook() {
       .html(d => `<strong>${countyDisplayName(d)}</strong> <span style="color:var(--muted);">(${d.hazards?.overall?.rating || "Unknown risk"})</span>`)
       .on("click", (event, d) => {
         selectPlaybookCounty(d, "search");
-        goToPlaybookProfile();
         input.property("value", "");
         results.style("display", "none").html("");
       });
@@ -2606,10 +2779,12 @@ function initPlaybook() {
   });
   d3.select("#playbook-map-zoom-toggle").on("click", () => {
     if (!playbookZoomBehavior) return;
-    const target = playbookMapTransform.k > 1.01 ? d3.zoomIdentity : playbookSelectedTransform;
-    d3.select("#county-selection-map").transition().duration(420).call(playbookZoomBehavior.transform, target);
+    moveMap(d3.select('#county-selection-map'), playbookZoomBehavior, playbookSelectedTransform);
   });
-  d3.select("#playbook-back-to-search").on("click", function() {
+  d3.select('#playbook-map-recenter').on('click', () => {
+    if (playbookZoomBehavior) moveMap(d3.select('#county-selection-map'), playbookZoomBehavior, d3.zoomIdentity);
+  });
+  d3.selectAll(".playbook-back-button").on("click", function() {
     window.portfolioTelemetry?.track?.('playbook_back_to_search_clicked', {}, this);
     goToPlaybookSearch();
   });
@@ -2618,13 +2793,13 @@ function initPlaybook() {
     syncPlaybookStoryLength();
     const section = document.getElementById("playbook");
     const index = storyConfigForSection("playbook").findIndex(step => step.state === "questions");
-    if (isMobileView()) setMobileFrame(section, index);
-    else window.scrollTo({top: section.offsetTop + index * window.innerHeight, behavior: "smooth"});
+    navigateToStoryFrame(section, index);
   });
   syncPlaybookStoryLength();
 }
 
 const STORY_CONFIG = {
+  roadmap: Array.from({length: 5}, (_, index) => ({state: `roadmap-${index}`})),
   pricing: [
     {state: "title"},
     {state: "card-main"},
@@ -2699,6 +2874,7 @@ function storyConfigForSection(id) {
 
 function syncPlaybookStoryLength() {
   document.getElementById("playbook")?.style.setProperty("--story-steps", storyConfigForSection("playbook").length);
+  storyFrameCache = null;
 }
 
 const takeawayTransitionTimers = new WeakMap();
@@ -2717,15 +2893,14 @@ function mobileStorySteps(id) {
 }
 
 function setMobileFrame(section, index) {
-  const steps = mobileStorySteps(section.id);
-  const entry = steps.find(item => item.index === index) || steps[0];
-  animateStoryScroll(section.offsetTop + entry.index * innerHeight);
+  navigateToStoryFrame(section, index);
 }
 
 function configureMobileStory() {
   const mobile = isMobileView();
   document.body.classList.toggle("mobile-story", mobile);
   document.querySelectorAll('.mobile-frame-controls').forEach(node => node.remove());
+  storyFrameCache = null;
   updateStoryFromScroll();
 }
 
@@ -2803,6 +2978,18 @@ function applyStoryStep(section, step, index) {
   const stage = section.querySelector(".story-stage");
   if (!stage) return;
   if (section.id === "playbook" && step.state === "questions" && !playbookQuestionsUnlocked) return;
+  if (section.id === "roadmap") {
+    if (stage.dataset.storyIndex === String(index)) return;
+    stage.dataset.storyIndex = String(index);
+    stage.dataset.storyState = step.state;
+    section.querySelectorAll(".roadmap-stop").forEach((stop, stopIndex) => {
+      stop.classList.toggle("is-current", stopIndex === index);
+      stop.classList.toggle("is-complete", stopIndex < index);
+      if (stopIndex === index) stop.setAttribute("aria-current", "step");
+      else stop.removeAttribute("aria-current");
+    });
+    return;
+  }
   const effectiveStep = (
     section.id === "playbook"
     && step.state !== "title"
@@ -2878,7 +3065,7 @@ function applyStoryStep(section, step, index) {
       playbookEntering.filter(element => getComputedStyle(element).display !== "none").forEach(element => {
         element.getAnimations().forEach(animation => animation.cancel());
         element.animate([{translate: `0 ${direction < 0 ? -32 : 32}px`, opacity: 0},
-          {translate: "0 0", opacity: 1}], {duration: 420, easing: "cubic-bezier(.22, .61, .36, 1)"});
+          {translate: "0 0", opacity: 1}], {duration: 220, easing: "cubic-bezier(.22, .61, .36, 1)"});
       });
     }
   }
@@ -2896,7 +3083,7 @@ function applyStoryStep(section, step, index) {
       title.animate([
         {width: `${titleBefore.width / scale}px`, transform: `translate(${titleBefore.left - titleAfter.left + matrix.e}px, ${titleBefore.top - titleAfter.top + matrix.f}px) scale(${scale})`, transformOrigin: "left top"},
         {width: finalWidth, transform: `translate(${matrix.e}px, ${matrix.f}px) scale(${matrix.a})`, transformOrigin: "left top"},
-      ], {duration: 900, easing: "cubic-bezier(.45, 0, .2, 1)"});
+      ], {duration: 220, easing: "cubic-bezier(.45, 0, .2, 1)"});
     }
   }
   // The card is persistent. Its children own their enter/exit and chart morph
@@ -2916,137 +3103,252 @@ function applyStoryStep(section, step, index) {
       countyPlot.animate([
         {transform: `translateY(${countyPlotBefore.top - after.top}px) scaleY(${countyPlotBefore.height / after.height})`},
         {transform: 'translateY(0) scaleY(1)'},
-      ], {duration: 420, easing: 'ease-out'});
+      ], {duration: 220, easing: 'ease-out'});
     }
   }
 }
 
-function storyNavigationStops() {
-  const viewport = window.innerHeight || 1;
-  const stops = [document.querySelector(".hero")?.offsetTop || 0];
+let storyViewportHeight = window.innerHeight || 1;
+let storyViewportWidth = window.innerWidth;
+let storyFrameCache = null;
+let storyNavigationAnimation = null;
+let storyNavigationGeneration = 0;
+let storyScrollTarget = null;
+let storyPanelMotionUntil = 0;
+let wheelGesture = null;
+let mobileSwipe = null;
+let storyResizeTimer = null;
+let storyResizeAnchor = null;
+const storySectionPreparers = new Map();
+const chartLayoutChanges = new Set();
+let storyChartRedrawFrame = null;
+
+function storyFrames() {
+  if (storyFrameCache) return storyFrameCache;
+  const frames = [{id: "top", index: 0, top: document.querySelector(".hero")?.offsetTop || 0}];
   for (const id of Object.keys(STORY_CONFIG)) {
     const section = document.getElementById(id);
     if (!section) continue;
-    const config = storyConfigForSection(id);
-    config.forEach((step, index) => {
-      stops.push(section.offsetTop + index * viewport);
+    storyConfigForSection(id).forEach((step, index) => {
+      frames.push({id, index, top: Math.round(section.offsetTop + index * storyViewportHeight)});
     });
   }
-  return [...new Set(stops.map(stop => Math.round(stop)))].sort((a, b) => a - b);
+  return storyFrameCache = frames;
+}
+
+function storyNavigationStops() {
+  return storyFrames().map(frame => frame.top);
+}
+
+function activeStoryFrame(position = window.scrollY) {
+  return storyFrames().reduce((best, frame) => Math.abs(frame.top - position) < Math.abs(best.top - position) ? frame : best);
+}
+
+function storyForwardBlocked(frame) {
+  return frame.id === "playbook" && frame.index >= 2 && !selectedCountyFips;
 }
 
 function updateStoryNavigation() {
-  const stops = storyNavigationStops();
-  const current = window.scrollY;
-  const tolerance = (window.innerHeight || 1) * 0.2;
-  document.getElementById("story-prev").disabled = !stops.some(stop => stop < current - tolerance);
-  document.getElementById("story-next").disabled = !stops.some(stop => stop > current + tolerance);
+  const frames = storyFrames();
+  const frame = activeStoryFrame(storyScrollTarget ?? window.scrollY);
+  document.getElementById("story-prev").disabled = frame === frames[0];
+  document.getElementById("story-next").disabled = frame === frames.at(-1) || storyForwardBlocked(frame);
 }
 
-let storyNavigationAnimation = null;
-let storyScrollTarget = null;
 function cancelStoryNavigation() {
+  storyNavigationGeneration += 1;
   if (storyNavigationAnimation != null) cancelAnimationFrame(storyNavigationAnimation);
   storyNavigationAnimation = null;
   storyScrollTarget = null;
 }
-window.addEventListener("touchstart", cancelStoryNavigation, {passive: true});
-window.addEventListener("keydown", event => {
-  if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelStoryNavigation();
-});
-window.addEventListener("resize", () => document.querySelectorAll(".story-stage > h2").forEach(fitStoryTitle));
-document.fonts.ready.then(() => document.querySelectorAll(".story-stage > h2").forEach(fitStoryTitle));
+
 function animateStoryScroll(target) {
   const current = window.scrollY;
-  target = Math.max(0, Math.min(target, document.documentElement.scrollHeight - innerHeight));
-  if (storyNavigationAnimation != null) cancelAnimationFrame(storyNavigationAnimation);
+  target = Math.max(0, Math.min(target, document.documentElement.scrollHeight - window.innerHeight));
+  // A pending viewport rebase follows navigation accepted after the resize.
+  if (storyResizeAnchor) storyResizeAnchor = activeStoryFrame(target);
+  cancelStoryNavigation();
+  const generation = storyNavigationGeneration;
   storyScrollTarget = target;
-  if (storyMotionReduced()) {
+  if (storyMotionReduced() || Math.abs(target - current) < 1) {
     window.scrollTo({top: target, behavior: "instant"});
     cancelStoryNavigation();
+    updateStoryFromScroll();
     return;
   }
-  // Both wheel and navigation buttons use this one motion path.
-  const started = performance.now();
+  // rAF timestamps share one clock. The first delivered timestamp starts motion,
+  // even when chart work delayed it relative to performance.now().
+  let started = null;
   const tick = now => {
-    const progress = Math.min(1, (now - started) / 650);
+    if (generation !== storyNavigationGeneration) return;
+    started ??= now;
+    const progress = Math.max(0, Math.min(1, (now - started) / 220));
     const eased = 1 - (1 - progress) ** 3;
     window.scrollTo({top: current + (target - current) * eased, behavior: "instant"});
     storyNavigationAnimation = progress < 1 ? requestAnimationFrame(tick) : null;
-    if (progress === 1) storyScrollTarget = null;
+    if (progress === 1) {
+      storyScrollTarget = null;
+      scheduleStoryChartRedraw();
+    }
   };
   storyNavigationAnimation = requestAnimationFrame(tick);
 }
 
-function navigateStory(direction) {
-  if (isMobileView()) {
-    const stage = [...document.querySelectorAll('.story-stage')].find(node => Math.abs(node.getBoundingClientRect().top) < 4);
-    if (direction > 0 && stage?.parentElement.id === 'playbook' && stage.dataset.storyState === 'search' && !selectedCountyFips) return;
-    const panel = stage?.querySelector(':scope > .panel');
-    if (panel && getComputedStyle(panel).opacity !== '0') {
-      const extra = Math.max(0, panel.scrollHeight - panel.clientHeight);
-      const pages = Math.ceil(extra / Math.max(1, panel.clientHeight - 24));
-      const stride = pages ? extra / pages : 0;
-      const currentPage = stride ? Math.round(panel.scrollTop / stride) : 0;
-      if (direction > 0 && currentPage < pages || direction < 0 && currentPage > 0) {
-        panel.scrollTo({top: (currentPage + direction) * stride, behavior: storyMotionReduced() ? 'instant' : 'smooth'});
-        return;
-      }
+function navigateToStoryFrame(section, index, {instant = false} = {}) {
+  if (!section) return;
+  const config = storyConfigForSection(section.id);
+  index = Math.max(0, Math.min(index, config.length - 1));
+  if (section.id === "playbook" && !selectedCountyFips) index = Math.min(index, 2);
+  const frame = storyFrames().find(frame => frame.id === section.id && frame.index === index);
+  if (!frame) return;
+  if (instant) {
+    if (storyResizeAnchor) storyResizeAnchor = frame;
+    cancelStoryNavigation();
+    window.scrollTo({top: frame.top, behavior: "instant"});
+    updateStoryFromScroll();
+    scheduleStoryChartRedraw();
+  } else animateStoryScroll(frame.top);
+}
+
+function canScrollStoryContent(node, direction) {
+  return node && node.scrollHeight > node.clientHeight + 2
+    && (direction < 0 ? node.scrollTop > 2 : node.scrollTop + node.clientHeight < node.scrollHeight - 2);
+}
+
+function storyScrollOwner(target, direction) {
+  for (let node = target instanceof Element ? target : null; node && node !== document.body; node = node.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && canScrollStoryContent(node, direction)) {
+      node.style.overscrollBehaviorY = "contain";
+      return node;
     }
   }
-  const stops = storyNavigationStops();
-  const current = storyScrollTarget ?? window.scrollY;
-  const tolerance = (window.innerHeight || 1) * 0.2;
-  const target = direction > 0
-    ? stops.find(stop => stop > current + tolerance)
-    : [...stops].reverse().find(stop => stop < current - tolerance);
-  if (target != null) animateStoryScroll(target);
+  return null;
+}
+
+function navigateStory(direction) {
+  if (storyNavigationAnimation != null || performance.now() < storyPanelMotionUntil) return;
+  const frame = activeStoryFrame();
+  const stage = document.querySelector(`#${frame.id} .story-stage`);
+  const panel = stage?.querySelector(':scope > .panel');
+  if (panel && getComputedStyle(panel).opacity !== '0' && canScrollStoryContent(panel, direction)) {
+    const extra = Math.max(0, panel.scrollHeight - panel.clientHeight);
+    const pages = Math.ceil(extra / Math.max(1, panel.clientHeight - 24));
+    const stride = pages ? extra / pages : 0;
+    panel.scrollTo({top: Math.max(0, Math.min(extra, panel.scrollTop + direction * stride)), behavior: storyMotionReduced() ? 'instant' : 'smooth'});
+    storyPanelMotionUntil = performance.now() + (storyMotionReduced() ? 0 : 220);
+    return;
+  }
+  if (direction > 0 && storyForwardBlocked(frame)) return;
+  const frames = storyFrames();
+  const next = frames[frames.indexOf(frame) + direction];
+  if (next) animateStoryScroll(next.top);
 }
 
 function handleStoryWheel(event) {
-  if (isMobileView() || event.defaultPrevented || event.ctrlKey || event.metaKey
-      || !event.cancelable || Math.abs(event.deltaX) > Math.abs(event.deltaY)
-      || storyMotionReduced()) return;
-  // Keep native scrolling inside event lists, factor lists, and other scroll panes.
-  for (let node = event.target instanceof Element ? event.target : null;
-       node && node !== document.body; node = node.parentElement) {
-    const overflow = getComputedStyle(node).overflowY;
-    if (/(auto|scroll)/.test(overflow) && node.scrollHeight > node.clientHeight + 1
-        && (event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight - 1)) {
-      cancelStoryNavigation();
-      return;
-    }
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey
+      || event.target.closest?.('[data-map-gestures], input, textarea, select, [contenteditable="true"]')
+      || !event.cancelable || Math.abs(event.deltaX) > Math.abs(event.deltaY) || !event.deltaY) return;
+  const direction = Math.sign(event.deltaY);
+  const now = event.timeStamp || performance.now();
+  if (!wheelGesture || now - wheelGesture.last >= 160) {
+    wheelGesture = {last: now, owner: storyScrollOwner(event.target, direction), consumed: false};
   }
-  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
-  if (!delta) return;
+  wheelGesture.last = now;
+  // The owner lasts for the whole burst, including momentum at its boundary.
+  if (wheelGesture.owner) {
+    cancelStoryNavigation();
+    if (!canScrollStoryContent(wheelGesture.owner, direction)) event.preventDefault();
+    return;
+  }
   event.preventDefault();
-  animateStoryScroll((storyScrollTarget ?? window.scrollY) + delta);
+  if (wheelGesture.consumed) return;
+  wheelGesture.consumed = true;
+  navigateStory(direction);
 }
 window.addEventListener("wheel", handleStoryWheel, {passive: false});
 
-let mobileSwipe = null;
 window.addEventListener('touchstart', event => {
-  if (!isMobileView() || event.touches.length !== 1 || event.target.closest('input, textarea, select, .info-tooltip, [data-map-gestures]')) { mobileSwipe = null; return; }
-  mobileSwipe = {x: event.touches[0].clientX, y: event.touches[0].clientY};
+  if (event.touches.length !== 1 || event.target.closest('input, textarea, select, [contenteditable="true"], .info-tooltip, [data-map-gestures]')) {
+    mobileSwipe = null;
+    cancelStoryNavigation();
+    return;
+  }
+  mobileSwipe = {x: event.touches[0].clientX, y: event.touches[0].clientY, target: event.target, owner: undefined,
+    blocked: storyNavigationAnimation != null};
 }, {passive: true});
 window.addEventListener('touchmove', event => {
-  if (mobileSwipe && event.touches.length === 1 && event.cancelable) event.preventDefault();
+  if (!mobileSwipe || event.touches.length !== 1) return;
+  const dx = event.touches[0].clientX - mobileSwipe.x;
+  const dy = event.touches[0].clientY - mobileSwipe.y;
+  if (Math.abs(dy) < Math.abs(dx) || !dy) return;
+  if (mobileSwipe.owner === undefined) mobileSwipe.owner = storyScrollOwner(mobileSwipe.target, dy < 0 ? 1 : -1);
+  if (mobileSwipe.owner) { cancelStoryNavigation(); return; }
+  if (event.cancelable) event.preventDefault();
 }, {passive: false});
 window.addEventListener('touchend', event => {
-  if (!mobileSwipe) return;
-  const dx = event.changedTouches[0].clientX - mobileSwipe.x;
-  const dy = event.changedTouches[0].clientY - mobileSwipe.y;
+  if (!mobileSwipe || event.touches.length || !event.changedTouches.length) return;
+  const swipe = mobileSwipe;
   mobileSwipe = null;
+  if (swipe.owner || swipe.blocked) return;
+  const dx = event.changedTouches[0].clientX - swipe.x;
+  const dy = event.changedTouches[0].clientY - swipe.y;
   if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx)) navigateStory(dy < 0 ? 1 : -1);
 }, {passive: true});
 window.addEventListener('touchcancel', () => { mobileSwipe = null; }, {passive: true});
 window.addEventListener('keydown', event => {
-  if (!isMobileView() || event.target.closest('input, textarea, select')) return;
-  if (['ArrowUp', 'PageUp', 'ArrowDown', 'PageDown'].includes(event.key)) {
-    event.preventDefault();
-    navigateStory(['ArrowUp', 'PageUp'].includes(event.key) ? -1 : 1);
+  if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey
+      || event.target.closest?.('input, textarea, select, button, a, summary, [contenteditable="true"]')) return;
+  if (!['ArrowUp', 'PageUp', 'ArrowDown', 'PageDown', ' ', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  if (event.repeat) return;
+  if (event.key === 'Home') animateStoryScroll(storyFrames()[0].top);
+  else if (event.key === 'End') navigateToStoryFrame(document.getElementById('playbook'), storyConfigForSection('playbook').length - 1);
+  else {
+    const direction = ['ArrowUp', 'PageUp'].includes(event.key) || event.key === ' ' && event.shiftKey ? -1 : 1;
+    const owner = storyScrollOwner(event.target, direction);
+    if (owner) owner.scrollBy({top: direction * Math.max(24, owner.clientHeight - 24), behavior: storyMotionReduced() ? 'instant' : 'smooth'});
+    else navigateStory(direction);
   }
 });
+// Scrollbars, browser restoration, and anchors remain direct navigation paths.
+window.addEventListener('pointerdown', event => {
+  if (event.clientX >= document.documentElement.clientWidth || event.target.closest?.('a[href^="#"]')) cancelStoryNavigation();
+}, {passive: true});
+for (const event of ['pageshow', 'popstate', 'hashchange']) window.addEventListener(event, () => {
+  cancelStoryNavigation();
+  storyFrameCache = null;
+  updateStoryFromScroll();
+});
+
+function scheduleStoryViewportUpdate() {
+  if (document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return;
+  if (!storyResizeAnchor && storyViewportHeight === window.innerHeight && storyViewportWidth === window.innerWidth) return;
+  storyResizeAnchor ??= activeStoryFrame(storyScrollTarget ?? window.scrollY);
+  clearTimeout(storyResizeTimer);
+  storyResizeTimer = setTimeout(() => {
+    if (storyNavigationAnimation != null || mobileSwipe || wheelGesture && performance.now() - wheelGesture.last < 160) {
+      scheduleStoryViewportUpdate();
+      return;
+    }
+    const anchor = storyResizeAnchor;
+    storyResizeAnchor = null;
+    storyViewportHeight = window.innerHeight || 1;
+    storyViewportWidth = window.innerWidth;
+    document.documentElement.style.setProperty('--story-viewport-height', `${storyViewportHeight}px`);
+    storyFrameCache = null;
+    const frame = storyFrames().find(frame => frame.id === anchor.id && frame.index === anchor.index);
+    if (frame) window.scrollTo({top: frame.top, behavior: 'instant'});
+    document.querySelectorAll('.story-stage > h2').forEach(fitStoryTitle);
+    document.querySelectorAll('.slide').forEach(section => {
+      if (sectionInView(section.id)) syncTakeawaySpace(section, section.querySelector('.takeaway.story-active-takeaway'));
+    });
+    updateStoryFromScroll();
+    scheduleStoryChartRedraw();
+  }, 160);
+}
+window.addEventListener('resize', scheduleStoryViewportUpdate);
+document.addEventListener('focusout', scheduleStoryViewportUpdate);
+document.fonts.ready.then(() => document.querySelectorAll('.story-stage > h2').forEach(fitStoryTitle));
 
 function initStoryEdgeNavigation() {
   const previous = document.getElementById("story-prev");
@@ -3069,9 +3371,9 @@ function initStoryEdgeNavigation() {
 }
 
 function initPanelScrollRouting() {
-  // Native scroll chaining preserves trackpad momentum and touch scrolling.
+  // Native scrolling stays with its pane until the next deliberate gesture.
   document.querySelectorAll(".story-stage > .panel").forEach(panel => {
-    panel.style.overscrollBehaviorY = "auto";
+    panel.style.overscrollBehaviorY = "contain";
     const update = () => {
       panel.parentElement.dataset.moreContent = String(isMobileView() && panel.scrollHeight > panel.clientHeight + panel.scrollTop + 4);
     };
@@ -3082,18 +3384,29 @@ function initPanelScrollRouting() {
 }
 
 function updateStoryFromScroll() {
-  const viewport = window.innerHeight || 1;
-  const updates = [...document.querySelectorAll(".slide[data-story-ready='true']")].map(section => {
+  const viewport = storyViewportHeight;
+  const updates = [...document.querySelectorAll(".slide[data-story-ready='true']")]
+    .filter(section => section.offsetTop <= window.scrollY + viewport && section.offsetTop + section.offsetHeight >= window.scrollY - viewport)
+    .map(section => {
     const config = storyConfigForSection(section.id);
     const relative = (window.scrollY - section.offsetTop + viewport * .42) / viewport;
     const index = Math.max(0, Math.min(config.length - 1, Math.floor(relative)));
     return {section, step: config[index], index};
   });
   updates.forEach(({section, step, index}) => applyStoryStep(section, step, index));
+  const roadmap = document.getElementById("roadmap");
+  if (roadmap) {
+    const progress = Math.max(0, Math.min(1, (window.scrollY - roadmap.offsetTop) / (4 * viewport)));
+    roadmap.style.setProperty("--roadmap-progress", progress);
+  }
   updateStoryNavigation();
+  prefetchNextStorySection();
+  scheduleStoryChartRedraw();
 }
 
 function initScrollStory() {
+  document.documentElement.classList.add('story-controlled');
+  document.documentElement.style.setProperty('--story-viewport-height', `${storyViewportHeight}px`);
   Object.entries(STORY_CONFIG).forEach(([id, config]) => {
     const section = document.getElementById(id);
     if (!section || section.dataset.storyReady) return;
@@ -3101,7 +3414,7 @@ function initScrollStory() {
     stage.className = "story-stage";
     while (section.firstChild) stage.appendChild(section.firstChild);
     section.appendChild(stage);
-    section.style.setProperty("--story-steps", config.length);
+    section.style.setProperty("--story-steps", storyConfigForSection(id).length);
     section.dataset.storyReady = "true";
   });
   let scheduled = false;
@@ -3130,7 +3443,23 @@ hydrateText();
 initScrollStory();
 initButtons();
 initScoreScatter();
-function renderWhenNear(selector, render, rootMargin = "350px 0px") {
+function prefetchNextStorySection() {
+  const current = activeStoryFrame(storyScrollTarget ?? window.scrollY);
+  const ids = Object.keys(STORY_CONFIG);
+  const next = ids.slice(ids.indexOf(current.id) + 1).find(id => storySectionPreparers.has(id));
+  const entry = storySectionPreparers.get(next);
+  if (!entry || entry.scheduled) return;
+  entry.scheduled = true;
+  const prepare = () => {
+    Promise.resolve().then(entry.prepare).catch(() => {
+      // Visible loading owns the retry UI; speculative failures stay quiet.
+    });
+  };
+  if (window.requestIdleCallback) window.requestIdleCallback(prepare, {timeout: 800});
+  else setTimeout(prepare, 80);
+}
+
+function renderWhenNear(selector, render, rootMargin = "350px 0px", prepare = async () => {}) {
   const target = document.querySelector(selector);
   if (!target) return;
   let pending = false;
@@ -3139,6 +3468,9 @@ function renderWhenNear(selector, render, rootMargin = "350px 0px") {
   status.className = "section-load-status";
   status.setAttribute("role", "status");
   const host = target.querySelector(".panel") || target.parentElement;
+  const section = target.closest('.slide');
+  storySectionPreparers.set(section.id, {prepare, scheduled: false});
+  prefetchNextStorySection();
   const attempt = async () => {
     if (pending || finished) return;
     pending = true;
@@ -3174,24 +3506,24 @@ renderWhenNear("#score-scatter", async () => {
     "climate-risk-housing-county-history.js",
     "CLIMATE_RISK_HOUSING_COUNTY_HISTORY"
   );
-  drawScoreScatter();
-});
+  // A resize may replace an in-flight draw; keep loading until its successor commits.
+  while (await drawScoreScatter() === false) { /* wait for the current generation */ }
+}, "350px 0px", () => loadDeferredData("climate-risk-housing-county-history.js", "CLIMATE_RISK_HOUSING_COUNTY_HISTORY"));
 renderWhenNear("#pricing-grouping", async () => {
   await ensureGeography();
   startRatingSequence();
   ratingSectionRendered = true;
-});
+}, "350px 0px", ensureGeography);
 renderWhenNear("#events", async () => {
   await Promise.all([ensureGeography(), ensureEvents()]);
-  renderEventSection();
   startRiskTimer();
   eventSectionRendered = true;
-});
+}, "350px 0px", () => Promise.all([ensureGeography(), ensureEvents()]));
 renderWhenNear("#features", async () => {
   await Promise.all([ensureEvents(), ensureFeatures()]);
   drawFeatureHeatmaps();
   featureSectionRendered = true;
-});
+}, "350px 0px", () => Promise.all([ensureEvents(), ensureFeatures()]));
 renderWhenNear("#playbook", async () => {
   const [playbook] = await Promise.all([
     loadDeferredData("climate-risk-housing-playbook.js", "CLIMATE_RISK_HOUSING_PLAYBOOK"),
@@ -3202,13 +3534,36 @@ renderWhenNear("#playbook", async () => {
   initPlaybook();
   playbookSectionRendered = true;
   renderPlaybookFrame();
-}, "1200px 0px");
-let resizeTimer = null;
+}, "1200px 0px", () => Promise.all([
+  loadDeferredData("climate-risk-housing-playbook.js", "CLIMATE_RISK_HOUSING_PLAYBOOK"),
+  ensureGeography(), ensureEvents(), ensureFeatures(),
+]));
 // Flex-sized charts also change when takeaways enter, without a window resize.
 const chartSizes = new WeakMap();
 const featurePanelObserver = new ResizeObserver(() => syncFeaturePanelHeights());
 document.querySelectorAll(".feature-line-pane, #feature-relationship").forEach(element => featurePanelObserver.observe(element));
-const chartLayoutChanges = new Set();
+function scheduleStoryChartRedraw() {
+  if (!chartLayoutChanges.size || storyChartRedrawFrame != null) return;
+  storyChartRedrawFrame = requestAnimationFrame(flushStoryChartRedraw);
+}
+function flushStoryChartRedraw() {
+  storyChartRedrawFrame = null;
+  if (storyNavigationAnimation != null || storyResizeAnchor) return;
+  const changed = new Set([...chartLayoutChanges].filter(id => sectionInView(id)));
+  changed.forEach(id => chartLayoutChanges.delete(id));
+  if (changed.has("pricing") && scoreScatterRendered) drawScoreScatter();
+  if (changed.has("pricing-grouping") && ratingSectionRendered) { drawRatingScatter(); drawRatingMap(); }
+  if (changed.has("events") && eventSectionRendered) renderEventSection({animate: false});
+  if (changed.has("features") && featureSectionRendered) {
+    const state = document.querySelector("#features .story-stage").dataset.storyState;
+    if (state === "feature-frame-2" || state === "feature-frame-3") {
+      drawFeatureSubgroupDetail();
+      drawFeatureSubgroupLines();
+    } else if (selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
+    else drawFeatureMedianLine();
+  }
+  if (changed.has("playbook") && playbookSectionRendered) renderPlaybookFrame();
+}
 const chartLayoutObserver = new ResizeObserver(entries => {
   for (const entry of entries) {
     const {width, height} = entry.contentRect;
@@ -3224,44 +3579,10 @@ const chartLayoutObserver = new ResizeObserver(entries => {
     }
     chartLayoutChanges.add(entry.target.closest("section").id);
   }
-  if (chartLayoutChanges.size) {
-    // ResizeObserver runs before paint. Do not defer to another animation frame:
-    // that paints a stretched old SVG viewBox, then visibly snaps to the new one.
-    const changed = new Set(chartLayoutChanges);
-    chartLayoutChanges.clear();
-    if (changed.has("pricing") && scoreScatterRendered) drawScoreScatter();
-    if (changed.has("pricing-grouping") && ratingSectionRendered) { drawRatingScatter(); drawRatingMap(); }
-    if (changed.has("events") && eventSectionRendered) renderEventSection({animate: false});
-    if (changed.has("features") && featureSectionRendered) {
-      const state = document.querySelector("#features .story-stage").dataset.storyState;
-      if (state === "feature-frame-2" || state === "feature-frame-3") {
-        drawFeatureSubgroupDetail();
-        drawFeatureSubgroupLines();
-      } else if (selectedFeatureKey) drawFeatureScatter(selectedFeatureKey);
-      else drawFeatureMedianLine();
-    }
-  }
+  scheduleStoryChartRedraw();
 });
 document.querySelectorAll("#score-scatter, #rating-scatter, #rating-map, #event-window, #event-risk-pie, #affected-map, #feature-event-window, #feature-distribution-chart")
   .forEach(chart => chartLayoutObserver.observe(chart));
-let lastChartWidth = window.innerWidth;
 window.addEventListener("resize", () => {
-  if (isMobileView() && window.innerWidth === lastChartWidth) return;
-  lastChartWidth = window.innerWidth;
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (scoreScatterRendered) drawScoreScatter();
-    if (ratingSectionRendered) {
-      drawRatingScatter();
-      drawRatingMap();
-    }
-    if (eventSectionRendered) renderEventSection();
-    if (featureSectionRendered) drawFeatureHeatmaps();
-    if (playbookSectionRendered) {
-      renderPlaybookFrame();
-    }
-    document.querySelectorAll(".slide[data-story-ready='true']").forEach(section => {
-      syncTakeawaySpace(section, section.querySelector(".takeaway.story-active-takeaway"));
-    });
-  }, 150);
+  Object.keys(STORY_CONFIG).forEach(id => chartLayoutChanges.add(id));
 });

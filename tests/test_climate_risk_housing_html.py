@@ -172,6 +172,7 @@ console.log(JSON.stringify([syncs,draws]));
         functions = "function playbookFactorAssessment" + HTML_TEMPLATE.split("function playbookFactorAssessment", 1)[1].split("function renderPlaybookOutlook", 1)[0]
         script = '''
 const rows=[{fips:'o1',values:{x:2}},{fips:'o2',values:{x:8}},{fips:'u1',values:{x:6}},{fips:'u2',values:{x:12}}];
+const playbookHasSufficientHistory=c=>c.hasHistory !== false;
 const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const RISK_COLORS={Low:'#11794f',High:'#be302e'};
 const playbookCountyFeaturePosition=(county,feature)=>feature==='missing'?'Data unavailable':DATA.features.allCountyRowsByRisk.Low.at(-1).values.x<7?'Lower':'Higher';
@@ -200,7 +201,7 @@ console.log(JSON.stringify({matches,labels}));
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         result = json.loads(result.stdout)
         self.assertEqual(result["matches"], [True, True, False, False, False, True, None])
-        self.assertEqual(result["labels"], ["Low Risk", "Moderate Risk", "Moderate Risk", "High Risk", "High Risk", "Insufficient data"])
+        self.assertEqual(result["labels"], ["Low Risk", "Moderate Risk", "Moderate Risk", "High Risk", "High Risk", "Moderate Risk"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed for story tests")
     def test_rapid_scroll_keeps_only_one_takeaway_visible(self):
@@ -229,6 +230,7 @@ for(let i=0;i<1000;i++) {
         script = '''
 const playbookCountyFeaturePosition=(c,f)=>f==='tie'?'At peer median':f==='missing'?'Data unavailable':'Higher';
 const featureLabel=f=>f,countyDisplayName=()=> 'Test County',playbookEvents=()=>[];
+const playbookHasSufficientHistory=c=>c.hasHistory !== false;
 const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const playbookPerformanceDisplayName=n=>n,RISK_COLORS={Low:'green'};
 ''' + functions + '''
@@ -302,6 +304,7 @@ console.log(JSON.stringify(result.map(r=>[r.peerMedian,r.matching,r.denominator,
 const DATA={features:{allCountyRowsByRisk:{Low:[{fips:'a',values:{x:1}},{fips:'b',values:{x:3}},{fips:'c',values:{x:5}}]},countyRowsByRisk:{Low:[]},subgroupsByRisk:{Low:{groups:[]}}}};
 const d3={median:a=>a.slice().sort((a,b)=>a-b)[Math.floor(a.length/2)]};
 const TEXT={playbookScorecardNote:'Not a forecast'};
+const playbookHasSufficientHistory=c=>c.hasHistory !== false;
 const RISK_ORDER=['Very Low','Low','Moderate','High','Very High'];
 const RISK_COLORS={Low:'#11794f'};
 const playbookEvents=c=>c.events;

@@ -143,6 +143,14 @@ URL when the artifact root becomes the public site root.
 For local testing, run `python -m http.server 8000 --directory output` and open
 `http://localhost:8000/`.
 
+Run the page regression suite with `python -m unittest discover -s tests -p 'test_climate_risk_housing*.py'`.
+With Playwright installed and available to Node.js (through `NODE_PATH` when needed), run
+`node tests/climate_risk_housing_browser.cjs` for map and Playbook interactions and
+`node tests/climate_risk_housing_navigation.cjs` for wheel bursts, touch swipes,
+takeaway visibility, viewport changes, loading recovery, and canvas fallback behavior.
+The navigation check saves screenshots and rendering profiles under `test-results/navigation/`;
+`--profile` runs only the rendering comparison scenarios.
+
 ## Notebooks
 
 Publication notebooks are documented in
